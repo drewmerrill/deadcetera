@@ -94,6 +94,35 @@ var _mtState = {
     composerTags: {}     // { tagName: true } — fresh per comment
 };
 
+// Mobile detection — Pass 1 of mobile_review_mode_convergence_v1.md. Single
+// breakpoint (640px) matches the existing calendar @media block in index.html
+// so the whole app has one consistent mobile threshold. Re-evaluated on every
+// call (cheap — just matchMedia). On viewport-cross we re-render the segments
+// panel so the row/filter layout updates without requiring a player reopen.
+function _mtIsMobile() {
+    try {
+        return (typeof window !== 'undefined' && window.matchMedia
+            && window.matchMedia('(max-width:640px)').matches);
+    } catch (e) { return false; }
+}
+(function _mtWireMobileResizeListener() {
+    if (typeof window === 'undefined' || window._mtMobileResizeWired) return;
+    window._mtMobileResizeWired = true;
+    var lastIsMobile = _mtIsMobile();
+    window.addEventListener('resize', function() {
+        var nowIsMobile = _mtIsMobile();
+        if (nowIsMobile === lastIsMobile) return;
+        lastIsMobile = nowIsMobile;
+        // Re-render the segments panel so row/filter layout flips without a
+        // player reopen. Header layout will stay stale (was rendered at open)
+        // until next open — acceptable for Pass 1; viewport rotation is rare
+        // mid-session.
+        if (typeof _mtRenderSegmentsPanel === 'function' && _mtState && _mtState.player) {
+            _mtRenderSegmentsPanel();
+        }
+    });
+})();
+
 // ── Filename inference ───────────────────────────────────────────────────────
 // Strict pattern: NN_role-member.ext (member optional). Examples that parse:
 //   01_kick-jay.flac        → role:kick,    member:jay
@@ -1182,8 +1211,29 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
             + '</div>';
     }).join('');
 
-    ov.innerHTML =
-        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:20px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+    // Pass 1 of mobile_review_mode_convergence_v1.md — Isolate header collapse.
+    // Same pattern as Review Mode: single-line title, no metadata line,
+    // Keeper + Stems + Review-switch + Edit all collapse into the Tools sheet
+    // (see _mtToggleToolsMenu mobile branch for 'isolate' mode). Note: Isolate
+    // Mode itself is structurally desktop-class (17-track mixer at 390px is
+    // not viable) — Pass 1 just keeps the header sane; the "open on desktop"
+    // redirect lives in a later pass per spec §11.
+    var _isMobile = _mtIsMobile();
+    var modalPadding = _isMobile ? '12px' : '20px';
+    var headerHtml;
+    if (_isMobile) {
+        var mobileTitle = escHtml(dateLabel)
+            + (session.venue ? ' · ' + escHtml(session.venue) : '')
+            + ' · ' + tracks.length + ' tracks';
+        headerHtml =
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0">' +
+            '<span style="font-size:1.1em">🎚</span>' +
+            '<div style="flex:1;min-width:0;font-size:0.88em;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + mobileTitle + '</div>' +
+            '<button id="mtToolsBtn" onclick="_mtToggleToolsMenu(\'isolate\')" title="Tools" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:6px 10px;cursor:pointer;font-size:1em;line-height:1">⋯</button>' +
+            '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#94a3b8;font-size:1.6em;cursor:pointer;padding:0 4px;line-height:1">×</button>' +
+          '</div>';
+    } else {
+        headerHtml =
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0">' +
             '<span style="font-size:1.25em">🎚</span>' +
             '<div style="flex:1">' +
@@ -1205,7 +1255,12 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
             '<button onclick="_mtSwitchToReview()" title="Switch to Review Mode — single stereo mix, fast seek, no drift" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);border-radius:5px;color:#a5b4fc;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">👁 Review</button>' +
             '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
-          '</div>' +
+          '</div>';
+    }
+
+    ov.innerHTML =
+        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:' + modalPadding + ';border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+          headerHtml +
           // §8.1 Long-session banner — honest warning for sessions where the
           // browser-side sync is known to drift. Only shows when duration ≥
           // 30 min. Hidden once Drew opts out via setting localStorage flag.
@@ -1438,36 +1493,59 @@ window._mtToggleToolsMenu = function(mode) {
     var btn = document.getElementById('mtToolsBtn');
     if (!btn) return;
     var rect = btn.getBoundingClientRect();
-    // Tools items — review mode has 6, isolate has fewer (Stems + Edit only).
+    var isMobile = _mtIsMobile();
+    var session = (_mtState.player && _mtState.player.session) ? _mtState.player.session : null;
+    var keeperOn = !!(session && session.keeper);
+    // Tools items — review mode has 6, isolate has fewer (Edit only).
+    // On mobile, the header collapses Keeper + (Isolate: Stems + Review switch)
+    // into the Tools sheet so they remain reachable without the wide header.
     // Each item is {icon+label, handler, accent?}. accent for the high-value
     // workflow path (Mix → Render) gets indigo styling.
     var items;
     if (mode === 'isolate') {
-        items = [
-            { label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' },
-        ];
+        items = [];
+        if (isMobile) {
+            items.push({ label: (keeperOn ? '⭐ Keeper — unmark this rehearsal' : '☆ Keeper — mark this rehearsal'), call: '_mtToggleKeeper()' });
+            items.push({ label: '👁 Switch to Review Mode — single stream, fast seek', call: '_mtSwitchToReview()', accent: 'indigo' });
+            items.push({ label: '📦 Download stems — original FLAC ZIP', call: '_mtDownloadStems()' });
+        }
+        items.push({ label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' });
     } else {
-        items = [
-            { label: '🎛 Mix — dial in levels + render', call: '_mtOpenCustomMixModal()', accent: 'indigo' },
-            { label: '📤 Export Mix — download as MP3 / WAV / FLAC', call: '_mtExportRehearsalMix()' },
-            { label: '📨 Text band — share current mix via SMS', call: '_mtShareCurrentMix()', accent: 'green' },
-            { label: '🎚 Isolate stems — per-track mute/solo', call: '_mtSwitchToIsolate()' },
-            { label: '📦 Download stems — original FLAC ZIP', call: '_mtDownloadStems()' },
-            { label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' },
-        ];
+        items = [];
+        if (isMobile) {
+            items.push({ label: (keeperOn ? '⭐ Keeper — unmark this rehearsal' : '☆ Keeper — mark this rehearsal'), call: '_mtToggleKeeper()' });
+        }
+        items.push({ label: '🎛 Mix — dial in levels + render', call: '_mtOpenCustomMixModal()', accent: 'indigo' });
+        items.push({ label: '📤 Export Mix — download as MP3 / WAV / FLAC', call: '_mtExportRehearsalMix()' });
+        items.push({ label: '📨 Text band — share current mix via SMS', call: '_mtShareCurrentMix()', accent: 'green' });
+        items.push({ label: '🎚 Isolate stems — per-track mute/solo', call: '_mtSwitchToIsolate()' });
+        items.push({ label: '📦 Download stems — original FLAC ZIP', call: '_mtDownloadStems()' });
+        items.push({ label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' });
     }
     var itemsHtml = items.map(function(it) {
         var color = it.accent === 'indigo' ? '#a5b4fc' : (it.accent === 'green' ? '#86efac' : '#cbd5e1');
+        var pad = isMobile ? '12px 16px' : '9px 14px';
+        var fs  = isMobile ? '0.95em' : '0.85em';
         return '<button onclick="(function(){var m=document.getElementById(\'mtToolsMenu\');if(m)m.remove();document.removeEventListener(\'click\',_mtToolsMenuOutsideClick,true);' + it.call + '})()" '
-            + 'style="display:block;width:100%;text-align:left;background:none;border:none;color:' + color + ';padding:9px 14px;cursor:pointer;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.04);font-family:inherit">'
+            + 'style="display:block;width:100%;text-align:left;background:none;border:none;color:' + color + ';padding:' + pad + ';cursor:pointer;font-size:' + fs + ';border-bottom:1px solid rgba(255,255,255,0.04);font-family:inherit">'
             + it.label + '</button>';
     }).join('');
     var menu = document.createElement('div');
     menu.id = 'mtToolsMenu';
     menu.setAttribute('role', 'menu');
-    menu.style.cssText = 'position:fixed;top:' + Math.round(rect.bottom + 6) + 'px;left:' + Math.round(rect.left) + 'px;'
-        + 'min-width:280px;max-width:340px;background:#0f172a;border:1px solid rgba(99,102,241,0.35);border-radius:8px;'
-        + 'box-shadow:0 12px 36px rgba(0,0,0,0.55);z-index:6000;overflow:hidden';
+    if (isMobile) {
+        // Bottom-sheet style on mobile — full width, anchored to bottom of
+        // viewport, taller tap targets, slide-up feel via transform.
+        menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;'
+            + 'background:#0f172a;border-top:1px solid rgba(99,102,241,0.35);'
+            + 'border-radius:14px 14px 0 0;box-shadow:0 -12px 36px rgba(0,0,0,0.55);'
+            + 'z-index:6000;overflow:hidden;max-height:70vh;overflow-y:auto;'
+            + 'padding-bottom:env(safe-area-inset-bottom, 8px)';
+    } else {
+        menu.style.cssText = 'position:fixed;top:' + Math.round(rect.bottom + 6) + 'px;left:' + Math.round(rect.left) + 'px;'
+            + 'min-width:280px;max-width:340px;background:#0f172a;border:1px solid rgba(99,102,241,0.35);border-radius:8px;'
+            + 'box-shadow:0 12px 36px rgba(0,0,0,0.55);z-index:6000;overflow:hidden';
+    }
     menu.innerHTML = itemsHtml;
     document.body.appendChild(menu);
     // Outside-click dismiss — delayed so the triggering click doesn't kill it
@@ -1502,8 +1580,29 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
         ? ('Playing ' + escHtml(renderInfo.fileName || 'rendered mix') + ' · ' + (renderInfo.format || 'mix').toUpperCase())
         : '⏳ Preparing review mix… (~30-60s on first open)';
 
-    ov.innerHTML =
-        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:20px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+    // Pass 1 of mobile_review_mode_convergence_v1.md — mobile header collapse.
+    // Desktop: full 5-action header (Keeper / Tools / Close + title + metadata).
+    // Mobile: single-line title, no metadata line, Keeper moved into Tools sheet,
+    // Tools button becomes a "…" overflow. Eliminates ~70px of vertical chrome
+    // on iPhone widths (~110px → ~40px header).
+    var _isMobile = _mtIsMobile();
+    var modalPadding = _isMobile ? '12px' : '20px';
+    var headerHtml;
+    if (_isMobile) {
+        var mobileTitle = escHtml(dateLabel)
+            + (session.venue ? ' · ' + escHtml(session.venue) : '')
+            + ' · ' + tracks.length + ' tracks';
+        headerHtml =
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0">' +
+            '<span style="font-size:1.1em">👁</span>' +
+            '<div style="flex:1;min-width:0;font-size:0.88em;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + mobileTitle + '</div>' +
+            // Overflow … opens the Tools sheet (which on mobile prepends
+            // Keeper as the first item — see _mtToggleToolsMenu).
+            '<button id="mtToolsBtn" onclick="_mtToggleToolsMenu(\'review\')" title="Tools" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:6px 10px;cursor:pointer;font-size:1em;line-height:1">⋯</button>' +
+            '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#94a3b8;font-size:1.6em;cursor:pointer;padding:0 4px;line-height:1">×</button>' +
+          '</div>';
+    } else {
+        headerHtml =
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0">' +
             '<span style="font-size:1.25em">👁</span>' +
             '<div style="flex:1">' +
@@ -1520,7 +1619,12 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
             '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
             _mtRenderToolsMenuButton('review') +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
-          '</div>' +
+          '</div>';
+    }
+
+    ov.innerHTML =
+        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:' + modalPadding + ';border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+          headerHtml +
           // Render-status banner — shows progress while a render is in flight,
           // or the active render's name once playing.
           '<div id="mtReviewStatusBanner" style="background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78em;color:#cbd5e1;flex-shrink:0">' +
@@ -4175,6 +4279,77 @@ function _mtRenderSegmentRow(s, idx, p) {
         + '</div>'
     ) : '';
 
+    // Pass 1 of mobile_review_mode_convergence_v1.md — mobile-stacked row.
+    // Desktop row uses a 6-column grid totaling 357px of fixed columns before
+    // the 1fr title input. On a 390px iPhone with modal chrome that exceeds
+    // available width, collapsing the title input to negative-flex and
+    // clipping actions. Mobile branch replaces the grid with a stacked
+    // 2-row flex: row 1 = kind-emoji + title input + state/conf chips,
+    // row 2 = time range + provenance + marker summary + actions (right).
+    // Waveform canvas is kept in the DOM but display:none so
+    // _mtPaintSegmentStrips still finds it (avoids changing the paint code).
+    // The marker + trim expansion panels render as full-width siblings below
+    // the main row content instead of grid-spanning (flex doesn't support
+    // grid-column:1/-1).
+    if (_mtIsMobile()) {
+        var mobileProvHtml = (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<span style="flex-shrink:0">' + pc + '</span>' : ''; })();
+        var mobileMarkerSumHtml = (function() {
+            var sum = _mtSegmentMarkerSummary(s);
+            if (!sum) return '';
+            return '<span title="Marked moments — tap ⋯ to edit" style="flex-shrink:0;font-size:0.95em;letter-spacing:1px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:1px 4px">' + sum + '</span>';
+        })();
+        // Marker panel — same buttons as desktop, simpler container (no grid).
+        var mobileMarkerPanelHtml = moreOpen ? (
+            '<div style="padding:6px 10px;background:rgba(255,255,255,0.02);border-top:1px dashed rgba(255,255,255,0.06);display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.78em">'
+            + '<span style="color:var(--text-dim);font-weight:700;margin-right:4px">Mark:</span>'
+            + _MT_MARKER_DEFS.map(function(def) {
+                var on = !!activeMarkers[def.key];
+                var bg = on ? def.bg : 'rgba(255,255,255,0.04)';
+                var border = on ? def.border : 'rgba(255,255,255,0.1)';
+                var color = on ? def.color : 'var(--text-dim)';
+                return '<button onclick="_mtSegmentToggleMarker(' + idx + ',\'' + def.key + '\')" title="' + escHtml(def.label) + (on ? ' — tap to remove' : '') + '" '
+                    + 'style="background:' + bg + ';border:1px solid ' + border + ';border-radius:4px;color:' + color + ';padding:4px 12px;cursor:pointer;font-size:1em;font-family:inherit">'
+                    + def.emoji + '</button>';
+            }).join('')
+            + '</div>'
+        ) : '';
+        return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" '
+            + 'style="display:flex;flex-direction:column;background:' + rowBg + ';opacity:' + rowAlpha + ';border-bottom:1px solid rgba(255,255,255,0.04);transition:background 150ms;outline:none;' + ringStyle + '">'
+            // Inner two-row stack with 4px stripe on the left, content on the right.
+            + '<div style="display:flex;gap:8px;padding:8px 10px">'
+            + '<div style="background:' + leftStripeColor + ';width:4px;flex-shrink:0;border-radius:2px;align-self:stretch"></div>'
+            + '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">'
+            // Row 1: kind emoji + title input + state/conf chips
+            + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
+            + '<span title="' + escHtml(meta.name) + '" style="color:' + meta.color + ';font-size:1.1em;opacity:' + kindOpa + ';flex-shrink:0">' + meta.emoji + '</span>'
+            + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" '
+            + 'style="flex:1;min-width:0;font-size:0.94em;padding:5px 6px;background:transparent;border:1px solid transparent;border-radius:4px;' + titleStyle + '">'
+            + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
+            + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
+            + '</div>'
+            // Row 2: time + provenance + marker summary + actions (actions right-aligned)
+            + '<div style="display:flex;align-items:center;gap:6px;font-size:0.78em;color:var(--text-dim)">'
+            + '<span style="font-family:ui-monospace,monospace;flex-shrink:0">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</span>'
+            + mobileProvHtml
+            + mobileMarkerSumHtml
+            // Waveform canvas kept in DOM (paint logic finds it by id) but hidden on mobile.
+            + '<canvas id="' + canvasId + '" width="78" height="20" style="display:none"></canvas>'
+            + '<div style="margin-left:auto;display:flex;gap:4px;flex-shrink:0">'
+            + _mtRenderRowActions(idx, reviewState, confirmBg, confirmBorder, confirmColor, excludeBg, excludeBorder, excludeColor, trimOpen, p)
+            + '</div>'
+            + '</div>'
+            + '</div>'
+            + '</div>'
+            // Expansion panels render below the main row content (full-width).
+            // Trim panel is desktop-only per spec §11; the ↕ button is hidden
+            // on mobile in _mtRenderRowActions so trimOpen should always be
+            // false here on mobile, but we render it defensively anyway in
+            // case a session opened in trim mode on desktop is then resized.
+            + mobileMarkerPanelHtml
+            + (trimOpen ? trimPanelHtml : '')
+            + '</div>';
+    }
+
     return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:' + rowPad + ';border-bottom:1px solid rgba(255,255,255,0.04);font-size:' + rowFontSz + ';background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
         + '<div style="background:' + leftStripeColor + ';width:4px;height:' + stripeH + 'px;border-radius:2px"></div>'
         + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em;opacity:' + kindOpa + '">' + meta.emoji + '</div>'
@@ -4216,14 +4391,19 @@ function _mtRenderRowActions(idx, reviewState, confirmBg, confirmBorder, confirm
     var trimBtnStyle = trimOpen
         ? 'background:rgba(99,102,241,0.22);border:1px solid rgba(99,102,241,0.45);border-radius:4px;color:#a5b4fc;padding:2px 5px;cursor:pointer;font-size:0.78em'
         : BTN_BASE;
+    // Pass 1 of mobile_review_mode_convergence_v1.md — trim panel uses
+    // ±0.5s buttons that are fine-motor; per spec §11 trim is desktop-only.
+    // Hide the ↕ button on mobile (the ✂ split + ⛓ merge gestures stay —
+    // they're whole-segment ops, not fractional-second precision).
+    var hideTrim = _mtIsMobile();
     var html = '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start (and play)" style="' + BTN_BASE + '">▶</button>';
     if (moreOpen) {
         html += '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split at playhead" style="' + BTN_BASE + '">✂</button>'
              + '<button onclick="_mtSegmentMerge(' + idx + ')" title="Merge with next segment" style="' + BTN_BASE + '">⛓</button>'
-             + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" title="Trim start/end ±5s / ±0.5s" style="' + trimBtnStyle + '">↕</button>'
+             + (hideTrim ? '' : '<button onclick="_mtSegmentToggleTrim(' + idx + ')" title="Trim start/end ±5s / ±0.5s" style="' + trimBtnStyle + '">↕</button>')
              + '<button onclick="_mtSegmentToggleMore(' + idx + ')" title="Hide advanced actions" style="' + moreBtnStyle + '">×</button>';
     } else {
-        html += '<button onclick="_mtSegmentToggleMore(' + idx + ')" title="Show split / merge / trim" style="' + moreBtnStyle + '">⋯</button>';
+        html += '<button onclick="_mtSegmentToggleMore(' + idx + ')" title="' + (hideTrim ? 'Show split / merge' : 'Show split / merge / trim') + '" style="' + moreBtnStyle + '">⋯</button>';
     }
     html += '<button onclick="_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — click to unconfirm' : 'Confirm') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:4px;color:' + confirmColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">✓</button>'
          + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — click to unflag' : 'Exclude') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:4px;color:' + excludeColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">⊘</button>';
@@ -4251,7 +4431,7 @@ function _mtRenderFilterPills(filters, counts) {
         { key: 'silence',      label: 'Silence',      emoji: '🔇', color: '#94a3b8', activeBg: 'rgba(100,116,139,0.25)', activeBorder: 'rgba(148,163,184,0.5)', count: counts.silence },
         { key: 'excluded',     label: 'Excluded',     emoji: '🚫', color: '#fbbf24', activeBg: 'rgba(245,158,11,0.18)',  activeBorder: 'rgba(245,158,11,0.45)', count: counts.excluded },
     ];
-    var html = pills.map(function(p) {
+    function pillHtml(p) {
         var on = !!filters[p.key];
         var bg = on ? p.activeBg : 'transparent';
         var bd = on ? p.activeBorder : 'rgba(255,255,255,0.1)';
@@ -4262,8 +4442,113 @@ function _mtRenderFilterPills(filters, counts) {
             + 'style="background:' + bg + ';border:1px solid ' + bd + ';color:' + col + ';font-weight:' + weight + ';border-radius:14px;padding:3px 10px;cursor:pointer;font-size:0.74em;white-space:nowrap;transition:all 120ms">'
             + p.emoji + ' ' + p.label + ' <span style="opacity:0.75;font-weight:400;margin-left:2px">' + p.count + '</span>'
             + '</button>';
-    }).join('');
+    }
+    // Pass 1 of mobile_review_mode_convergence_v1.md — mobile pill bar.
+    // Desktop shows all 7 pills inline (wraps to 1-2 rows). Mobile shows
+    // only Songs + Needs Review + a "+5 more" sheet trigger; tapping it
+    // opens an overflow sheet via _mtOpenMobileFilterSheet that surfaces
+    // all 7 pills + the short-silence threshold control.
+    if (_mtIsMobile()) {
+        var primaryKeys = { music: 1, needsReview: 1 };
+        var primaryHtml = pills.filter(function(p) { return primaryKeys[p.key]; }).map(pillHtml).join('');
+        // Count overflow indicator — how many of the 5 non-primary pills
+        // are currently ON (so user knows something is filtered even when
+        // hidden under "More").
+        var overflowOnCount = 0;
+        pills.forEach(function(p) {
+            if (!primaryKeys[p.key] && filters[p.key]) overflowOnCount++;
+        });
+        var moreLabel = overflowOnCount > 0 ? ('More · ' + overflowOnCount + ' on') : 'More';
+        var moreBtn = '<button onclick="_mtOpenMobileFilterSheet()" title="Show all filters" '
+            + 'style="background:rgba(99,102,241,0.10);border:1px dashed rgba(99,102,241,0.45);color:#a5b4fc;font-weight:600;border-radius:14px;padding:3px 10px;cursor:pointer;font-size:0.74em;white-space:nowrap">'
+            + '+ ' + moreLabel + '</button>';
+        return '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px 10px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05)">' + primaryHtml + moreBtn + '</div>';
+    }
+    var html = pills.map(pillHtml).join('');
     return '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05)">' + html + '</div>';
+}
+
+// Mobile filter overflow sheet — opened by the "+ More" chip in the mobile
+// pill bar. Mirrors the Tools sheet pattern: full-width bottom sheet, taller
+// tap targets, outside-click dismiss. Surfaces all 7 pills (including the
+// 2 primary ones, so users can also turn Songs/Needs Review OFF from here)
+// plus the short-silence threshold control which lives inside the Silence
+// group header on desktop.
+window._mtOpenMobileFilterSheet = function() {
+    var existing = document.getElementById('mtFilterSheet');
+    if (existing) { existing.remove(); document.removeEventListener('click', _mtFilterSheetOutsideClick, true); return; }
+    var p = _mtState.player;
+    if (!p || !p._segFilters) return;
+    var f = p._segFilters;
+    // Recompute counts so the sheet labels are honest at open time. Mirrors
+    // the count logic in _mtRenderSegmentsPanel — kept in sync by recomputing
+    // here rather than passing them in.
+    var segs = Array.isArray(p.segments) ? p.segments : [];
+    var counts = { music: 0, needsReview: 0, unnamed: 0, transition: 0, speech: 0, silence: 0, excluded: 0 };
+    segs.forEach(function(s) {
+        var rs = _mtSegmentReviewState(s);
+        var effKind = _mtSegmentEffectiveKind(s) || 'silence';
+        var disp = _mtSegmentDisplayName(s);
+        if (rs === 'excluded') { counts.excluded++; return; }
+        if (effKind === 'music') {
+            counts.music++;
+            if (rs === 'needs-review') counts.needsReview++;
+            if (!disp.title) counts.unnamed++;
+        } else if (counts[effKind] !== undefined) counts[effKind]++;
+    });
+    var defs = [
+        { key: 'music',        label: 'Songs',        emoji: '🎵', color: '#a5b4fc' },
+        { key: 'needsReview',  label: 'Needs Review', emoji: '⚠',  color: '#fca5a5' },
+        { key: 'unnamed',      label: 'Unnamed',      emoji: '❓', color: '#cbd5e1' },
+        { key: 'transition',   label: 'Transitions',  emoji: '🔀', color: '#d8b4fe' },
+        { key: 'speech',       label: 'Chatter',      emoji: '💬', color: '#fbbf24' },
+        { key: 'silence',      label: 'Silence',      emoji: '🔇', color: '#94a3b8' },
+        { key: 'excluded',     label: 'Excluded',     emoji: '🚫', color: '#fbbf24' },
+    ];
+    var rowsHtml = defs.map(function(d) {
+        var on = !!f[d.key];
+        var checkBg = on ? 'rgba(99,102,241,0.22)' : 'transparent';
+        var checkBorder = on ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.2)';
+        var checkColor = on ? '#a5b4fc' : 'transparent';
+        return '<button onclick="_mtSegFilterToggle(\'' + d.key + '\');_mtOpenMobileFilterSheet();_mtOpenMobileFilterSheet()" '
+            + 'style="display:flex;width:100%;align-items:center;gap:12px;padding:14px 16px;background:none;border:none;border-bottom:1px solid rgba(255,255,255,0.04);color:' + d.color + ';cursor:pointer;font-family:inherit;font-size:0.95em;text-align:left">'
+            + '<span style="width:22px;height:22px;border-radius:5px;border:1.5px solid ' + checkBorder + ';background:' + checkBg + ';color:' + checkColor + ';display:inline-flex;align-items:center;justify-content:center;font-size:0.85em;font-weight:700;flex-shrink:0">' + (on ? '✓' : '') + '</span>'
+            + '<span style="font-size:1.1em;flex-shrink:0">' + d.emoji + '</span>'
+            + '<span style="flex:1">' + d.label + '</span>'
+            + '<span style="color:var(--text-dim);font-family:ui-monospace,monospace;font-size:0.88em">' + counts[d.key] + '</span>'
+            + '</button>';
+    }).join('');
+    var showShorts = !!p._showShortSilences;
+    // Inline handler — _mtSegmentsToggleShorts reads from the desktop-only
+    // #mtSegShowShorts element (lives inside the Silence group header on
+    // desktop). On mobile this checkbox isn't that ID, so we update state
+    // directly + re-render + reopen the sheet for the refreshed label.
+    var shortsRow = '<label style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.85em;color:var(--text-dim);cursor:pointer">'
+        + '<input type="checkbox"' + (showShorts ? ' checked' : '') + ' onchange="(function(cb){if(_mtState.player){_mtState.player._showShortSilences=cb.checked;_mtRenderSegmentsPanel();_mtOpenMobileFilterSheet();_mtOpenMobileFilterSheet();}})(this)" style="width:18px;height:18px;flex-shrink:0">'
+        + '<span>Show short silences (&lt; 30 s)</span>'
+        + '</label>';
+    var headerHtml = '<div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02)">'
+        + '<span style="flex:1;font-weight:700;font-size:0.95em;color:#f1f5f9">Filter segments</span>'
+        + '<button onclick="(function(){var s=document.getElementById(\'mtFilterSheet\');if(s)s.remove();document.removeEventListener(\'click\',_mtFilterSheetOutsideClick,true);})()" style="background:none;border:none;color:#94a3b8;font-size:1.5em;cursor:pointer;padding:0 4px;line-height:1">×</button>'
+        + '</div>';
+    var sheet = document.createElement('div');
+    sheet.id = 'mtFilterSheet';
+    sheet.style.cssText = 'position:fixed;left:0;right:0;bottom:0;'
+        + 'background:#0f172a;border-top:1px solid rgba(99,102,241,0.35);'
+        + 'border-radius:14px 14px 0 0;box-shadow:0 -12px 36px rgba(0,0,0,0.55);'
+        + 'z-index:6000;overflow:hidden;max-height:75vh;overflow-y:auto;'
+        + 'padding-bottom:env(safe-area-inset-bottom, 8px)';
+    sheet.innerHTML = headerHtml + rowsHtml + shortsRow;
+    document.body.appendChild(sheet);
+    setTimeout(function() { document.addEventListener('click', _mtFilterSheetOutsideClick, true); }, 0);
+};
+
+function _mtFilterSheetOutsideClick(e) {
+    var sheet = document.getElementById('mtFilterSheet');
+    if (!sheet) { document.removeEventListener('click', _mtFilterSheetOutsideClick, true); return; }
+    if (sheet.contains(e.target)) return;
+    sheet.remove();
+    document.removeEventListener('click', _mtFilterSheetOutsideClick, true);
 }
 
 function _mtRenderSegmentsPanel() {

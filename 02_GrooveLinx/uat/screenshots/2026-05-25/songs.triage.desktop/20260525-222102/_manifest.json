@@ -1,0 +1,71 @@
+{
+  "flow": "songs.triage.desktop",
+  "knownStableFlow": "Songs page triage",
+  "build": "20260525-222102",
+  "commit": null,
+  "ranAt": "2026-05-25T22:21:49.252Z",
+  "elapsedMs": 5597,
+  "runStatus": "pass",
+  "runError": null,
+  "viewport": "desktop",
+  "viewportPx": {
+    "width": 1280,
+    "height": 720
+  },
+  "band": "deadcetera",
+  "appUrl": "http://localhost:8000",
+  "steps": [
+    {
+      "id": "boot",
+      "ok": true,
+      "elapsedMs": 2582
+    },
+    {
+      "id": "signin",
+      "ok": true,
+      "elapsedMs": 215
+    },
+    {
+      "id": "wait-app-ready",
+      "ok": true,
+      "elapsedMs": 1111
+    },
+    {
+      "id": "nav-songs",
+      "ok": true,
+      "elapsedMs": 99
+    },
+    {
+      "id": "settle",
+      "ok": true,
+      "elapsedMs": 802
+    },
+    {
+      "id": "shot-songs-initial",
+      "ok": true,
+      "elapsedMs": 196
+    },
+    {
+      "id": "shot-songs-full",
+      "ok": true,
+      "elapsedMs": 518
+    }
+  ],
+  "screenshots": [
+    {
+      "step": "shot-songs-initial",
+      "file": "02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260525-222102/01-shot-songs-initial.png"
+    },
+    {
+      "step": "shot-songs-full",
+      "file": "02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260525-222102/02-shot-songs-full.png"
+    }
+  ],
+  "consoleErrors": [],
+  "consoleWarnings": [
+    "[UX] rapid_nav: {\"pages\":[\"home\",\"songs\"],\"window_ms\":1500}"
+  ],
+  "findingsCount": 0,
+  "findingsFile": null,
+  "founderReviewFile": "_founder_review.md"
+}
