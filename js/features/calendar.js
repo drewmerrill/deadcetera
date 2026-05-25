@@ -64,6 +64,9 @@ async function calShowEvent(idx, occDate) {
     const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
     const isRehearsal = ev.type === 'rehearsal';
     const displayDate = occDate || ev.date || '';
+    // Stale-panel guard (2026-05-25): record this selection so
+    // 'calendarEventsChanged' can rebind us if the event changes underneath.
+    _calSelectedDetailRef = { id: ev.id, occurrenceDate: displayDate, mode: 'view' };
     const repeatLbl = _calRepeatLabel(ev.repeatRule);
     const isRecurring = ev.repeatRule && ev.repeatRule.frequency;
     const creatorEmail = ev.creatorEmail || ev.organizerEmail || '';
@@ -71,10 +74,10 @@ async function calShowEvent(idx, occDate) {
     area.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <h3 style="margin:0;font-size:1em">${typeIcon} ${ev.title||'Untitled'}</h3>
-        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
+        <button onclick="document.getElementById('calEventFormArea').innerHTML='';_calSelectedDetailRef=null" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
     </div>
     <div style="font-size:0.85em;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <span>\uD83D\uDCC5 ${displayDate}</span>
+        <span data-cal-event-date="${displayDate}">\uD83D\uDCC5 ${displayDate}</span>
         ${ev.time ? `<span>\u23F0 ${ev.time}</span>` : ''}
         <span style="text-transform:capitalize">\uD83D\uDCC2 ${ev.type||'other'}</span>
         ${ev.location ? `<span>\uD83D\uDCCD ${ev.location}</span>` : ''}
@@ -96,9 +99,24 @@ async function calShowEvent(idx, occDate) {
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${isRehearsal ? `<button onclick="practicePlanActiveDate='${displayDate}';showPage('rehearsal')" class="btn btn-primary btn-sm">\uD83D\uDCC5 Rehearsal Plan</button>` : ''}
-        <button onclick="calEditEventById('${ev.id||''}')" class="btn btn-ghost btn-sm">${isRecurring ? '✏️ Edit Series' : '✏️ Edit'}</button>
-        <button onclick="calDeleteEventById('${ev.id||''}')" class="btn btn-danger btn-sm">${isRecurring ? '✕ Delete Series' : '✕ Delete'}</button>
-        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
+        ${(function() {
+            // Operational-intent labels (2026-05-25, per calendar_stale_selected_event_v1.md §6)
+            // Model A: hard-delete kept; verb renamed to match user mental model.
+            // Model B (soft-cancel with status:'cancelled' + Reinstate) deferred —
+            // needs Drew's explicit product call.
+            var editLbl, delLbl;
+            if (ev.type === 'gig') { editLbl = '✏️ Edit Details'; delLbl = '🚫 Cancel Gig'; }
+            else if (ev.type === 'rehearsal') {
+                editLbl = isRecurring ? '✏️ Edit Series Details' : '✏️ Edit Details';
+                delLbl = isRecurring ? '🗑 End Series' : '❌ Cancel Rehearsal';
+            }
+            else if (ev.type === 'meeting') { editLbl = '✏️ Edit Details'; delLbl = '🚫 Cancel Meeting'; }
+            else { editLbl = '✏️ Edit Details'; delLbl = '🗑 Remove'; }
+            var idQ = (ev.id||'').replace(/'/g, "\\'");
+            return '<button onclick="calEditEventById(\'' + idQ + '\')" class="btn btn-ghost btn-sm">' + editLbl + '</button>'
+                + '<button onclick="calDeleteEventById(\'' + idQ + '\')" class="btn btn-danger btn-sm">' + delLbl + '</button>';
+        })()}
+        <button onclick="document.getElementById('calEventFormArea').innerHTML='';_calSelectedDetailRef=null" class="btn btn-ghost btn-sm">Close</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07)">
         ${typeof calExportButtonsHTML === 'function' ? calExportButtonsHTML(Object.assign({}, ev, {date: displayDate}), '_calExp_' + idx) : ''}
@@ -116,6 +134,16 @@ let calViewMonth = new Date().getMonth();
 // Scheduling mode: A_SHARED_SYNC | B_PERSONAL_AVAILABILITY | C_NATIVE
 // Loaded from Firebase on page render, cached for the session
 var _calSchedulingMode = null; // null = not yet loaded
+
+// ── Stale-panel guard (2026-05-25, per calendar_stale_selected_event_v1.md) ─
+// Tracks the currently-displayed entity in the right-rail card / inline
+// detail. Consulted on 'calendarEventsChanged' to rebind (view mode) or
+// close (deleted/moved). Cleared when the panel closes.
+//   _calSelectedRailKey   — date string (YYYY-M-D) for #calSelectedDayCard
+//   _calSelectedDetailRef — { id, occurrenceDate, mode: 'view'|'edit' }
+//                            for #calEventFormArea
+var _calSelectedRailKey = null;
+var _calSelectedDetailRef = null;
 
 async function _calLoadSchedulingMode() {
     if (_calSchedulingMode) return _calSchedulingMode;
@@ -1665,6 +1693,7 @@ window._calMigrateMisplacedEvents = async function() {
 window._calDismissDateSelection = function() {
     var card = document.getElementById('calSelectedDayCard');
     if (card) card.innerHTML = '';
+    _calSelectedRailKey = null; // stale-panel guard cleanup
     // Restore global sections
     ['calAvailHealth', 'calWeeklyPressure'].forEach(function(id) {
         var el = document.getElementById(id);
@@ -4818,10 +4847,94 @@ window._calNextUpGigGcal = function(date) {
     if (url && url !== '#') { window.open(url, '_blank'); if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there'); }
 };
 
+// ── Stale-panel reconciliation handler (2026-05-25) ────────────────────────
+// Per specs/calendar_stale_selected_event_v1.md §5.2.3. Subscribed via
+// 'calendarEventsChanged' emitted from _calBuildDateMap. Hybrid rebind-or-
+// close pattern: rail card always rebinds (cheap), inline detail panel
+// rebinds in view mode + warns in edit mode (preserves user input).
+async function _calOnEventsChanged() {
+    // 1. Rail card — cheap rebind via calDayClick (it's already the renderer).
+    if (_calSelectedRailKey) {
+        try {
+            var p = _calSelectedRailKey.split('-');
+            calDayClick(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+        } catch (e) {}
+    }
+    // 2. Inline detail/edit panel — rebind or close.
+    if (!_calSelectedDetailRef) return;
+    var ref = _calSelectedDetailRef;
+    var events = (typeof toArray === 'function')
+        ? toArray((await loadBandDataFromDrive('_band', 'calendar_events')) || [])
+        : [];
+    var match = events.find(function(e) { return e && e.id === ref.id; });
+    if (!match) {
+        // Event removed entirely.
+        var area = document.getElementById('calEventFormArea');
+        if (area) area.innerHTML = '';
+        _calSelectedDetailRef = null;
+        if (typeof showToast === 'function') showToast('This event was removed by another band member.', 5000);
+        return;
+    }
+    // For occurrences, re-expand and check the original occurrence date still exists.
+    var stillCoversOccurrence = !match.repeatRule || !ref.occurrenceDate || (function() {
+        var today = new Date().toISOString().split('T')[0];
+        var horizon = new Date(); horizon.setDate(horizon.getDate() + 365);
+        var horizonStr = horizon.toISOString().split('T')[0];
+        var expanded = (typeof expandRecurringEvents === 'function')
+            ? expandRecurringEvents([match], today, horizonStr) : [match];
+        return expanded.some(function(e) { return e.date === ref.occurrenceDate; });
+    })();
+    if (!stillCoversOccurrence) {
+        var area2 = document.getElementById('calEventFormArea');
+        if (area2) area2.innerHTML = '';
+        _calSelectedDetailRef = null;
+        if (typeof showToast === 'function') showToast('This rehearsal was moved by another band member. Pick the new date from the calendar.', 6000);
+        return;
+    }
+    // Found, occurrence still covered. Rebind ONLY in view mode (not edit —
+    // would clobber user input).
+    if (ref.mode === 'view') {
+        var area3 = document.getElementById('calEventFormArea');
+        var domDateEl = area3 && area3.querySelector('[data-cal-event-date]');
+        var renderedDate = domDateEl ? domDateEl.getAttribute('data-cal-event-date') : '';
+        var freshDate = ref.occurrenceDate || match.date;
+        var idx = events.indexOf(match);
+        if (renderedDate && renderedDate !== freshDate) {
+            // Date changed under us — re-render with the fresh event + toast.
+            calShowEvent(idx, freshDate);
+            if (typeof showToast === 'function') showToast('This event was just updated.', 3500);
+        } else {
+            // Title/time/location may have changed; re-render anyway. Cheap.
+            calShowEvent(idx, freshDate);
+        }
+    } else if (ref.mode === 'edit') {
+        // Form has user input — DO NOT clobber. Show a banner offering reload.
+        _calShowEditConflictBanner(match);
+    }
+}
+
+function _calShowEditConflictBanner(freshEvent) {
+    var area = document.getElementById('calEventFormArea');
+    if (!area) return;
+    if (area.querySelector('#calEditConflictBanner')) return; // already showing
+    var banner = document.createElement('div');
+    banner.id = 'calEditConflictBanner';
+    banner.style.cssText = 'background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:0.78em;color:#fbbf24;display:flex;gap:8px;align-items:center';
+    banner.innerHTML = '<span>⚠️</span><span style="flex:1">This event was updated externally while you were editing.</span>'
+        + '<button onclick="document.getElementById(\'calEditConflictBanner\').remove();calEditEventById(\'' + (freshEvent.id || '') + '\')" style="background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:4px;padding:3px 9px;cursor:pointer;font-size:0.85em">Reload</button>'
+        + '<button onclick="document.getElementById(\'calEditConflictBanner\').remove()" style="background:none;border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);border-radius:4px;padding:3px 9px;cursor:pointer;font-size:0.85em">Keep editing</button>';
+    area.insertBefore(banner, area.firstChild);
+}
+
 async function renderCalendarInner() {
   try {
     var _calT0 = performance.now();
     console.log('[PERF] renderCalendarInner start ' + Math.round(_calT0) + 'ms');
+    // Stale-panel guard: subscribe once per page lifetime.
+    if (!window._calStaleGuardAttached) {
+        window._calStaleGuardAttached = true;
+        document.addEventListener('calendarEventsChanged', _calOnEventsChanged);
+    }
     // Reset SWR flag so cache is always checked on page entry
     _calEventsLoadedFromNetwork = false;
     // Load scheduling mode (instant from localStorage, async Firebase update in background)
@@ -5313,6 +5426,17 @@ function _calBuildDateMap(events) {
             dateMap[e.date].push(Object.assign({}, e, { _idx: e._baseIdx }));
         }
     });
+    // Stale-panel guard (2026-05-25): emit a single DOM-level CustomEvent
+    // from this chokepoint — every refresh path (cache-hit, post-fetch,
+    // _calBackgroundRefresh, _calRenderGridOnly) lands here. Consumers
+    // (_calOnEventsChanged) rebind or close the selected-event panel so
+    // the UI never simultaneously shows updated grid + stale panel state.
+    // See specs/calendar_stale_selected_event_v1.md §5.
+    try {
+        document.dispatchEvent(new CustomEvent('calendarEventsChanged', {
+            detail: { source: 'calendar', at: Date.now() }
+        }));
+    } catch (e) {}
     return dateMap;
 }
 
@@ -6615,6 +6739,9 @@ window.calShowDateConflicts = function(dateStr) {
 function calDayClick(y, m, d) {
     calViewYear = y; calViewMonth = m;
     var ds = y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    // Stale-panel guard (2026-05-25): record this selection so
+    // 'calendarEventsChanged' can rebind us if events change underneath.
+    _calSelectedRailKey = ds;
 
     // 2026-05-04 (D8): clear any open Add/Edit Event form when switching dates.
     // The form lives in #calEventFormArea and shows a fixed DATE input set to
@@ -7525,6 +7652,9 @@ async function calEditEventById(eventId) {
     console.log('[Calendar] Edit found event:', ev.title, ev.date, 'type=' + ev.type);
     var rawIdx = events.indexOf(ev);
     var hydrated = await _calHydrateGigFields(ev);
+    // Stale-panel guard (2026-05-25): record edit-mode selection so external
+    // sync doesn't silently clobber the user's in-progress form input.
+    _calSelectedDetailRef = { id: eventId, occurrenceDate: ev.date, mode: 'edit' };
     await calAddEvent(ev.date, rawIdx, hydrated);
     // Hardened scroll: the form area sits above the calendar grid on the
     // Schedule page; block:'nearest' isn't aggressive enough when the user
