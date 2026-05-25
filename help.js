@@ -544,12 +544,29 @@ function glShowOnboarding(pageId, force) {
     var existing = document.getElementById('gl-onboard-overlay');
     if (existing) existing.remove();
 
-    var bulletsHTML = entry.bullets.map(function(b) {
+    // UX convergence pass 2026-05-25 (P4): progressive disclosure — show
+    // first 3 bullets by default with a "Show all (N more)" toggle. Per
+    // founder UX review §"Songs page": "still slightly too much equal-weight
+    // text. You need stronger progressive disclosure. 3 primary bullets,
+    // then 'More…'. Not everything immediately." Applied universally to all
+    // GL_HELP_REGISTRY entries (single behavior change, all pages benefit).
+    var PRIMARY_BULLETS = 3;
+    var bulletsTotal = entry.bullets.length;
+    var hasMore = bulletsTotal > PRIMARY_BULLETS;
+    var renderBullet = function(b) {
         return '<li style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
             + '<span style="flex-shrink:0;font-size:1em;line-height:1.5">' + b.split(' ')[0] + '</span>'
             + '<span style="color:var(--text-muted,#94a3b8);font-size:0.875em;line-height:1.5">' + b.split(' ').slice(1).join(' ') + '</span>'
             + '</li>';
-    }).join('');
+    };
+    var primaryBulletsHTML = entry.bullets.slice(0, PRIMARY_BULLETS).map(renderBullet).join('');
+    var secondaryBulletsHTML = hasMore
+        ? '<ul id="gl-onboard-extra-bullets" style="list-style:none;padding:0;margin:0;display:none">'
+            + entry.bullets.slice(PRIMARY_BULLETS).map(renderBullet).join('')
+            + '</ul>'
+            + '<button onclick="(function(){var ul=document.getElementById(\'gl-onboard-extra-bullets\');var b=document.getElementById(\'gl-onboard-more-btn\');if(ul&&b){ul.style.display=\'block\';b.style.display=\'none\';}})()" id="gl-onboard-more-btn" style="background:none;border:none;color:var(--accent-light,#818cf8);font-size:0.78em;cursor:pointer;padding:6px 0 2px;text-decoration:underline">Show all (' + (bulletsTotal - PRIMARY_BULLETS) + ' more)</button>'
+        : '';
+    var bulletsHTML = primaryBulletsHTML;
 
     var videoHTML = entry.videoUrl
         ? '<a href="' + entry.videoUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:var(--accent-light,#818cf8);font-size:0.82em;font-weight:600;margin-top:12px;text-decoration:none;padding:6px 12px;border:1px solid rgba(129,140,248,0.3);border-radius:20px;background:rgba(99,102,241,0.08)">'
@@ -576,7 +593,8 @@ function glShowOnboarding(pageId, force) {
         '    </div>',
         '    <button onclick="glDismissOnboarding(\'' + pageId + '\')" aria-label="Dismiss" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim,#64748b);width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>',
         '  </div>',
-        '  <ul style="list-style:none;padding:0;margin:0 0 12px">' + bulletsHTML + '</ul>',
+        '  <ul style="list-style:none;padding:0;margin:0 0 4px">' + bulletsHTML + '</ul>',
+        '  ' + secondaryBulletsHTML,
         '  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:4px">',
         '    <div style="display:flex;flex-direction:column;gap:4px">',
         '      ' + moreHTML,

@@ -1,6 +1,6 @@
 # CURRENT UX STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 16:41 UTC · **Build under test:** `20260524-193407`
+**Last updated:** 2026-05-25 17:36 UTC · **Build under test:** `20260525-173406`
 
 > **What this doc is.** A compact, rolling, operational snapshot of GrooveLinx UX/product direction — designed for AI sync without conversational replay. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -34,6 +34,7 @@ GrooveLinx is moving from "feature-rich founder project" → "governed product p
 | Custom Mix UX (phase progress + 🔊 30s preview + honest "Close" labeling) | ✅ shipped 2026-05-24 | commit `48a697ab` |
 | Filter pills + collapsible groups in segments panel (Phase 4A) | ✅ shipped 2026-05-24 | commit `e87688b7` |
 | Progressive disclosure on row actions (Phase 4B) | ✅ shipped 2026-05-24 | commit `87ec930b` |
+| **UX Convergence Pass 1** — multitrack action hierarchy + per-kind row weight + musical moment markers + Songs onboarding progressive disclosure + multitrack hint tightening | ✅ shipped 2026-05-25 | build `20260525-173406` (per founder UX review § "simultaneous importance syndrome" + § "Segments panel review" + § "Most important feature missing") |
 | **Readiness Canonicalization** (single threshold authority) | 🔴 OPEN (NEW 2026-05-25, P0) | Drew feedback + system mapping |
 | **GrooveMate convergence (orchestration philosophy)** | 🔴 OPEN (NEW 2026-05-25, P1) | Drew feedback |
 | **Workbench lineage clarification** | 🔴 OPEN | system/FEATURE_LINEAGE |

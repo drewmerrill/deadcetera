@@ -1,6 +1,6 @@
 # CURRENT SYSTEM STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 17:10 UTC · **Build under test:** `20260524-193407` · **HEAD commit:** `be3ed592` (sync layer)
+**Last updated:** 2026-05-25 17:36 UTC · **Build under test:** `20260525-173406` · **HEAD commit:** pending UX convergence pass
 
 > **What this doc is.** A compact, rolling, operational export of GrooveLinx state — designed for AI synchronization (esp. ChatGPT ↔ Claude) without massive conversational replay. Not a journal. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -11,7 +11,7 @@
 ## 1. Build truth
 
 - **Production:** `https://app.groovelinx.com` — Vercel auto-deploys on push to `main`
-- **Live build:** `20260524-193407` (commit `87ec930b` "Phase 4B + 4C — trust engineering + plan-aware matching")
+- **Live build:** `20260525-173406` (UX Convergence Pass 1 — Multitrack Review action hierarchy + per-kind row weight + musical moment markers + text density reduction)
 - **Local dev:** `http://localhost:8000` via `python3 -m http.server 8000` (Playwright `webServer` auto-starts)
 - **Dev shell:** `https://app.groovelinx.com/index-dev.html` (generated from `index.html` via `scripts/generate-dev-html.js`)
 - **Cloudflare Worker:** `deadcetera-proxy` — last redeployed 2026-05-24 (Phase 4C `plan_priors` passthrough)

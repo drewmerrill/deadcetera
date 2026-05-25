@@ -1193,9 +1193,12 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
             // ⭐ Keeper button — flags this rehearsal as "save the per-track
             // FLAC stems forever, never auto-tier." Initial state pulled
             // from session.keeper; toggled live by _mtToggleKeeper.
-            '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper — stems retained forever for future mastering" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
+            '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper — stems retained forever for future mastering" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
             // 📦 Download stems — kicks off the existing /multitrack/zip
             // pipeline, polls, and surfaces the download link when ready.
+            // UX convergence pass 2026-05-25: Stems moved into Tools dropdown
+            // for Review Mode; preserved as a peer button in Isolate Mode
+            // since power users land here specifically for stem-level work.
             '<button onclick="_mtDownloadStems()" id="mtDownloadBtn" title="Download original FLAC stems as a zip — for ProTools / other DAWs" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📦 Stems</button>' +
             // 👁 Review mode — switches the player to single-stream playback
             // against the server-rendered mix. Sample-accurate, fast seek.
@@ -1414,6 +1417,72 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
     });
 }
 
+// ── 🛠 Tools dropdown (UX convergence pass 2026-05-25) ─────────────────────
+// Consolidates secondary actions (Mix / Text / Export / Isolate / Stems /
+// Edit) into a single dropdown so the header isn't a 7-action equal-weight
+// bar. Per founder UX review §1: "all actions appear equally important — this
+// destroys operational clarity." Primary actions (Play / Analyze) stay in
+// the transport row. Keeper is a flag, stays as a sibling button.
+//
+// Mode 'review'  → Mix / Text / Export / Isolate / Stems / Edit
+// Mode 'isolate' → kept inline for power users (intentionally not collapsed)
+function _mtRenderToolsMenuButton(mode) {
+    return '<button id="mtToolsBtn" onclick="_mtToggleToolsMenu(\'' + mode + '\')" title="Mix · Text · Export · Isolate · Stems · Edit" '
+        + 'style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 10px;cursor:pointer;font-size:0.78em;margin-right:6px">'
+        + '🛠 Tools ▾</button>';
+}
+
+window._mtToggleToolsMenu = function(mode) {
+    var existing = document.getElementById('mtToolsMenu');
+    if (existing) { existing.remove(); document.removeEventListener('click', _mtToolsMenuOutsideClick, true); return; }
+    var btn = document.getElementById('mtToolsBtn');
+    if (!btn) return;
+    var rect = btn.getBoundingClientRect();
+    // Tools items — review mode has 6, isolate has fewer (Stems + Edit only).
+    // Each item is {icon+label, handler, accent?}. accent for the high-value
+    // workflow path (Mix → Render) gets indigo styling.
+    var items;
+    if (mode === 'isolate') {
+        items = [
+            { label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' },
+        ];
+    } else {
+        items = [
+            { label: '🎛 Mix — dial in levels + render', call: '_mtOpenCustomMixModal()', accent: 'indigo' },
+            { label: '📤 Export Mix — download as MP3 / WAV / FLAC', call: '_mtExportRehearsalMix()' },
+            { label: '📨 Text band — share current mix via SMS', call: '_mtShareCurrentMix()', accent: 'green' },
+            { label: '🎚 Isolate stems — per-track mute/solo', call: '_mtSwitchToIsolate()' },
+            { label: '📦 Download stems — original FLAC ZIP', call: '_mtDownloadStems()' },
+            { label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' },
+        ];
+    }
+    var itemsHtml = items.map(function(it) {
+        var color = it.accent === 'indigo' ? '#a5b4fc' : (it.accent === 'green' ? '#86efac' : '#cbd5e1');
+        return '<button onclick="(function(){var m=document.getElementById(\'mtToolsMenu\');if(m)m.remove();document.removeEventListener(\'click\',_mtToolsMenuOutsideClick,true);' + it.call + '})()" '
+            + 'style="display:block;width:100%;text-align:left;background:none;border:none;color:' + color + ';padding:9px 14px;cursor:pointer;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.04);font-family:inherit">'
+            + it.label + '</button>';
+    }).join('');
+    var menu = document.createElement('div');
+    menu.id = 'mtToolsMenu';
+    menu.setAttribute('role', 'menu');
+    menu.style.cssText = 'position:fixed;top:' + Math.round(rect.bottom + 6) + 'px;left:' + Math.round(rect.left) + 'px;'
+        + 'min-width:280px;max-width:340px;background:#0f172a;border:1px solid rgba(99,102,241,0.35);border-radius:8px;'
+        + 'box-shadow:0 12px 36px rgba(0,0,0,0.55);z-index:6000;overflow:hidden';
+    menu.innerHTML = itemsHtml;
+    document.body.appendChild(menu);
+    // Outside-click dismiss — delayed so the triggering click doesn't kill it
+    setTimeout(function() { document.addEventListener('click', _mtToolsMenuOutsideClick, true); }, 0);
+};
+
+function _mtToolsMenuOutsideClick(e) {
+    var menu = document.getElementById('mtToolsMenu');
+    var btn = document.getElementById('mtToolsBtn');
+    if (!menu) { document.removeEventListener('click', _mtToolsMenuOutsideClick, true); return; }
+    if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
+    menu.remove();
+    document.removeEventListener('click', _mtToolsMenuOutsideClick, true);
+}
+
 // ── Review Mode — single rendered stereo stream ─────────────────────────────
 // The default playback path per the multitrack browser playback audit.
 // One <audio> element points at the server-rendered mix (R2 URL). Sample-
@@ -1441,14 +1510,15 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
               '<div style="font-size:1em;font-weight:800;color:#f1f5f9">Review Mode <span style="font-size:0.7em;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:4px;padding:2px 6px;margin-left:6px">single stream</span></div>' +
               '<div id="mtHeaderMeta" style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + escHtml(dateLabel) + (session.venue ? ' · ' + escHtml(session.venue) : '') + ' · ' + tracks.length + ' tracks</div>' +
             '</div>' +
-            // ⭐ Keeper, 📤 Export, 🎚 Isolate, ✏️ Edit, × Close
-            '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
-            '<button onclick="_mtOpenCustomMixModal()" id="mtCustomMixBtn" title="Dial in vocals/guitars/bass/drums/keys/reverb levels and render a new mix" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);border-radius:5px;color:#a5b4fc;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">🎛 Mix</button>' +
-            '<button onclick="_mtShareCurrentMix()" id="mtShareBtn" title="Text this mix to opted-in bandmates" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.35);border-radius:5px;color:#86efac;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📨 Text</button>' +
-            '<button onclick="_mtExportRehearsalMix()" id="mtExportBtn" title="Render and download a stereo mix of this rehearsal" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📤 Export</button>' +
-            '<button onclick="_mtSwitchToIsolate()" title="Switch to Isolate Stems Mode for per-track mute/solo (may drift on long sessions)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">🎚 Isolate</button>' +
-            '<button onclick="_mtDownloadStems()" id="mtDownloadBtn" title="Download original FLAC stems as a zip" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📦 Stems</button>' +
-            '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
+            // UX convergence pass 2026-05-25 (per founder UX review §1):
+            // collapsed 7-action equal-weight bar into 3 surfaces:
+            //   1. ☆ Keeper (flag, stays primary)
+            //   2. 🛠 Tools dropdown (was: Mix / Text / Export / Isolate / Stems / Edit)
+            //   3. × Close
+            // Primary actions (Play / Analyze) live in the transport row below
+            // and stay visually dominant.
+            '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
+            _mtRenderToolsMenuButton('review') +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
           // Render-status banner — shows progress while a render is in flight,
@@ -3630,6 +3700,63 @@ function _mtSegmentReviewState(seg) {
     return 'unconfirmed';
 }
 
+// ── Musical moment markers (UX convergence pass 2026-05-25, P3) ────────────
+// Lightweight per-segment flags. NOT a task system. NOT a comment system.
+// NOT routed to PracticeTask or annotations yet — pure visual layer that
+// prevents review comments from collapsing into generic note blobs. Per
+// founder UX review: "during review I need ⭐ Important / ⚠ Needs work /
+// 🎤 Harmony / 🥁 Timing / 🎸 Cue — otherwise everything becomes generic
+// comments." Future convergence: these flag keys are the seed vocabulary
+// that a future annotation/task model can promote to typed work items.
+//
+// Schema: multitrackSegments/{segId}/markers: { important?, needsWork?,
+// harmony?, timing?, cue? } — sparse map, only set keys persisted.
+var _MT_MARKER_DEFS = [
+    { key: 'important', emoji: '⭐', label: 'Important moment',           color: '#fbbf24', bg: 'rgba(245,158,11,0.18)', border: 'rgba(245,158,11,0.45)' },
+    { key: 'needsWork', emoji: '⚠',  label: 'Needs work',                 color: '#fca5a5', bg: 'rgba(239,68,68,0.18)',  border: 'rgba(239,68,68,0.45)' },
+    { key: 'harmony',   emoji: '🎤', label: 'Harmony moment',             color: '#a5b4fc', bg: 'rgba(99,102,241,0.18)', border: 'rgba(99,102,241,0.45)' },
+    { key: 'timing',    emoji: '🥁', label: 'Timing / pocket',            color: '#86efac', bg: 'rgba(34,197,94,0.18)',  border: 'rgba(34,197,94,0.45)' },
+    { key: 'cue',       emoji: '🎸', label: 'Cue / instrument moment',    color: '#d8b4fe', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.45)' },
+];
+
+function _mtSegmentMarkers(seg) {
+    return (seg && seg.markers && typeof seg.markers === 'object') ? seg.markers : {};
+}
+
+function _mtSegmentMarkerSummary(seg) {
+    var m = _mtSegmentMarkers(seg);
+    var out = '';
+    _MT_MARKER_DEFS.forEach(function(def) { if (m[def.key]) out += def.emoji; });
+    return out;
+}
+
+window._mtSegmentToggleMarker = async function(idx, key) {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments)) return;
+    var seg = p.segments[idx];
+    if (!seg) return;
+    var def = _MT_MARKER_DEFS.find(function(d) { return d.key === key; });
+    if (!def) return;
+    if (!seg.markers || typeof seg.markers !== 'object') seg.markers = {};
+    var was = !!seg.markers[key];
+    if (was) delete seg.markers[key];
+    else seg.markers[key] = true;
+    // Persist to multitrackSegments overlay (canonical write path — same
+    // pattern as _mtSegmentConfirm / _mtSegmentToggleBetween).
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function' && seg.id) {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
+                .update({ markers: seg.markers, updatedAt: new Date().toISOString() });
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Marker save failed — try again');
+        // Roll back local state on persist failure
+        if (was) seg.markers[key] = true; else delete seg.markers[key];
+    }
+    _mtRenderSegmentsPanel();
+};
+
 // Phase 4B (trust engineering) — solid confidence chips. The old
 // tinted-bg + tinted-text chips made a 47% guess and a 96% match read
 // nearly the same color, which is the worst possible UX for trust:
@@ -3911,12 +4038,31 @@ window._mtToggleSegmentsPanel = function() {
 function _mtRenderSegmentRow(s, idx, p) {
     var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
     var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
-    var meta = _mtKindMeta(s.kind);
+    var effKind = _mtSegmentEffectiveKind(s);
+    var meta = _mtKindMeta(effKind);
     var display = _mtSegmentDisplayName(s);
     var reviewState = _mtSegmentReviewState(s);
     var confidence = _mtSegmentConfidence(s);
     var canvasId = 'mtSegStrip_' + idx;
     var titleId = 'mtSegTitle_' + idx;
+
+    // UX convergence pass 2026-05-25 (per founder UX review §"Segments panel
+    // review"): rows still felt machine-oriented and too visually equal.
+    // Per-kind weight differentiation makes SONGS dominate the surface;
+    // chatter/silence recede. Songs = full weight; chatter = compact +
+    // italic; silence = minimal; transition = bridge accent (kept purple).
+    var isSong       = (effKind === 'music');
+    var isChatter    = (effKind === 'speech');
+    var isSilence    = (effKind === 'silence');
+    var isTransition = (effKind === 'transition');
+
+    // Stripe height proxies row weight: song = full, transition = full,
+    // chatter = reduced, silence = minimal. Font + opacity ride along.
+    var stripeH    = isSilence ? 16 : (isChatter ? 22 : 32);
+    var rowPad     = isSilence ? '3px 8px' : (isChatter ? '4px 8px' : '6px 8px');
+    var rowFontSz  = isSilence ? '0.70em' : (isChatter ? '0.72em' : '0.76em');
+    var titleStyle = isSong ? 'font-weight:600;color:#f1f5f9' : (isChatter ? 'font-style:italic;color:#cbd5e1' : 'color:var(--text-dim)');
+    var kindOpa    = isSilence ? '0.6' : (isChatter ? '0.78' : '1');
 
     var rowBg, rowAlpha, leftStripeColor, ringStyle;
     if (reviewState === 'excluded') {
@@ -3962,6 +4108,27 @@ function _mtRenderSegmentRow(s, idx, p) {
     var excludeBorder = (reviewState === 'excluded') ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.1)';
     var excludeColor = (reviewState === 'excluded') ? '#fbbf24' : 'var(--text-dim)';
 
+    // UX convergence pass 2026-05-25 (P3): markers row shows in the same
+    // grid-spanning expanded area as the trim panel, only when ⋯ is open.
+    // Keeps the collapsed row clean; surfaces the marker vocabulary when
+    // the user has already opted into the advanced action surface.
+    var moreOpen = (p._moreOpenIdx === idx);
+    var activeMarkers = _mtSegmentMarkers(s);
+    var markerPanelHtml = moreOpen ? (
+        '<div style="grid-column:1/-1;padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px dashed rgba(255,255,255,0.06);display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.74em">'
+        + '<span style="color:var(--text-dim);font-weight:700;margin-right:4px">Mark:</span>'
+        + _MT_MARKER_DEFS.map(function(def) {
+            var on = !!activeMarkers[def.key];
+            var bg = on ? def.bg : 'rgba(255,255,255,0.04)';
+            var border = on ? def.border : 'rgba(255,255,255,0.1)';
+            var color = on ? def.color : 'var(--text-dim)';
+            return '<button onclick="_mtSegmentToggleMarker(' + idx + ',\'' + def.key + '\')" title="' + escHtml(def.label) + (on ? ' — click to remove' : '') + '" '
+                + 'style="background:' + bg + ';border:1px solid ' + border + ';border-radius:4px;color:' + color + ';padding:2px 8px;cursor:pointer;font-size:0.85em;font-family:inherit">'
+                + def.emoji + '</button>';
+        }).join('')
+        + '</div>'
+    ) : '';
+
     var trimOpen = (p._trimOpenIdx === idx);
     var trimPanelHtml = trimOpen ? (
         '<div style="grid-column:1/-1;padding:8px 12px;background:rgba(99,102,241,0.04);border-top:1px dashed rgba(99,102,241,0.2);display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:0.76em">'
@@ -3983,20 +4150,29 @@ function _mtRenderSegmentRow(s, idx, p) {
         + '</div>'
     ) : '';
 
-    return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
-        + '<div style="background:' + leftStripeColor + ';width:4px;height:32px;border-radius:2px"></div>'
-        + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em">' + meta.emoji + '</div>'
-        + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
-        + '<canvas id="' + canvasId + '" width="78" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
+    return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:' + rowPad + ';border-bottom:1px solid rgba(255,255,255,0.04);font-size:' + rowFontSz + ';background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
+        + '<div style="background:' + leftStripeColor + ';width:4px;height:' + stripeH + 'px;border-radius:2px"></div>'
+        + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em;opacity:' + kindOpa + '">' + meta.emoji + '</div>'
+        + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em;opacity:' + kindOpa + '">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
+        + '<canvas id="' + canvasId + '" width="78" height="' + (isSilence ? 12 : (isChatter ? 16 : 20)) + '" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px;opacity:' + (isSilence ? '0.5' : (isChatter ? '0.7' : '1')) + '"></canvas>'
         + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
-        + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
+        + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:' + (isSong ? '0.95em' : '0.88em') + ';padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px;' + titleStyle + '">'
         + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
         + (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<div style="flex-shrink:0">' + pc + '</div>' : ''; })()
         + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
+        + (function() {
+            // UX convergence pass 2026-05-25 (P3): always-visible compact
+            // marker summary so flagged moments are scannable from the
+            // collapsed row. Full toggle UI lives in the expanded ⋯ panel.
+            var sum = _mtSegmentMarkerSummary(s);
+            if (!sum) return '';
+            return '<div title="Marked moments — click ⋯ to edit" style="flex-shrink:0;font-size:0.95em;letter-spacing:1px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:1px 4px">' + sum + '</div>';
+        })()
         + '</div>'
         + '<div style="display:flex;gap:3px;justify-content:flex-end">'
         + _mtRenderRowActions(idx, reviewState, confirmBg, confirmBorder, confirmColor, excludeBg, excludeBorder, excludeColor, trimOpen, p)
         + '</div>'
+        + markerPanelHtml
         + trimPanelHtml
         + '</div>';
 }
@@ -4183,11 +4359,16 @@ function _mtRenderSegmentsPanel() {
     // strip that was eating vertical space at the top of the panel.
     var hintDismissed = false;
     try { hintDismissed = (typeof localStorage !== 'undefined' && localStorage.getItem('mtSegmentsHintDismissed') === '1'); } catch(_) {}
+    // UX convergence pass 2026-05-25 (P4): tightened from full sentence with
+    // three nested workflows + emoji clutter to a single line of three terse
+    // verb phrases. Same instruction, ~40% fewer characters, weaker visual
+    // weight (font + opacity + smaller padding) so it sits below the
+    // pills/segments instead of competing with them.
     var hintHtml = hintDismissed ? '' :
-        '<div style="padding:8px 12px;background:rgba(99,102,241,0.08);border-bottom:1px solid rgba(99,102,241,0.2);font-size:0.74em;color:#c7d2fe;display:flex;align-items:flex-start;gap:8px">'
-        + '<span style="font-size:1em">💡</span>'
-        + '<div style="flex:1;line-height:1.4"><b>Review workflow:</b> name 🎵 Songs (type to autocomplete) · ⊘ flag chatter · then 🎛 Mix → ☑ Render songs only.</div>'
-        + '<button onclick="_mtSegmentsHintDismiss()" title="Don\'t show again" style="background:none;border:none;color:#a5b4fc;cursor:pointer;padding:0 4px;font-size:1em">×</button>'
+        '<div style="padding:6px 12px;background:rgba(99,102,241,0.06);border-bottom:1px solid rgba(99,102,241,0.15);font-size:0.72em;color:#a5b4fc;display:flex;align-items:center;gap:8px">'
+        + '<span style="opacity:0.7">💡</span>'
+        + '<div style="flex:1;line-height:1.4;opacity:0.85">Name songs · flag chatter · then <b>🎛 Tools → Mix → Render songs only</b></div>'
+        + '<button onclick="_mtSegmentsHintDismiss()" title="Don\'t show again" style="background:none;border:none;color:#a5b4fc;cursor:pointer;padding:0 4px;font-size:1em;opacity:0.7">×</button>'
         + '</div>';
 
     // Phase 4A — filter pill bar (replaces the inline "Show N short
