@@ -11,6 +11,7 @@ For current session state, build numbers, and in-flight work, see:
 - `02_GrooveLinx/uat/bug_queue.md` — open/in-progress/resolved bug queue
 - `02_GrooveLinx/specs/uat_lab_v1.md` — UAT Lab v1 proposal (Product Operations phase, revised v2 after inventory correction, awaiting Phase 1 approval)
 - `02_GrooveLinx/specs/operational_visibility_v1.md` — Operational Visibility + AI-Assisted UAT Architecture v1 (companion strategic spec, awaiting Drew + ChatGPT review)
+- `02_GrooveLinx/specs/competitive_positioning_reframe.md` — strategic clarity analysis testing the "operational continuity for bands" moat hypothesis (awaiting Drew + ChatGPT strategic review)
 - `02_GrooveLinx/00_Governance/` — 16 canonical governance docs (AI workflow, canonical systems, data ownership, current state/priorities, stabilization dashboard/queue, architecture decisions, etc.). Read `00_Governance/ReadMe.md` first.
 
 ---
