@@ -4853,6 +4853,14 @@ window._calNextUpGigGcal = function(date) {
 // close pattern: rail card always rebinds (cheap), inline detail panel
 // rebinds in view mode + warns in edit mode (preserves user input).
 async function _calOnEventsChanged() {
+    // Bug M2 fix (2026-05-25) — gate on calendar page being visible.
+    // Background SWR refreshes (_calBackgroundRefresh) fire
+    // 'calendarEventsChanged' regardless of which page the user is on.
+    // Without this gate, the handler tries to repaint calendar DOM from
+    // any page in the app — at best a wasted re-render, at worst a
+    // cross-page side-effect (e.g. mobile sheet reopening on Songs page).
+    // Reads GL_PAGE_READY (SYSTEM LOCK 7.a) — does not mutate.
+    if (typeof GL_PAGE_READY !== 'undefined' && GL_PAGE_READY !== 'calendar') return;
     // 1. Rail card — cheap rebind via calDayClick (it's already the renderer).
     if (_calSelectedRailKey) {
         try {
@@ -7170,6 +7178,12 @@ window._calCloseMobileCard = function() {
     if (card) card.classList.remove('is-open');
     var backdrop = document.getElementById('calMobileBackdrop');
     if (backdrop) backdrop.style.display = 'none';
+    // Bug M1 fix (2026-05-25) — mobile dismissal must clear the selection
+    // state. Otherwise a sync after dismiss fires 'calendarEventsChanged'
+    // → _calOnEventsChanged sees _calSelectedRailKey set → calls calDayClick
+    // → re-opens the bottom-sheet. User experiences "I closed it but it
+    // came back" which feels unstable and disrespectful of intent.
+    _calSelectedRailKey = null;
 };
 
 async function calAddEvent(date, editIdx, existing) {
