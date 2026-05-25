@@ -430,11 +430,32 @@ def render_mix(
         filter_parts = []
         amix_inputs = []
         n_segs = len(segments)
+        # Phase A.5 reverb fix (2026-05-25) — wet branch ratio boost.
+        # The amix=normalize=0 architecture sums all branches without
+        # auto-gain-reduction. When there are many dry branches (17 stems
+        # at a Deadcetera rehearsal) and few wet branches (4 vocal sends),
+        # the wet contribution to the final mix is structurally tiny:
+        #   dry_sum ≈ 17 × gain ≈ 17
+        #   wet_sum ≈ 4 × aecho_attenuation(0.35) × wet_gain ≈ 1.4 at full wet
+        #   wet_pct = 1.4 / 18.4 ≈ 7-8% — below perceptual threshold
+        # which is why the user reported "75% reverb sounds the same as 0%."
+        # Pre-counting branches lets us boost the wet contribution by the
+        # dry/wet ratio so the user-set master_reverb_wet maps to an
+        # actually-audible mix level. Capped at 8× to avoid extreme
+        # amplification on edge cases (1 wet branch in 30+ stems).
+        n_dry_branches = len(local_paths)
+        n_wet_branches = sum(
+            1 for t in local_paths
+            if master_reverb_wet > 0 and t["reverbSend"] > 0
+        )
+        wet_branch_boost = 1.0
+        if n_wet_branches > 0:
+            wet_branch_boost = min(8.0, max(1.0, n_dry_branches / n_wet_branches))
         for i, t in enumerate(local_paths):
             gain = t["gain"]
             send = t["reverbSend"]
             has_wet = master_reverb_wet > 0 and send > 0
-            wet_gain = gain * send * master_reverb_wet if has_wet else 0.0
+            wet_gain = gain * send * master_reverb_wet * wet_branch_boost if has_wet else 0.0
             need_wet_branch = has_wet and wet_gain > 0
 
             # ── Stage 1: resample + channel format ──
