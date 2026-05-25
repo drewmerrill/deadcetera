@@ -1,4 +1,100 @@
+<!-- ============================================================ -->
+<!-- 🚀 OPERATIONAL RESTART PROMPT — PINNED, ALWAYS-CURRENT     -->
+<!-- Updated as the last act of every code-shipping session.    -->
+<!-- Spec: 00_Governance/AI_WORKFLOW.md §Session Continuity     -->
+<!-- ============================================================ -->
+
+# 🚀 Operational Restart Prompt
+
+_Last refreshed: 2026-05-25 22:35 UTC · Build under test: `20260525-222102` · Commit: `2ce4e8f3` (docs after `ce17f8db` code) · Branch: `main`_
+
+**Paste this verbatim into a new chat to resume safely:**
+
+```
+GrooveLinx is at build 20260525-222102 (commit ce17f8db code +
+2ce4e8f3 docs), branch main, live on app.groovelinx.com via Vercel.
+
+READ FIRST (in order — repo docs win over chat memory):
+  1. 02_GrooveLinx/CLAUDE_HANDOFF.md top "SESSION UPDATE" entry
+     (5-section operational handoff package)
+  2. 02_GrooveLinx/00_Governance/AI_WORKFLOW.md §Session Continuity
+     Protocol (how to run / close this and every future session)
+  3. 02_GrooveLinx/00_Governance/CURRENT_STATE.md
+  4. 02_GrooveLinx/00_Governance/CURRENT_PRIORITIES.md
+  5. 02_GrooveLinx/00_Governance/STABILIZATION_QUEUE.md
+  6. 02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md
+  7. 02_GrooveLinx/CURRENT_PHASE.md top entry
+  8. 02_GrooveLinx/uat/bug_queue.md (triage at session start per
+     feedback_bug_queue_workflow memory)
+
+AUTHORITATIVE (when sources conflict, the LATER item wins):
+  - CLAUDE.md (project rules; SYSTEM LOCKs §7 are absolute)
+  - 00_Governance/* (canonical strategic + architectural truth)
+  - CLAUDE_HANDOFF.md latest session entry (operational truth)
+  - Repo code (factual truth — verify any memory claim before acting)
+
+ACTIVE convergence work (in flight, not yet complete):
+  - Mobile Review Mode Convergence v1 — Pass 1 SHIPPED 20260525-222102;
+    Passes 2-4 designed, awaiting Drew go-ahead. Spec at
+    02_GrooveLinx/specs/mobile_review_mode_convergence_v1.md
+  - Phase A.5 Custom Mix reverb fix — code shipped, awaits
+    `modal deploy services/multitrack-render/render.py` + Drew audio listen
+  - Phase A.5 render-job persistence — shipped + mitigates Bug #19
+
+DEFERRED (Claude-implementable when Drew prioritizes; do NOT pick up
+without explicit go-ahead):
+  - Pass 2 mobile (~120 LOC): comments hierarchy + transport polish
+  - Pass 3 mobile (~200 LOC): mobile tabs [Segments][Comments][Mix][Tools]
+  - Pass 4 mobile (~100 LOC): 6-category tag grouping
+  - C7 Phase 2 (~80 LOC): remaining inline-threshold sites
+  - UAT Lab calendar.stale-panel.desktop contract (~100 LOC)
+  - Recurrence EXDATE/RECURRENCE-ID bug at gl-calendar-sync.js:1591 (~150 LOC)
+
+MUST NEVER DRIFT:
+  - SYSTEM LOCKs (CLAUDE.md §7): GL_PAGE_READY lifecycle, focusChanged
+    event model, Firebase error filtering, GLStore.ACTIVE_STATUSES
+  - GLStatus 6-band canonical model (Stab #15) — no inline-threshold drift
+  - GLStore as single state owner — no parallel state holders
+  - Vanilla JS — no React/Vue/Angular/build systems
+  - Drew + ChatGPT own Stab #N numbering + canonical-system declarations
+  - feedback_workbench_no_new_destinations: no new top-level tabs/lenses
+  - feedback_consolidate_dont_retire: consolidate features, never retire paid paths
+  - feedback_ground_truth_over_theater: never decorative simulation of state
+
+NEXT RECOMMENDED ACTION:
+  Drew open the live build on an actual iPhone (Safari) and visually
+  verify Pass 1 mobile Review Mode against the screenshots in
+  02_GrooveLinx/uat/screenshots/2026-05-25/mobile-review-pass1/20260525-222102/.
+  If the in-the-wild experience matches the screenshots, decide whether
+  to greenlight Pass 2 (comments hierarchy + transport polish, ~120 LOC,
+  smallest next leverage) or to redirect to one of the 3 non-mobile
+  follow-ups (C7 Phase 2, UAT calendar contract, EXDATE bug).
+
+OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
+  1. Formalize Stab #15 + GLPriority numbering
+  2. Calendar Model B (soft-cancel with status:'cancelled')
+  3. Operational Prioritization Phase 2 scope
+
+OPEN BUGS: #17 architecture-verified · #18 MED (durationSec missing) ·
+#19 HIGH → MITIGATED by Phase A.5
+
+OUTSTANDING DEPLOY (operator action — Drew, not Claude):
+  - `modal deploy services/multitrack-render/render.py` for the
+    Phase A.5 reverb wet-branch ratio boost to take effect
+
+UAT smoke: `node scripts/uat-lab/run.js songs.triage.desktop` should
+PASS in <10s with 0 findings on build 20260525-222102. If it fails,
+that's the first thing to investigate.
+```
+
+<!-- ============================================================ -->
+<!-- End pinned restart prompt. Session log below.              -->
+<!-- ============================================================ -->
+
+---
+
 ⚠️ Claude must update this document at the end of every meaningful phase.
+⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
 
@@ -6,9 +102,58 @@
 
 # 📍 SESSION UPDATE — 2026-05-25 22:29 UTC — Pass 1 of Mobile Review Mode Convergence SHIPPED
 
-**Build live:** `20260525-222102` (commit `ce17f8db`) — pushed to `main`, Vercel auto-deploying to `app.groovelinx.com` within ~30s.
+**Build live:** `20260525-222102` (commit `ce17f8db` code + `2ce4e8f3` docs) — pushed to `main`, Vercel auto-deploying to `app.groovelinx.com` within ~30s.
 
-## Arc
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol` — every session entry must include the 5 sections below. Narrative trace follows._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260525-222102`
+* **Commit:** `ce17f8db` (code) + `2ce4e8f3` (docs + screenshots)
+* **Branch:** `main`
+* **Deployed systems:** browser (live), Modal (last deploy 2026-05-24 — Phase A.5 reverb fix STILL PENDING `modal deploy`), Cloudflare Worker (`deadcetera-proxy`, last deploy 2026-05-24 Phase 4C), R2 (unchanged), Firebase RTDB (unchanged)
+* **Active convergence work:** Mobile Review Mode Convergence v1 — Pass 1 SHIPPED; spec at `02_GrooveLinx/specs/mobile_review_mode_convergence_v1.md`
+* **Open bugs:** #17 architecture-verified (multitrack far-seek sync) · #18 MED (multitrack session missing `durationSec`) · #19 HIGH → MITIGATED by Phase A.5 (Export Mix `/render/check` 502 silent fail)
+* **Stabilization items in flight:** Stab #15 C7 Phase 2 (7 remaining inline-threshold sites, ~80 LOC, deferred per Drew priority 2026-05-25)
+* **Active initiatives:** Mobile Convergence (Pass 1 done, Passes 2-4 designed) · Phase A.5 verification (awaits Modal redeploy + Drew audio listen) · Session Continuity Protocol formalization (this session)
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew verifies Pass 1 mobile on actual iPhone Safari against the 4 screenshots in `02_GrooveLinx/uat/screenshots/2026-05-25/mobile-review-pass1/20260525-222102/`. Drew runs `modal deploy services/multitrack-render/render.py` to activate the Phase A.5 reverb fix.
+* **NEXT** — Either Pass 2 mobile (~120 LOC: comments hierarchy + transport polish + keyboard shortcut footer hide) OR one of the 3 non-mobile follow-ups (C7 Phase 2, UAT calendar contract, EXDATE bug). Drew picks on the next session based on Pass 1 in-the-wild verification + ChatGPT input.
+* **LATER** — Pass 3 mobile (~200 LOC: tabs `[Segments][Comments][Mix][Tools]`); Pass 4 mobile (~100 LOC: 6-category tag grouping); the 3 non-mobile follow-ups if not chosen as NEXT.
+* **DEFERRED** — Mobile Isolate Mode "Open on desktop" redirect (spec §11, no go-ahead yet); aecho→afir convolution swap (escalation path if Phase A.5 ratio boost is insufficient); worker-side JSON envelope for Modal HTTP errors (Bug #19 structural remediation; no longer urgent post-mitigation); Stab #N formalization decisions (Drew + ChatGPT own).
+
+## 3. OPEN PRODUCT DECISIONS
+
+| # | Decision | Owner | Status |
+|---|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Drew + ChatGPT | Still open |
+| 2 | Calendar Model B (soft-cancel with `status:'cancelled'`) | Drew + ChatGPT | Still open |
+| 3 | Operational Prioritization Phase 2 scope | Drew + ChatGPT | Still open |
+| 4 | Pass 2 vs. non-mobile follow-up sequencing | Drew (this turn) | Pending Pass 1 verification |
+
+Claude is not authorized to advance any of these without explicit Drew direction.
+
+## 4. OPERATIONAL RISKS
+
+* **Modal deploy debt** — `services/multitrack-render/render.py` has a shipped wet-branch ratio boost that won't take effect until `modal deploy` runs. Until then, Drew's reverb-flatness UAT will keep observing the old behavior even though the code shows the fix. Risk of misdiagnosis ("the fix didn't work") if the next session forgets the deploy is pending.
+* **Mobile coachmark + musician-dropdown leak** — orthogonal to multitrack-rehearsal scope, but the iPhone screenshots show `gl-spot-box` coachmarks AND the topbar musician dropdown rendering ON TOP of the mobile player overlay. Pass 1 doesn't touch this. If left unaddressed it will dominate any subsequent mobile UAT feedback.
+* **Bug #18 latent** — sessions without `durationSec` cannot fire the §8.1 long-session banner; if a non-Drew user opens Isolate Mode on a 3-hour session they will get no honest warning about the multi-stream drift behavior. Fix is sketched in `bug_queue.md` but not implemented.
+* **Pass 1 mobile vs. desktop drift** — every `_mtIsMobile()` branch is a potential drift surface. If a future Pass forgets to add the desktop-equivalent path for a new feature, mobile and desktop will diverge silently. Mitigation: spec §17 footprint table forces explicit "mobile + desktop both" planning per pass.
+* **Continuity protocol bootstrapping** — this is the FIRST session under the new protocol. The pinned restart prompt + 5-section structure are not yet battle-tested against an actual "open fresh chat" rehearsal. Recommend Drew try the restart prompt cold on the next session.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew opens the live build on an actual iPhone (Safari) and visually verifies Pass 1 mobile Review Mode against the 4 committed screenshots.** If the in-the-wild experience matches (collapsed 40px header, 3-chip filter bar with overflow, stacked segment rows fitting horizontally, Tools + Filter sheets bottom-anchored with proper tap targets), greenlight Pass 2 as the smallest next leverage. If something regresses in the wild that the screenshots didn't catch, file a bug + the next session opens with that fix instead.
+
+Secondary (operator action, parallelizable): `modal deploy services/multitrack-render/render.py` so the Phase A.5 reverb ratio boost activates before Drew's next Custom Mix listen.
+
+---
+
+## Session Narrative (trace, supplementary to §1–§5 above)
+
+### Arc
 
 Drew escalated mobile Review Mode from "responsive polish" to "workflow architecture" in a long structured directive. Three turns this session:
 

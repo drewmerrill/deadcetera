@@ -234,6 +234,74 @@ Governance docs own strategic continuity.
 
 ---
 
+# Session Continuity Protocol
+
+_Added 2026-05-25 as continuity infrastructure. This is operational protocol, not optional process._
+
+Chats are temporary working-memory windows. The repo + governance system are the source of truth. From this point forward every major session end MUST generate a formal **Operational Handoff Package** committed to the repo before the chat is closed.
+
+## When a handoff package is required
+
+* every "session close / checkpoint / handoff / wrap up / new chat / restart" trigger
+* every milestone phase completion
+* every meaningful code patch shipped to production
+* every multi-step task pause
+* whenever the conversation has grown long, slow, or fragmented
+
+## Required sections (5)
+
+Each handoff package, written into `CLAUDE_HANDOFF.md` as a new dated session entry at the top of the file, must contain:
+
+1. **CURRENT RUNTIME STATE**
+   * build number + commit hash
+   * branch
+   * deployed systems (browser / Modal / worker / R2 / Firebase)
+   * active convergence work
+   * open bugs (with severity)
+   * stabilization items in flight (Stab #N)
+   * active initiatives
+
+2. **CURRENT PRIORITIES**
+   * **NOW** — what is shipping or being verified right now
+   * **NEXT** — what ships in the next session if not blocked
+   * **LATER** — what is queued past the next session
+   * **DEFERRED** — what has been explicitly punted and why
+
+3. **OPEN PRODUCT DECISIONS**
+   Founder-level decisions still unresolved (decisions Claude is not authorized to make alone — e.g., Stab numbering, canonical-system naming, scope expansion). Each entry must say who owns the decision.
+
+4. **OPERATIONAL RISKS**
+   Migration risks, drift risks, architecture risks, partial-convergence risks. Anything that could silently break if the next session doesn't know about it.
+
+5. **RECOMMENDED NEXT ACTION**
+   ONE recommended next move only. Not a menu. The single highest-leverage action the next session should take. If it's blocked, name the blocker explicitly.
+
+## Canonical Operational Restart Prompt
+
+A single always-current, always-paste-ready restart prompt lives pinned at the very top of `CLAUDE_HANDOFF.md` (above the title). It must contain:
+
+* where to resume (current build + commit + branch + reading order)
+* what is authoritative (which docs win when sources conflict)
+* what is active (current convergence work in flight)
+* what is deferred (queued items not in current scope)
+* what must never drift (SYSTEM LOCKs, canonical systems, decision ownership)
+* what the next recommended action is (the §5 Recommended Next Action above)
+
+The pinned prompt is updated as the last act of every session that ships code or changes operational state. Future chats begin from this prompt — not from founder memory.
+
+## Anti-patterns
+
+* Do NOT rely on reconstructing context from prior chat transcripts.
+* Do NOT split continuity across multiple new governance docs — converge into existing operational surfaces (`CLAUDE_HANDOFF.md` for narrative + restart prompt; `CURRENT_STATE.md` / `CURRENT_PRIORITIES.md` / `STABILIZATION_QUEUE.md` for canonical state).
+* Do NOT skip the package because "the session was small" — small sessions still ship build numbers + commits that the next chat needs to know about.
+* Do NOT duplicate state already canonical elsewhere — link to `CURRENT_STATE.md` / `CURRENT_PRIORITIES.md` from the handoff narrative; do not copy them in.
+
+## Why this exists
+
+Without enforced continuity, every new chat starts from founder memory + repo archaeology. That is not safe at GrooveLinx's current operational tempo (live UAT, multiple convergence streams in flight, MacBook-crash already proven as a single point of failure). This protocol makes "open a new chat" a low-friction, high-fidelity operation.
+
+---
+
 # Operational Goal
 
 The system should remain:
