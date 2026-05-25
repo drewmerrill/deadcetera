@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-25 23:09 UTC · Build under test: `20260525-225157` (unchanged this turn) · Branch: `main` · Mode: **OBSERVATION PHASE** (Pass 2 mobile + render visibility live, awaiting in-the-wild reactions per Drew's 2026-05-25 23:00 UTC directive — "this is product anthropology, not feature expansion. Do not reopen broad convergence work yet.")_
+_Last refreshed: 2026-05-25 23:25 UTC · Build under test: `20260525-225157` (unchanged) · Branch: `main` · Mode: **OBSERVATION + SPEC** (Pass 2 mobile awaiting in-the-wild evidence; Recording Ingestion Architecture v1 spec landed at `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` — design only, awaiting Drew + ChatGPT review before any implementation phase)_
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -106,6 +106,97 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-25 23:25 UTC — Recording Ingestion Architecture v1 spec LANDED (design only)
+
+**No code change this turn.** Build still `20260525-225157`. Drew's directive at 23:00 UTC commissioned a comprehensive ingestion architecture spec for X32/X-Live → Reaper → GrooveLinx flows. Spec authored + committed (no code).
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260525-225157` (unchanged — spec turn)
+* **Branch:** `main`
+* **Mode:** **OBSERVATION + SPEC** — Pass 2 mobile awaits in-the-wild evidence; new ingestion architecture spec landed, awaits review before implementation
+* **Deployed systems:** browser live, Modal (Phase A.5 reverb deploy STILL PENDING), worker unchanged, R2 unchanged, Firebase unchanged
+* **Active convergence work:** none currently shipping. Mobile Convergence v1 paused at Pass 2; Recording Ingestion Architecture v1 in design phase.
+* **Open bugs:** unchanged — #17 architecture-verified · #18 MED · #19 HIGH→MITIGATED
+* **Stabilization items in flight:** none picked up this turn
+* **Active initiatives:** (1) OBSERVATION of Pass 2 mobile; (2) **Recording Ingestion Architecture v1 spec authored** at `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` (~830 lines, 16 sections, 4-phase build plan, 8 open decisions queued for Drew + ChatGPT review)
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — (a) Drew exercises Pass 2 on iPhone Safari + reports friction; (b) Drew runs `modal deploy services/multitrack-render/render.py` + A/B listens reverb; (c) Drew + ChatGPT review the Ingestion Architecture spec + answer §13 open decisions (especially #4: Phase 1 vs Phase 2 sequencing).
+* **NEXT** — Either implement Pass 2.5 friction fixes from real-world findings OR scope Ingestion Phase 1 (Recording Import Assistant + REAPER bundle adapter, ~500 LOC browser + ~50 LOC worker, ~2 weeks). Drew picks based on Pass 2 verification + spec review.
+* **LATER** — Pass 3 mobile (~200 LOC tabs); Pass 4 mobile (~100 LOC tag categories); Ingestion Phase 2 (X-Live direct, ~400 LOC browser + ~150 LOC worker + ~400 LOC Modal, ~3 weeks after Phase 1); Ingestion Phase 3 (multi-recorder adapters); Drew's recommended homepage emotional coherence pass.
+* **DEFERRED** — Progressive disclosure inside focus mode (pending behavioral evidence); Firebase-backed cross-device render sync; aecho→afir convolution swap; Stab #N formalization; C7 Phase 2; UAT calendar contract; EXDATE bug.
+
+## 3. OPEN PRODUCT DECISIONS
+
+| # | Decision | Owner | Status |
+|---|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Drew + ChatGPT | Still open |
+| 2 | Calendar Model B (soft-cancel) | Drew + ChatGPT | Still open |
+| 3 | Operational Prioritization Phase 2 scope | Drew + ChatGPT | Still open |
+| 4 | Firebase-backed cross-device render sync | Drew | Still open |
+| 5 | Pass 3 vs Pass 4 vs non-mobile sequencing | Drew | Pending Pass 2 friction |
+| 6 | Adoption-metric instrumentation for Pass 2 surfaces | Drew | Still open |
+| 7 | Recording Ingestion Architecture sequencing + scope | Drew + ChatGPT | **NEW spec landed — review needed** |
+| 8 | Ingestion spec §13 questions 1-8 (8 sub-decisions including SE_LOG.BIN parser sourcing, Phase 1 vs Phase 2 priority, REAPER template hosting, channel-map UX, multi-session default, storage cap, single-file path coexistence, REAPER Lua script status) | Drew + ChatGPT | **NEW** — read spec §13 |
+
+## 4. OPERATIONAL RISKS
+
+* **Spec → implementation discipline.** Drew's 23:00 UTC framing said "Do not reopen broad convergence work yet." The ingestion spec is design only — landing it is allowed; implementing any phase is NOT, until explicit Drew greenlight after spec review. Risk: a future session might confuse "spec exists" with "build the thing." Spec §16 Next Step + this risk entry are the safeguards.
+* **Modal deploy debt — 3rd session.** Unchanged from prior. Every additional session the wet-branch reverb boost goes un-activated, Drew's reverb-flatness UAT will misdiagnose.
+* **Two design fronts open.** Mobile convergence (Passes 3+4 designed, awaiting evidence) + Ingestion architecture (Phases 1-4 designed, awaiting review). Risk: priority confusion. NOW = observe + review; NEXT = pick ONE design line to advance.
+* **Pass 2 focus mode density** — Drew flagged but explicitly deferred. Risk unchanged.
+* **Bootstrapping continuity protocol — 4th session.** First spec-only session under protocol. Test: did the pinned restart prompt + 5-section structure adequately track a "spec landed, no code shipped" turn? Drew should flag if next-chat-resume from this handoff feels missing context.
+* **Existing single-file Demucs path coexistence with the ingestion spec.** Spec §13 question #7 asks whether Ingestion Phase 3's phone adapter REPLACES or COEXISTS with the current single-file Demucs path. Default in spec is coexist (per [[project_multitrack_rehearsal]] §"Coexistence with existing single-file recording"), but Drew should confirm.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew + ChatGPT read `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md`** (~830 lines, well-structured with §0 framing → §16 Next Step). Focus areas: §1.3 Finder-sort hazard explanation, §2.1 pipeline diagram, §11 phased build plan (4 phases, each Drew-approved before implementation), §13 Open Product Decisions (8 sub-questions for Drew + ChatGPT, especially #4 Phase 1 vs Phase 2 sequencing).
+
+Drew also still needs to exercise Pass 2 mobile in the wild + run the `modal deploy` for the Phase A.5 reverb fix. Those remain the same NOW priorities as the prior handoff entry.
+
+After Drew + ChatGPT review the spec + answer §13: Claude scopes Phase 1 of the ingestion spec into ship-sized passes (same convention as `mobile_review_mode_convergence_v1.md`) OR Drew greenlights a different next-ship line (Pass 2.5 mobile friction fix, Pass 3 mobile tabs, or one of the non-mobile follow-ups). Either way, execution waits on explicit greenlight per Session Continuity Protocol.
+
+---
+
+## Session Narrative (trace, supplementary to §1–§5)
+
+### Arc — Pass 2 reception + spec authoring (no code)
+
+1. **Pass 2 reception logged.** Drew's 23:00 UTC framing was strong overall:
+   - Focus-model + dimmed-surrounding pattern reads as "musical attention direction" not "technical segment table" — foundationally correct
+   - Contextual composer ("+ Add note at HH:MM") feels rehearsal-native and moment-driven
+   - Render visibility chip transformed "hidden async uncertainty" → "visible operational continuity" — highly correct priority
+   - Strong agreement on deferred items (tabs, navigation reorg, Firebase render sync, tag over-expansion) — "correct discipline. Need real-world behavioral evidence first."
+   - Most important remaining UX issue: focus mode still exposes too many simultaneous actions. Recommended direction: progressive disclosure INSIDE focus mode (Level 1 play/quick note/quick reaction/next-prev; Level 2 rename/exclude/detailed/advanced markers). **DO NOT implement immediately — observe real user behavior first.**
+   - Next phase = product anthropology, not feature expansion.
+
+2. **Observation infrastructure audit** (in prior handoff entry at 23:09 UTC). `gl-ux-tracker.js` (Stab #10-adjacent) is live and captures rage clicks, dead clicks, hesitation, abandoned flows, slow renders, JS errors automatically. Pass 2 surfaces benefit without new wiring. Gap: no adoption metrics (focus rate, note save rate, render chip CTR, "+more tags" expand rate). Flagged as Open Decision #6.
+
+3. **Drew immediately commissioned a NEW spec** in the same message that confirmed observation mode: Recording Ingestion Architecture for X32/X-Live → Reaper → GrooveLinx, covering 8 areas (X-Live chunks / Reaper workflows / FAT32 / sequential validation / hex filename normalization / metadata-aware reconstruction / Reaper export templates / future direct ingest) + Recording Import Assistant UI + broken-import detection + future adapters (Zoom / Tascam / phone). Implementation spec only.
+
+4. **Spec authored** at `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md`. ~830 lines, 16 sections. Anchored in: `project_x32_reaper_ingest_empirical` (Drew's 5/18 walkthrough memory), `project_deadcetera_x32_channel_map`, `project_multitrack_rehearsal`, `specs/multitrack_reaper_export_checklist.md`, `js/features/multitrack-rehearsal.js:133`. Phased build plan: Phase 1 (Assistant + REAPER adapter, ~500 LOC, 2 weeks) → Phase 2 (X-Live direct, ~950 LOC across browser/worker/Modal, 3 weeks) → Phase 3 (multi-recorder adapters + SE_LOG.BIN parser, ~850 LOC, 4 weeks) → Phase 4 (broken-import auto-detect + native capture, ~200 LOC, deferred until evidence). Zero new infrastructure dependencies; ffmpeg already on Modal.
+
+### Files touched this session
+
+- `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` (NEW — 830 lines, full spec)
+- `02_GrooveLinx/CLAUDE_HANDOFF.md` (this entry + observation-phase entry at 23:09 UTC + pinned restart prompt refresh)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/feedback_session_continuity_protocol.md` (saved earlier in session)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/MEMORY.md` (index updated earlier)
+
+### What's NOT in this turn
+
+- No code changes
+- No build bump
+- No Vercel deploy
+- No Modal/worker/Firebase changes
+- No SYSTEM LOCK touches
 
 ---
 
