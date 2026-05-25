@@ -3,7 +3,7 @@ Critical
 
 High
 
-**Canonical-system readiness threshold divergence** (filed 2026-05-25)
+**Canonical-system readiness threshold divergence** (filed 2026-05-25 — **IMPLEMENTED 2026-05-25, see C7 / Stab #15 in STABILIZATION_DASHBOARD.md**)
 
 Songs-that-need-work has at least **3 contradictory definitions** in active code, with at least a 4th color-tier threshold layered on top. This is governance debt becoming visible in UX: every "count disagreement" tester observation (the kind Pierce was reacting to emotionally) traces back to this divergence. Treat as **canonical-system fix (C7 candidate), NOT a local patch** — patching at one site moves the contradiction rather than resolving it.
 

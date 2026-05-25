@@ -1,6 +1,6 @@
 # CURRENT UAT STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 17:10 UTC · **Build under test:** `20260524-193407`
+**Last updated:** 2026-05-25 18:32 UTC · **Build under test:** `20260525-183202`
 
 > **What this doc is.** A compact, rolling, operational snapshot of GrooveLinx UAT/stabilization state — designed for AI sync without conversational replay. Re-validate before quoting if last-updated > 14 days old.
 >

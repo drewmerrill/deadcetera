@@ -26,6 +26,53 @@ Surfaces live state of: core (build/route), service worker / update detection, G
 
 ---
 
+## Song Readiness — Canonical Interpretation (Stab #15, C7 candidate, 2026-05-25)
+
+Canonical owner:
+`window.GLStatus` (in `js/core/gl-decision-language.js`)
+
+The numeric readiness score (`avg`, 0-5) maps to **exactly 6 canonical bands** with no gaps and no overlaps:
+
+| Band key | Range | Label | Hint |
+|---|---|---|---|
+| `unknown` | `avg <= 0` | Unrated | No readiness data yet — rate to begin |
+| `rough` | `0 < avg < 2` | Rough | Real gaps — focused block needed |
+| `learning` | `2 ≤ avg < 3` | Learning | Progress visible — keep pushing |
+| `ready` | `3 ≤ avg < 4` | Ready | Close — run it once to lock it in |
+| `gigReady` | `4 ≤ avg < 5` | Gig Ready | Stage-ready — final polish |
+| `locked` | `avg ≥ 5` | Locked | Locked in — keep it tight |
+
+**Authoritative API** (every consumer reading or interpreting readiness MUST use these helpers; inline thresholds in feature files are prohibited):
+- `GLStatus.classify(avg)` → `{ key, label, hint, level, color, icon, chipClass, emoji, min, max }`
+- `GLStatus.thresholdAtLeast(bandName)` → numeric lower bound for the named band
+- `GLStatus.countByBand(songs, bandOrBands, extractor?)` → count of songs in the named band(s); `extractor` defaults to `s => s.avg ?? s.avgReadiness`
+- `GLStatus.filterByBand(songs, bandOrBands, extractor?)` → subset
+- `GLStatus.isNeedsWork(avg)` / `isLocked` / `isGigReady` / `isUnrated` / `isReady` — rhetorical convenience predicates
+- `GLStatus.BAND_NAMES` — ordered list of canonical keys
+
+**Prohibited:**
+- Inline `if (avg < N)` / `if (avg >= N)` in feature files for readiness-tier semantics. Use `GLStatus.classify(avg).key === '...'` or `GLStatus.isNeedsWork(avg)` etc.
+- New READINESS_TIERS-style band definitions in any module other than `gl-decision-language.js`. `song-intelligence.js` keeps a thin compat shim that defers to `GLStatus.classify()`.
+- New numeric thresholds that don't correspond to one of the 6 canonical band boundaries (`0 / 2 / 3 / 4 / 5`).
+
+**Permitted (intentional exceptions):**
+- Visual color quick-scan tiers (`GLStatus.getSongColor()` uses `≥3.5 / ≥2.5 / <2.5` for the 3-tier red/amber/green gradient). Visual tiers prioritize at-a-glance recognition; label bands prioritize actionable guidance granularity. Both are correct in their domain. Document the divergence at the call site.
+- Load-order fallback guards of the form `typeof GLStatus !== 'undefined' && GLStatus.classify` — used in `gl-focus.js`, `home-dashboard.js`, `song-intelligence.js` where the consumer may execute before `gl-decision-language.js` in cached SW shells.
+
+**Anti-drift enforcement:**
+- `tests/uat-lab/contracts/songs.triage.desktop.js` has 3 `Architecture Drift` severity HIGH expectations that catch future divergence: canonical model loaded, `classify()` round-trip across full 0-5 range, and `countByBand([rough,learning])` matches inline `avg < 3` count over the same dataset. Run via `node scripts/uat-lab/run.js songs.triage.desktop`.
+
+**Sites still using inline thresholds (Phase 2 of C7, tracked in STABILIZATION_DASHBOARD.md Stab #15):**
+- `home-dashboard.js:1129 / 1952 / 2074-2075 / 2329 / 2474 / 2723 / 4382` — color tiers
+- `gl-song-coach-signal.js:107-113` — coaching message thresholds
+- `rehearsal_agenda_engine.js:157-161` — rehearsal slot buckets
+- `gl-song-value.js:68` — `isFocus` cutoff
+- `stoner-mode.js:240` — badge threshold
+
+Migrate these in a follow-up pass when those surfaces are touched for other reasons. Anti-drift UAT will fail if a new inline threshold is added to a previously-migrated site.
+
+---
+
 ## Song Status — Active Set
 Canonical owner:
 `GLStore.ACTIVE_STATUSES` + `GLStore.isActiveSong(title)` (in `js/core/groovelinx_store.js`)

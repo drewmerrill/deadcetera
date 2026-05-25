@@ -46,6 +46,119 @@ window.GLStatus = (function() {
     return { label: 'Needs work', hint: 'Give it a focused block', level: 'needs_work', color: 'var(--gl-red)', icon: '🔧', chipClass: _CHIP.needs_work };
   }
 
+  // ── C7 Readiness Canonicalization (2026-05-25) ────────────────────────────
+  // Per Drew's spec + system mapping finding: every inline `avg < N` /
+  // `avg >= N` site that diverged across home-dashboard / gl-focus /
+  // song-intelligence / rehearsal_agenda_engine MUST migrate to these
+  // helpers. Six canonical bands cover the full 0-5 range with NO gaps
+  // and NO overlaps. Bands align with song-intelligence.js READINESS_TIERS
+  // numerically (so consumers of either get the same answer for any avg).
+  //
+  // Bands (CANONICAL — do not redefine elsewhere):
+  //   unknown   → avg <= 0 (unrated)
+  //   rough     → 0 < avg < 2 (real gaps, focused block needed)
+  //   learning  → 2 ≤ avg < 3 (progress visible, keep pushing)
+  //   ready     → 3 ≤ avg < 4 (close, run it once)
+  //   gigReady  → 4 ≤ avg < 5 (stage-ready, tightening polish)
+  //   locked    → avg ≥ 5 (perfected, locked in)
+  //
+  // CHIP_CLASS map merges with existing 4-band visual tiers (success/warning/
+  // danger) so chip CSS stays unchanged.
+  //
+  // ANTI-DRIFT INVARIANTS:
+  //   - All readiness-by-threshold logic in feature files routes through
+  //     classify() or thresholdAtLeast() — never inline `avg < N`.
+  //   - All readiness counts route through countByBand() or filterByBand().
+  //   - Visual color tiers (getSongColor) intentionally use 3-tier
+  //     red/amber/green (≥3.5 / ≥2.5 / <2.5) for at-a-glance recognition;
+  //     this is by design and may not match band boundaries 1:1 because
+  //     color tiers prioritize visual quick-scan, labels prioritize
+  //     actionable guidance granularity. Both are correct in their domain.
+
+  var _BAND_DEFS = [
+    // Order: highest first; classify() walks top-down and returns first match.
+    { key: 'locked',   min: 5,  max: 999, label: 'Locked',      hint: 'Locked in — keep it tight',                level: 'strong',        color: 'var(--gl-green)',   icon: '🔒', chipClass: 'gl-chip--success', emoji: '🔒' },
+    { key: 'gigReady', min: 4,  max: 5,   label: 'Gig Ready',   hint: 'Stage-ready — final polish',               level: 'strong',        color: 'var(--gl-green)',   icon: '✅', chipClass: 'gl-chip--success', emoji: '✅' },
+    { key: 'ready',    min: 3,  max: 4,   label: 'Ready',       hint: 'Close — run it once to lock it in',        level: 'solid',         color: 'var(--gl-amber)',   icon: '🎯', chipClass: 'gl-chip--warning', emoji: '🎯' },
+    { key: 'learning', min: 2,  max: 3,   label: 'Learning',    hint: 'Progress visible — keep pushing',          level: 'getting_there', color: 'var(--gl-amber)',   icon: '↗️', chipClass: 'gl-chip--warning', emoji: '↗️' },
+    { key: 'rough',    min: 0.0001, max: 2, label: 'Rough',     hint: 'Real gaps — focused block needed',         level: 'needs_work',    color: 'var(--gl-red)',     icon: '🔧', chipClass: 'gl-chip--danger',  emoji: '🔧' },
+    { key: 'unknown',  min: -999, max: 0.0001, label: 'Unrated', hint: 'No readiness data yet — rate to begin',   level: 'unrated',       color: 'var(--gl-text-tertiary)', icon: '', chipClass: '',           emoji: '·' },
+  ];
+
+  // BAND_NAMES — public list of canonical band keys in display order
+  // (highest readiness first; reverse for "needs work" ordering).
+  var BAND_NAMES = ['locked', 'gigReady', 'ready', 'learning', 'rough', 'unknown'];
+
+  // Numeric boundary lookup. Inline `avg < N` callers migrate to:
+  //   `avg < GLStatus.thresholdAtLeast('ready')` instead of `avg < 3`.
+  // This makes the relationship to the canonical band visible at the call site.
+  var _THRESHOLDS = {
+    locked:   5,
+    gigReady: 4,
+    ready:    3,
+    learning: 2,
+    rough:    0.0001,
+    unknown:  0,
+  };
+
+  function thresholdAtLeast(bandName) {
+    if (!(bandName in _THRESHOLDS)) throw new Error('GLStatus.thresholdAtLeast: unknown band "' + bandName + '"');
+    return _THRESHOLDS[bandName];
+  }
+
+  // CANONICAL classifier — returns the band record for a given avg (0-5).
+  // Result shape: { key, label, hint, level, color, icon, chipClass, emoji,
+  //                 min, max }
+  function classify(avg) {
+    var v = (typeof avg === 'number' && !isNaN(avg)) ? avg : 0;
+    for (var i = 0; i < _BAND_DEFS.length; i++) {
+      var b = _BAND_DEFS[i];
+      if (v >= b.min) return b;
+    }
+    return _BAND_DEFS[_BAND_DEFS.length - 1];
+  }
+
+  // Count songs in a given band (or array of bands).
+  // Songs are expected to be objects with an `avg` numeric field.
+  // Pass an extractor if your records use a different field (e.g. `avgReadiness`).
+  function countByBand(songs, bandOrBands, extractor) {
+    if (!Array.isArray(songs)) return 0;
+    var bands = Array.isArray(bandOrBands) ? bandOrBands : [bandOrBands];
+    var ext = (typeof extractor === 'function') ? extractor : function(s) { return s && (s.avg != null ? s.avg : s.avgReadiness); };
+    var n = 0;
+    for (var i = 0; i < songs.length; i++) {
+      var avg = ext(songs[i]);
+      if (avg == null) continue;
+      var b = classify(avg);
+      if (bands.indexOf(b.key) !== -1) n++;
+    }
+    return n;
+  }
+
+  function filterByBand(songs, bandOrBands, extractor) {
+    if (!Array.isArray(songs)) return [];
+    var bands = Array.isArray(bandOrBands) ? bandOrBands : [bandOrBands];
+    var ext = (typeof extractor === 'function') ? extractor : function(s) { return s && (s.avg != null ? s.avg : s.avgReadiness); };
+    return songs.filter(function(s) {
+      var avg = ext(s);
+      if (avg == null) return false;
+      var b = classify(avg);
+      return bands.indexOf(b.key) !== -1;
+    });
+  }
+
+  // Convenience predicates aligned to common rhetorical groupings.
+  // These prevent "songs that need work" from collapsing to N different
+  // threshold pairs across feature files.
+  function isNeedsWork(avg) {                  // rhetorical "needs work" = rough + learning
+    var k = classify(avg).key;
+    return k === 'rough' || k === 'learning';
+  }
+  function isLocked(avg) { return classify(avg).key === 'locked'; }
+  function isGigReady(avg) { var k = classify(avg).key; return k === 'locked' || k === 'gigReady'; }
+  function isUnrated(avg) { return classify(avg).key === 'unknown'; }
+  function isReady(avg) { return classify(avg).key === 'ready'; }
+
   // ── Readiness tiers (pct 0-100) ──
   function getReadinessPct(pct) {
     if (pct === null || pct === undefined) return { label: '', hint: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
@@ -91,7 +204,18 @@ window.GLStatus = (function() {
     getSongSeverity: getSongSeverity,
     getColor: getColor,
     getSongColor: getSongColor,
-    getBarColor: getBarColor
+    getBarColor: getBarColor,
+    // C7 canonical readiness model (2026-05-25)
+    classify: classify,
+    thresholdAtLeast: thresholdAtLeast,
+    countByBand: countByBand,
+    filterByBand: filterByBand,
+    isNeedsWork: isNeedsWork,
+    isLocked: isLocked,
+    isGigReady: isGigReady,
+    isUnrated: isUnrated,
+    isReady: isReady,
+    BAND_NAMES: BAND_NAMES,
   };
 })();
 

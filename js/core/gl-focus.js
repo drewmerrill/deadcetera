@@ -89,7 +89,16 @@
         focusScore += RehearsalAnalysis.getIssueFocusBoost(s.title);
       }
 
-      if (avg < 4) { // only include songs that actually need work
+      // C7 (2026-05-25): include songs below "Gig Ready" band as focus
+      // candidates. Previously inline `avg < 4`; now routed through canonical
+      // threshold so a future band-boundary change reaches all consumers.
+      // SYSTEM LOCK §7b extension: this is the canonical "song needs focus"
+      // predicate. Other surfaces consuming "needs focus" should call
+      // GLStatus.thresholdAtLeast('gigReady') or isNeedsWork(), not inline.
+      var _gigReadyThreshold = (typeof GLStatus !== 'undefined' && GLStatus.thresholdAtLeast)
+        ? GLStatus.thresholdAtLeast('gigReady')
+        : 4; // load-order fallback (gl-focus may execute before gl-decision-language in cached shells)
+      if (avg < _gigReadyThreshold) {
         candidates.push({ title: s.title, avg: avg, focusScore: focusScore, inSetlist: !!setlistSongs[s.title] });
       }
     });
@@ -98,16 +107,19 @@
     var list = candidates.slice(0, 5);
     var primary = list[0] || null;
 
-    // Generate reason — love-aware when meaningful
+    // Generate reason — love-aware when meaningful.
+    // C7: reason copy keys off the canonical band, not inline thresholds.
+    // 'rough' = real gaps · 'learning' = tightening · 'ready'/'gigReady'/'locked' = polish.
     var reason = '';
     if (primary) {
       var _bl = (GL && GL.getBandLove) ? (GL.getBandLove(primary.title) || 0) : 0;
       var _al = (GL && GL.getAudienceLove) ? (GL.getAudienceLove(primary.title) || 0) : 0;
+      var _band = (typeof GLStatus !== 'undefined' && GLStatus.classify) ? GLStatus.classify(primary.avg).key : null;
       if (gigDays <= 3 && primary.inSetlist) {
         reason = _al >= 4 ? 'Gig soon — crowd loves this, get it tight.' : 'Gig soon — this needs work before you play.';
-      } else if (primary.avg < 2) {
+      } else if (_band === 'rough') {
         reason = _bl >= 4 ? 'Band favorite but not ready — run it start to finish.' : 'Low readiness. Run it start to finish.';
-      } else if (primary.avg < 3) {
+      } else if (_band === 'learning') {
         reason = _al >= 4 ? 'Crowd favorite — tighten the weak spots.' : 'Almost there. Tighten the weak spots.';
       } else {
         reason = (_bl >= 4 && _al >= 4) ? 'Anchor song — keep it sharp.' : 'Could be stronger. Worth a run-through.';

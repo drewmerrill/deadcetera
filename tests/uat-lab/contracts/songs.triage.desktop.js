@@ -55,5 +55,33 @@ module.exports = {
       severity: 'HIGH',
       title: 'GLStore song library is empty on Songs page',
     },
+    // ── C7 anti-drift assertions (2026-05-25) ─────────────────────────────
+    // These catch future readiness-threshold divergence: the canonical
+    // model (GLStatus in gl-decision-language.js) must be loaded, the
+    // 6-band classify() must round-trip across the full 0-5 range, and
+    // the home-dashboard count surfaces must agree with countByBand()
+    // for the same dataset. If any of these fail, drift has been
+    // re-introduced — investigate before shipping the offending change.
+    {
+      id: 'c7-canonical-model-loaded',
+      assertJs: '() => !!(window.GLStatus && typeof window.GLStatus.classify === "function" && typeof window.GLStatus.thresholdAtLeast === "function" && typeof window.GLStatus.countByBand === "function" && Array.isArray(window.GLStatus.BAND_NAMES) && window.GLStatus.BAND_NAMES.length === 6)',
+      category: 'Architecture Drift',
+      severity: 'HIGH',
+      title: 'C7: GLStatus canonical readiness model is not loaded',
+    },
+    {
+      id: 'c7-bands-roundtrip',
+      assertJs: '() => { var GLS = window.GLStatus; if (!GLS) return false; var probes = [[0,"unknown"],[1,"rough"],[2.5,"learning"],[3.5,"ready"],[4.5,"gigReady"],[5,"locked"]]; for (var i=0;i<probes.length;i++){ var got = GLS.classify(probes[i][0]).key; if (got !== probes[i][1]) { console.error("[C7 drift] avg=" + probes[i][0] + " expected " + probes[i][1] + " got " + got); return false; } } return true; }',
+      category: 'Architecture Drift',
+      severity: 'HIGH',
+      title: 'C7: GLStatus.classify() does not round-trip across canonical bands',
+    },
+    {
+      id: 'c7-count-coherence',
+      assertJs: '() => { var GLS = window.GLStatus, GLStore = window.GLStore; if (!GLS || !GLStore || !GLStore.getSongs) return false; var songs = GLStore.getSongs(); if (!songs.length) return true; var rated = []; for (var i = 0; i < songs.length; i++) { var t = songs[i] && songs[i].title; if (!t) continue; var avg = (GLStore.avgReadiness ? GLStore.avgReadiness(t) : 0) || 0; if (avg > 0) rated.push({title: t, avg: avg}); } if (!rated.length) return true; var canonNeedsWork = GLS.countByBand(rated, ["rough","learning"]); var inlineNeedsWork = 0; for (var j = 0; j < rated.length; j++) { if (rated[j].avg > 0 && rated[j].avg < 3) inlineNeedsWork++; } if (canonNeedsWork !== inlineNeedsWork) { console.error("[C7 drift] needs-work count: canonical=" + canonNeedsWork + " vs inline-<3=" + inlineNeedsWork); return false; } return true; }',
+      category: 'Architecture Drift',
+      severity: 'HIGH',
+      title: 'C7: countByBand([rough,learning]) does not match inline avg<3 over same dataset',
+    },
   ],
 };

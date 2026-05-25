@@ -1,6 +1,6 @@
 # CURRENT ARCHITECTURE STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 16:41 UTC · **Build under test:** `20260524-193407`
+**Last updated:** 2026-05-25 18:32 UTC · **Build under test:** `20260525-183202`
 
 > **What this doc is.** A compact, rolling, operational snapshot of GrooveLinx architecture/convergence state — designed for AI sync without conversational replay. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -37,9 +37,10 @@ Authoritative declarations live in the governance doc. Extended view per-capabil
 | Rehearsal session ownership | `GLStore.RehearsalSession` | C2 Phase 1 + 2 complete |
 | Band feed ownership | `GLBandFeedStore` | C5 Phase 1 (Phase 2 deferred) |
 | Stems job persistence | `GLStems` + `gl_stem_jobs_active` localStorage | Stab #14 |
+| **Readiness interpretation (6-band)** | `GLStatus` (`gl-decision-language.js`) — `classify` / `thresholdAtLeast` / `countByBand` / `filterByBand` | **Stab #15 / C7 (proposed numbering), 2026-05-25** |
 
 **Candidates for canonical declaration (NOT yet declared in governance):**
-- **Readiness model** — `GLReadinessModel` proposal from Audit #10 (unbuilt, cited by 5 maps). C7 candidate.
+- ~~**Readiness model** — `GLReadinessModel` proposal from Audit #10 (unbuilt, cited by 5 maps). C7 candidate.~~ **✅ RESOLVED 2026-05-25** — declared as `GLStatus` extended in `gl-decision-language.js`; recorded in `00_Governance/CANONICAL_SYSTEMS.md` "Song Readiness — Canonical Interpretation" section. Stab #15 / C7 (proposed numbering pending formalization).
 - **Recommendation orchestration** — `GrooveMate` + `GLOrchestrator` + `gl-focus` + `GLInsights` + `_renderSmartNudge` + `GLAvatarGuide` all compute next-action independently. C8 candidate.
 - **Entity model** — `rehearsal_song_dna_relationship_model.md` defines Annotation / Take / Recording / TaskItem primitives; cited by 5 of 7 system maps. Drew-approved for promotion to `00_Governance/CANONICAL_SYSTEMS.md`.
 

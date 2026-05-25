@@ -13,22 +13,41 @@
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  // C7 (2026-05-25): READINESS_TIERS reconciled to GLStatus canonical bands
+  // (gl-decision-language.js). Previous local definition had divergent
+  // boundaries (newSong:[0,0.99] vs canonical unknown:[≤0]; rough:[2,2.99]
+  // vs canonical rough:[<2]). Kept here as a thin compatibility shim that
+  // ALWAYS reads from GLStatus when available. Internal _tierFor() returns
+  // the GLStatus band key directly (locked/gigReady/ready/learning/rough/
+  // unknown). Legacy code reading READINESS_TIERS.tightening / gettingThere
+  // / newSong gets a redirect to the canonical key — no caller break.
   var READINESS_TIERS = {
-    locked:      { min: 5, max: 5, label: 'Gig Ready' },
-    tightening:  { min: 4, max: 4.99, label: 'Tightening' },
-    gettingThere:{ min: 3, max: 3.99, label: 'Getting There' },
-    rough:       { min: 2, max: 2.99, label: 'Rough' },
-    learning:    { min: 1, max: 1.99, label: 'Learning' },
-    newSong:     { min: 0, max: 0.99, label: 'New Song' },
+    // Canonical 6-band names (preferred):
+    locked:       { min: 5, max: 5,    label: 'Locked' },
+    gigReady:     { min: 4, max: 5,    label: 'Gig Ready' },
+    ready:        { min: 3, max: 4,    label: 'Ready' },
+    learning:     { min: 2, max: 3,    label: 'Learning' },
+    rough:        { min: 0.0001, max: 2, label: 'Rough' },
+    unknown:      { min: 0, max: 0,    label: 'Unrated' },
+    // Legacy aliases (so any pre-C7 caller still works):
+    tightening:   { min: 4, max: 5,    label: 'Gig Ready' },          // alias → gigReady
+    gettingThere: { min: 3, max: 4,    label: 'Ready' },               // alias → ready
+    newSong:      { min: 0, max: 1,    label: 'Unrated' },             // alias → unknown
   };
 
   function _tierFor(avg) {
-    if (!avg || avg < 1) return 'newSong';
+    // Prefer canonical classifier from GLStatus; fall back to local logic
+    // for load-order safety (song-intelligence.js currently loads before
+    // gl-decision-language.js in the LOAD ORDER section comment).
+    if (typeof window !== 'undefined' && window.GLStatus && window.GLStatus.classify) {
+      return window.GLStatus.classify(avg).key;
+    }
+    if (!avg || avg <= 0) return 'unknown';
     if (avg >= 5) return 'locked';
-    if (avg >= 4) return 'tightening';
-    if (avg >= 3) return 'gettingThere';
-    if (avg >= 2) return 'rough';
-    return 'learning';
+    if (avg >= 4) return 'gigReady';
+    if (avg >= 3) return 'ready';
+    if (avg >= 2) return 'learning';
+    return 'rough';
   }
 
   function _avg(nums) {
@@ -113,7 +132,13 @@
     });
     var keys = _memberKeys(members);
 
-    var tiers = { locked: [], tightening: [], gettingThere: [], rough: [], learning: [], newSong: [] };
+    // C7 (2026-05-25): tier bucket initializer carries both canonical 6-band
+    // keys (locked/gigReady/ready/learning/rough/unknown) AND legacy aliases
+    // (tightening/gettingThere/newSong) so downstream code reading either
+    // shape doesn't break. _tierFor() returns canonical keys; legacy alias
+    // buckets stay empty but defined so iterators that walk Object.keys
+    // still produce stable shapes.
+    var tiers = { locked: [], gigReady: [], ready: [], learning: [], rough: [], unknown: [], tightening: [], gettingThere: [], newSong: [] };
     var allAvgs = [];
     var songIntels = {};
     var weakest = [];
@@ -157,12 +182,21 @@
       ratedSongs: allAvgs.length,
       unratedSongs: songs.length - allAvgs.length,
       tiers: {
+        // Canonical 6-band counts (C7 2026-05-25):
         locked: tiers.locked.length,
-        tightening: tiers.tightening.length,
-        gettingThere: tiers.gettingThere.length,
-        rough: tiers.rough.length,
+        gigReady: tiers.gigReady.length,
+        ready: tiers.ready.length,
         learning: tiers.learning.length,
-        newSong: tiers.newSong.length,
+        rough: tiers.rough.length,
+        unknown: tiers.unknown.length,
+        // Legacy aliases — map to their canonical equivalents so any caller
+        // reading the old shape sees consistent numbers, not zeros.
+        // tightening was [4, 5) → maps to gigReady
+        // gettingThere was [3, 4) → maps to ready
+        // newSong was [0, 1) → maps to unknown (avg <= 0)
+        tightening: tiers.gigReady.length,
+        gettingThere: tiers.ready.length,
+        newSong: tiers.unknown.length,
       },
       weakest: weakest,
       mismatches: mismatches,

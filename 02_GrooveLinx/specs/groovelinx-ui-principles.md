@@ -73,6 +73,8 @@ Additional actions appear through interaction:
 
 Avoid exposing too many controls simultaneously.
 
+**See also:** `specs/groovelinx_product_philosophy.md` → "Progressive Capability Depth" — the product-level companion to this UI principle. Reduce cognitive simultaneity, NOT product depth. Tools dropdowns + per-kind row weight + collapsed action sets are the implementation pattern; broad feature removal is the anti-pattern.
+
 ---
 
 ## 4. Persistent Musical Context

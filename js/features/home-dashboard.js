@@ -435,8 +435,17 @@ function _homeAggregates(bundle) {
     var totalActive = 0;
     var ratedCount = 0;
     var totalScore = 0;
-    var highReady = 0;        // avg >= 4
-    var belowReadyCount = 0;  // avg > 0 && avg < 3 (sites B/D/E)
+    // C7 (2026-05-25): the inline thresholds previously living here
+    // (avg >= 4 / avg > 0 && avg < 3) diverged from gl-focus.js (avg < 4)
+    // and home-dashboard:1835/4382 (avg < 2 / avg < 2.5) — producing the
+    // "X songs need work" count disagreement filed in STABILIZATION_QUEUE.md.
+    // Both counters now route through canonical band classification.
+    //   highReady       = gigReady ∪ locked (band ≥ 4)
+    //   belowReadyCount = rough ∪ learning  (rhetorical "needs work")
+    var highReady = 0;        // = countByBand(activeSongs, ['gigReady','locked'])
+    var belowReadyCount = 0;  // = countByBand(activeSongs, ['rough','learning'])
+
+    var _GLS = (typeof GLStatus !== 'undefined' && GLStatus.classify) ? GLStatus : null;
 
     var hasGLStore = (typeof GLStore !== 'undefined');
     if (hasGLStore && GLStore.isActiveSong && GLStore.avgReadiness) {
@@ -450,8 +459,17 @@ function _homeAggregates(bundle) {
             if (avg <= 0) continue; // unrated
             ratedCount++;
             totalScore += avg;
-            if (avg >= 4) highReady++;
-            if (avg > 0 && avg < 3) belowReadyCount++;
+            // Use canonical band classifier when available; fall back to the
+            // historical inline thresholds for cached SW shells where
+            // gl-decision-language hasn't loaded yet (load-order safety).
+            if (_GLS) {
+                var _bandKey = _GLS.classify(avg).key;
+                if (_bandKey === 'gigReady' || _bandKey === 'locked') highReady++;
+                if (_bandKey === 'rough' || _bandKey === 'learning') belowReadyCount++;
+            } else {
+                if (avg >= 4) highReady++;
+                if (avg > 0 && avg < 3) belowReadyCount++;
+            }
         }
     }
 
@@ -1830,11 +1848,24 @@ function _buildSecondaryActions(bundle) {
     var _focusTitle = focus.primary ? (typeof focus.primary === 'string' ? focus.primary : (focus.primary.title || null)) : null;
     var _readinessTone = function(avg, songTitle) {
         // Build "[status] → [action]" pattern
+        // C7 (2026-05-25): status label derived from canonical band, not
+        // inline thresholds. avg<=3.5 cutoff previously meant "almost ready"
+        // started at 3.5; canonical band 'ready' begins at 3 and 'gigReady'
+        // at 4, so the lexicon now matches what other surfaces show.
         var status = '';
         if (avg <= 0) return 'not rated yet';
-        else if (avg < 2) status = 'needs work';
-        else if (avg <= 3.5) status = 'getting there';
-        else status = 'almost ready';
+        var _GLS = (typeof GLStatus !== 'undefined' && GLStatus.classify) ? GLStatus : null;
+        if (_GLS) {
+            var _key = _GLS.classify(avg).key;
+            if (_key === 'rough') status = 'needs work';
+            else if (_key === 'learning') status = 'getting there';
+            else if (_key === 'ready') status = 'almost ready';
+            else status = 'ready'; // gigReady / locked
+        } else {
+            if (avg < 2) status = 'needs work';
+            else if (avg <= 3.5) status = 'getting there';
+            else status = 'almost ready';
+        }
         // Get top issue for the action part
         var action = '';
         if (songTitle) {
@@ -4379,8 +4410,20 @@ function renderHdSongsNeedingWork(bundle) {
     if (!weak.length) return '<div class="hd-bucket hd-bucket--ok"><div class="hd-bucket__header"><span class="hd-bucket__icon">\u2705</span><span class="hd-bucket__title">SONGS NEEDING WORK</span></div><div class="hd-bucket__ok">All songs above readiness threshold \u2014 you\'re in good shape</div></div>';
     var rows = weak.map(function(e){
         var avg = _bandAvgForSong(e[1]);
+        // C7 (2026-05-25): urgency badge derived from canonical band.
+        // CRITICAL = 'rough' band (avg < 2); NEEDS WORK = 'learning' band
+        // (2 ≤ avg < 3). The intermediate amber `< 2.5` color tier remains
+        // a local visual nudge (sub-band gradient inside 'rough'), kept
+        // inline because it's purely cosmetic — but the LABELS now match
+        // the canonical bands so the user sees consistent vocabulary.
+        var _GLS = (typeof GLStatus !== 'undefined' && GLStatus.classify) ? GLStatus : null;
+        var _bk = _GLS ? _GLS.classify(avg).key : null;
         var color = avg < 2 ? '#ef4444' : avg < 2.5 ? '#f97316' : '#fbbf24';
-        var urgLabel = avg < 2 ? '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--critical">CRITICAL</span>' : avg < 2.5 ? '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--warn">NEEDS WORK</span>' : '';
+        var urgLabel = (_bk === 'rough')
+            ? '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--critical">CRITICAL</span>'
+            : (_bk === 'learning')
+                ? '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--warn">NEEDS WORK</span>'
+                : '';
         return '<div class="hd-bucket__song-row" onclick="homeGoWeakSongs([\''+ e[0].replace(/'/g,"\\'") +'\'])" style="cursor:pointer">'+
             '<span class="hd-bucket__song-title">'+_escHtml(e[0])+' '+urgLabel+'</span>'+
             '<span style="font-size:11px;font-weight:700;color:'+color+'">'+avg.toFixed(1)+'/5</span>'+

@@ -1,6 +1,6 @@
 # CURRENT SYSTEM STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 17:36 UTC · **Build under test:** `20260525-173406` · **HEAD commit:** pending UX convergence pass
+**Last updated:** 2026-05-25 18:32 UTC · **Build under test:** `20260525-183202` · **HEAD commit:** pending C7 Stab #15
 
 > **What this doc is.** A compact, rolling, operational export of GrooveLinx state — designed for AI synchronization (esp. ChatGPT ↔ Claude) without massive conversational replay. Not a journal. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -11,7 +11,7 @@
 ## 1. Build truth
 
 - **Production:** `https://app.groovelinx.com` — Vercel auto-deploys on push to `main`
-- **Live build:** `20260525-173406` (UX Convergence Pass 1 — Multitrack Review action hierarchy + per-kind row weight + musical moment markers + text density reduction)
+- **Live build:** `20260525-183202` (C7 / Stab #15 — Readiness Canonicalization: GLStatus 6-band model + top-site migrations + anti-drift UAT)
 - **Local dev:** `http://localhost:8000` via `python3 -m http.server 8000` (Playwright `webServer` auto-starts)
 - **Dev shell:** `https://app.groovelinx.com/index-dev.html` (generated from `index.html` via `scripts/generate-dev-html.js`)
 - **Cloudflare Worker:** `deadcetera-proxy` — last redeployed 2026-05-24 (Phase 4C `plan_priors` passthrough)
@@ -64,7 +64,7 @@ Per `00_Governance/CURRENT_PRIORITIES.md` + Drew's 2026-05-25 convergence-pressu
 | C4 | Status badge (`STATUS_LABELS`) | ✅ shipped via Stab #04 | — | CANONICAL_SYSTEMS |
 | C5 | `GLBandFeedStore` ownership | ✅ Phase 1 complete · ⏸ Phase 2 (multi-path updates) deferred | Drew | STABILIZATION_DASHBOARD |
 | C6 | Per-route lifecycle (`GLRouteLifecycle`) | ✅ shipped via Stab #03 | — | CANONICAL_SYSTEMS |
-| **C7 (NEW)** | **Readiness Canonicalization** | 🔴 OPEN — explicit initiative not yet declared in governance | Drew + ChatGPT to define | System mapping finding 2026-05-25 |
+| **C7 (proposed)** | **Readiness Canonicalization** | ✅ **IMPLEMENTED 2026-05-25 as Stab #15** (canonical 6-band GLStatus model + top-site migrations + anti-drift UAT). Numbering pending Drew + ChatGPT formalization. | Drew + ChatGPT | STABILIZATION_DASHBOARD Stab #15 |
 | **C8 (NEW)** | **GrooveMate Convergence Execution** | 🔴 OPEN — committed in `gl-groovemate.js` header comment, no governance backing | Drew + ChatGPT to define | System mapping finding 2026-05-25 |
 | — | **Entity-model declaration** | 🔴 OPEN — `rehearsal_song_dna_relationship_model.md` needs promotion to `00_Governance/CANONICAL_SYSTEMS.md` | Drew | Cited by 5 of 7 system maps |
 | — | Notes/takes/recordings/tasks migration | ⏳ Phase 1 (annotations) shipped, Phase 2/3 pending | — | Mid-migration drift risk |

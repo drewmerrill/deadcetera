@@ -286,6 +286,43 @@ Every feature in GrooveLinx must follow these principles.
 
 ---
 
+## Progressive Capability Depth
+
+_Added 2026-05-25 after UX Convergence Pass 1, reinforced by the founder UX review._
+
+GrooveLinx should feel simple at first contact, but reveal increasing depth as musical and operational sophistication increases.
+
+**Do NOT remove capability by default.**
+**Reduce simultaneous importance.**
+**Make power contextual, discoverable, and progressive.**
+
+GrooveLinx serves both:
+
+* the casual band member who needs to know what to practice tonight
+* the working musician who needs deep multitrack analysis, harmony stem isolation, fingerprint-corpus training data, and per-segment marker workflows
+
+These users see different surfaces, not different products. The product depth must remain intact; the UI hierarchy decides what is visible by default versus what is revealed by intent.
+
+**Mechanisms that satisfy this principle:**
+
+* Tools dropdowns that consolidate secondary actions without removing them
+* Per-kind visual weight that lets dominant content recede when not the focus
+* Progressive disclosure ("Show all") on instructional / onboarding text
+* Power-user surfaces (Isolate Mode, Custom Mix, Stems ZIP) reachable in 1-2 clicks but not occupying the default hierarchy
+* Contextual reveal — advanced controls surface when a workflow makes them relevant, not as ambient noise
+
+**What this principle rules out:**
+
+* Broad feature removal as a default response to UX friction
+* Random simplification that loses capability
+* Hiding critical workflows so deep they become discoverable only by accident
+* Creating new duplicate surfaces in pursuit of simplicity
+* Marketing "AI-first" / "everything visible" capability comparisons
+
+Reduce cognitive simultaneity, not product depth.
+
+---
+
 ## Simplicity
 
 Musicians should never feel overwhelmed.
