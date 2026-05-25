@@ -1,6 +1,6 @@
 # CURRENT SYSTEM STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 18:32 UTC · **Build under test:** `20260525-183202` · **HEAD commit:** pending C7 Stab #15
+**Last updated:** 2026-05-25 19:00 UTC · **Build under test:** `20260525-185925` · **HEAD commit:** pending GLPriority Phase 1 + Custom Mix audit
 
 > **What this doc is.** A compact, rolling, operational export of GrooveLinx state — designed for AI synchronization (esp. ChatGPT ↔ Claude) without massive conversational replay. Not a journal. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -11,7 +11,7 @@
 ## 1. Build truth
 
 - **Production:** `https://app.groovelinx.com` — Vercel auto-deploys on push to `main`
-- **Live build:** `20260525-183202` (C7 / Stab #15 — Readiness Canonicalization: GLStatus 6-band model + top-site migrations + anti-drift UAT)
+- **Live build:** `20260525-185925` — Operational Prioritization Layer Phase 1: GLPriority canonical orchestration composer + Home priority hero (replacing Smart Nudge / Next-Action / Focus Areas competition) + 3 anti-drift UAT assertions
 - **Local dev:** `http://localhost:8000` via `python3 -m http.server 8000` (Playwright `webServer` auto-starts)
 - **Dev shell:** `https://app.groovelinx.com/index-dev.html` (generated from `index.html` via `scripts/generate-dev-html.js`)
 - **Cloudflare Worker:** `deadcetera-proxy` — last redeployed 2026-05-24 (Phase 4C `plan_priors` passthrough)

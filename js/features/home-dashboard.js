@@ -116,6 +116,7 @@ async function _hdRenderInternal() {
         _scheduleBandAlignFill();
         _renderHdPollCard();
         _loadActivityFeed();
+        _hdRenderPriorityHero(bundle); // Operational Prioritization Layer Phase 1
     } catch (err) {
         console.warn('[Home] Load error:', err);
         container.innerHTML = _renderErrorState();
@@ -830,6 +831,115 @@ function _renderIntentSection() {
         + '<button onclick="showPage(\'rehearsal\')" style="' + _secBtn + ';border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac">\uD83E\uDD41 Start Rehearsal</button>'
         + '<button onclick="if(typeof gigLaunchLinkedSetlist===\'function\'){var sl=(window._glCachedSetlists||[]);if(sl.length)gigLaunchLinkedSetlist(sl[0].name);else showPage(\'gigs\');}else showPage(\'gigs\')" style="' + _secBtn + ';border:1px solid rgba(245,158,11,0.15);background:rgba(245,158,11,0.04);color:#fbbf24">\uD83C\uDFA4 Play a Gig</button>'
         + '</div>';
+}
+
+// ── Priority Hero (Operational Prioritization Layer Phase 1, 2026-05-25) ────
+// Reads GLPriority.computeTopPriorities() and renders a single hero card
+// REPLACING the competition between Smart Nudge + Next-Action + Focus Areas.
+// Per Drew's directive: "What matters MOST right now?" — one answer, not five.
+//
+// When items > 0: hero is the primary surface; downstream Smart Nudge /
+//   Next-Action / Focus Areas dim to 0.5 opacity + smaller heading (Progressive
+//   Capability Depth: preserved, not deleted).
+// When items === 0: hero hides; old narrative renders at full weight.
+//
+// Hero action buttons route through `showPage()` / `selectSong()` per the
+// item's `action.target` field. NO new global handlers — uses existing
+// navigation surface.
+async function _hdRenderPriorityHero(bundle) {
+    var slot = document.getElementById('hdPriorityHero');
+    if (!slot) return;
+    if (typeof GLPriority === 'undefined' || !GLPriority.computeTopPriorities) {
+        // Module not loaded — leave placeholder empty; existing narrative
+        // renders at full weight.
+        slot.style.display = 'none';
+        return;
+    }
+    var items = [];
+    try {
+        items = (await GLPriority.computeTopPriorities({
+            tonightPlanSongs: (bundle && bundle.tonightPlanSongs) || [],
+            members: (bundle && bundle.members) || ((typeof bandMembers !== 'undefined') ? bandMembers : {}),
+            maxItems: 5,
+        })) || [];
+    } catch (e) {
+        console.warn('[GLPriority] hero render skipped:', e && e.message);
+        slot.style.display = 'none';
+        return;
+    }
+    if (!items.length) {
+        slot.style.display = 'none';
+        return;
+    }
+    var primary = items.slice(0, 3);
+    var more = items.slice(3);
+    var rows = primary.map(function(it) {
+        var safeReason = _escHtml(it.reason || '');
+        var label = (it.action && it.action.label) || 'Open';
+        var target = (it.action && it.action.target) || 'home';
+        // Per-kind accent — visual reinforcement that surfaces the signal
+        // source without hiding it. Per CANONICAL_SYSTEMS.md the reason MUST
+        // name the source; the accent color is supplementary.
+        var accent =
+            it.kind === 'gig-readiness-gap' ? '#ef4444' :
+            it.kind === 'gig-no-rehearsal'  ? '#f59e0b' :
+            it.kind === 'rsvp-gap'          ? '#fbbf24' :
+            it.kind === 'plan-neglect'      ? '#a5b4fc' :
+            it.kind === 'practice-neglect'  ? '#94a3b8' :
+                                              '#a5b4fc';
+        return '<div class="hd-priority-row" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid rgba(255,255,255,0.05)">'
+            + '<div style="width:3px;align-self:stretch;background:' + accent + ';border-radius:2px;flex-shrink:0"></div>'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:0.84em;color:var(--gl-text,var(--text));line-height:1.4">' + safeReason + '</div>'
+            + '</div>'
+            + '<button onclick="showPage(\'' + target + '\')" style="flex-shrink:0;background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;border-radius:6px;padding:5px 12px;font-size:0.78em;font-weight:600;cursor:pointer">' + _escHtml(label) + ' →</button>'
+            + '</div>';
+    }).join('');
+    var moreToggle = more.length
+        ? '<button onclick="(function(){var el=document.getElementById(\'hdPriorityMore\');var b=document.getElementById(\'hdPriorityMoreBtn\');if(el&&b){el.style.display=\'block\';b.style.display=\'none\';}})()" id="hdPriorityMoreBtn" style="margin-top:8px;background:none;border:none;color:var(--accent-light,#818cf8);font-size:0.75em;cursor:pointer;padding:4px 0;text-decoration:underline">Show ' + more.length + ' more</button>'
+            + '<div id="hdPriorityMore" style="display:none">' + more.map(function(it) {
+                var safeReason = _escHtml(it.reason || '');
+                return '<div style="font-size:0.78em;color:var(--text-muted);padding:6px 0;border-top:1px solid rgba(255,255,255,0.04)">· ' + safeReason + '</div>';
+            }).join('') + '</div>'
+        : '';
+    slot.innerHTML =
+        '<div class="hd-priority-hero" style="padding:14px 16px;margin-bottom:14px;border-radius:12px;'
+        + 'background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(99,102,241,0.02));'
+        + 'border:1px solid rgba(99,102,241,0.25)">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:0.7em;font-weight:800;color:#a5b4fc;text-transform:uppercase;letter-spacing:0.08em">🎯 What matters most right now</span>'
+        + '</div>'
+        + rows
+        + moreToggle
+        + '</div>';
+    slot.setAttribute('data-state', 'populated');
+    slot.setAttribute('data-item-count', String(items.length));
+
+    // Visually demote downstream Smart Nudge / Next-Action / Focus Areas so
+    // the hero owns primary attention. Per Progressive Capability Depth:
+    // these surfaces remain present + functional, just subordinated.
+    var demote = function(sel) {
+        var el = document.querySelector(sel);
+        if (el) { el.style.opacity = '0.55'; el.style.transform = 'scale(0.98)'; el.style.transformOrigin = 'top left'; }
+    };
+    // Risk card + Next-Action + Focus Areas don't all have dedicated IDs;
+    // we demote by class/structure. Safe-fail if absent.
+    try {
+        var leftCol = document.querySelector('.hd-left, [class*=hd-left]') || document.querySelector('#hdMainCol');
+        if (leftCol) {
+            // Find sibling cards after the priority hero and dim them.
+            var children = leftCol.children;
+            var seenHero = false;
+            for (var i = 0; i < children.length; i++) {
+                var c = children[i];
+                if (c && c.id === 'hdPriorityHero') { seenHero = true; continue; }
+                if (!seenHero) continue;
+                // Stop at activity feed / installer / band-room cards — keep those at full weight
+                if (c.id && /Activity|hdPollCard|hdPostRehearsalPrompt/.test(c.id)) break;
+                if (c.style) { c.style.opacity = '0.55'; c.style.transformOrigin = 'top left'; }
+            }
+        }
+    } catch (_e) { /* best-effort */ }
 }
 
 // ── Next Action Card — single dominant CTA based on state ────────────────────
@@ -1580,12 +1690,28 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     var _nudge = _renderSmartNudge(bundle);
     var _focusItems = (focus.list || []).slice(0, 3);
     var _streak = _buildPracticeStreak();
+
+    // ── GLPriority hero (Operational Prioritization Layer Phase 1, 2026-05-25)
+    // Single canonical answer to "what matters most right now?" Replaces the
+    // 5-way competition between Smart Nudge / Next-Action / Focus Areas /
+    // Risk Card / GrooveMate ambient. Async render — the placeholder div
+    // below is hydrated by _hdRenderPriorityHero() after first paint.
+    // When the hero produces 1+ items, downstream surfaces are visually
+    // demoted (opacity, smaller label) — preserved per Progressive
+    // Capability Depth, not deleted. When 0 items, downstream surfaces
+    // render at full weight (the old narrative applies).
+    var _priorityHeroPlaceholder = '<div id="hdPriorityHero" data-state="loading"></div>';
     var _committed = false;
     try { _committed = localStorage.getItem('gl_committed_today') === _todayStr(); } catch(e) {}
 
     // ── LEFT: one narrative surface (context → action → focus) ──
     // No separate cards — flows as a single story
     var _leftHtml = '';
+
+    // Priority hero — top of the narrative (renders empty initially, hydrates
+    // after first paint via _hdRenderPriorityHero()). When populated, the
+    // downstream Risk Card / Next Action / Focus Areas are visually demoted.
+    _leftHtml += _priorityHeroPlaceholder;
 
     // ── GrooveMate ambient suggestion (additive — does NOT replace any
     // existing hero). Renders as a small card above the rest of the home

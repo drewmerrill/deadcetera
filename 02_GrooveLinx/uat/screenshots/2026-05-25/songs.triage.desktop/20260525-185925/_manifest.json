@@ -1,10 +1,10 @@
 {
   "flow": "songs.triage.desktop",
   "knownStableFlow": "Songs page triage",
-  "build": "20260525-183202",
+  "build": "20260525-185925",
   "commit": null,
-  "ranAt": "2026-05-25T18:41:00.799Z",
-  "elapsedMs": 6283,
+  "ranAt": "2026-05-25T19:00:56.121Z",
+  "elapsedMs": 5493,
   "runStatus": "pass",
   "runError": null,
   "viewport": "desktop",
@@ -18,47 +18,47 @@
     {
       "id": "boot",
       "ok": true,
-      "elapsedMs": 3002
+      "elapsedMs": 2421
     },
     {
       "id": "signin",
       "ok": true,
-      "elapsedMs": 192
+      "elapsedMs": 199
     },
     {
       "id": "wait-app-ready",
       "ok": true,
-      "elapsedMs": 1180
+      "elapsedMs": 1186
     },
     {
       "id": "nav-songs",
       "ok": true,
-      "elapsedMs": 138
+      "elapsedMs": 93
     },
     {
       "id": "settle",
       "ok": true,
-      "elapsedMs": 823
+      "elapsedMs": 804
     },
     {
       "id": "shot-songs-initial",
       "ok": true,
-      "elapsedMs": 384
+      "elapsedMs": 262
     },
     {
       "id": "shot-songs-full",
       "ok": true,
-      "elapsedMs": 472
+      "elapsedMs": 440
     }
   ],
   "screenshots": [
     {
       "step": "shot-songs-initial",
-      "file": "02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260525-183202/01-shot-songs-initial.png"
+      "file": "02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260525-185925/01-shot-songs-initial.png"
     },
     {
       "step": "shot-songs-full",
-      "file": "02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260525-183202/02-shot-songs-full.png"
+      "file": "02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260525-185925/02-shot-songs-full.png"
     }
   ],
   "consoleErrors": [],

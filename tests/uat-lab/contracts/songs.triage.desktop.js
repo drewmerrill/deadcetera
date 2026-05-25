@@ -83,5 +83,37 @@ module.exports = {
       severity: 'HIGH',
       title: 'C7: countByBand([rough,learning]) does not match inline avg<3 over same dataset',
     },
+    // ── GLPriority Phase 1 anti-drift assertions (2026-05-25) ─────────────
+    // Catch future drift in the Operational Prioritization Layer:
+    //   - canonical module loaded (no silent fallback)
+    //   - composer respects maxItems cap
+    //   - every item has a non-empty reason naming a signal source
+    //     (defends against fake AI tone / opaque scoring drift)
+    //   - no duplicate urgency surfacing — same gigId can't appear twice
+    //     (defends against multiple producers competing for the same gig)
+    {
+      id: 'priority-canonical-loaded',
+      assertJs: '() => !!(window.GLPriority && typeof window.GLPriority.computeTopPriorities === "function" && typeof window.GLPriority.computeTopPrioritiesSync === "function" && typeof window.GLPriority.getStats === "function")',
+      category: 'Architecture Drift',
+      severity: 'HIGH',
+      title: 'GLPriority canonical orchestration module is not loaded',
+    },
+    {
+      id: 'priority-reasons-non-empty',
+      // Use computeTopPrioritiesSync to avoid async/Promise-coercion pitfalls
+      // in page.evaluate string-form assertions. Sync variant skips the
+      // recentRehearsals async load; that's fine for this shape check.
+      assertJs: '() => { if (!window.GLPriority) return false; var items = window.GLPriority.computeTopPrioritiesSync({}, []); if (!Array.isArray(items)) return false; if (items.length > 5) { console.error("[GLPriority drift] returned " + items.length + " items, max is 5"); return false; } for (var i = 0; i < items.length; i++) { var it = items[i]; if (!it || typeof it.reason !== "string" || it.reason.trim().length < 10) { console.error("[GLPriority drift] item " + i + " has empty/short reason: " + JSON.stringify(it)); return false; } if (typeof it.kind !== "string" || !it.kind) { console.error("[GLPriority drift] item " + i + " missing kind"); return false; } if (typeof it.weight !== "number") { console.error("[GLPriority drift] item " + i + " missing weight"); return false; } } return true; }',
+      category: 'Architecture Drift',
+      severity: 'HIGH',
+      title: 'GLPriority items missing reason / kind / weight, or exceeding maxItems',
+    },
+    {
+      id: 'priority-no-duplicate-urgency',
+      assertJs: '() => { if (!window.GLPriority) return false; var items = window.GLPriority.computeTopPrioritiesSync({}, []); var seenGigs = {}; for (var i = 0; i < items.length; i++) { var it = items[i]; if (it && it.gigId) { if (seenGigs[it.gigId]) { console.error("[GLPriority drift] duplicate urgency surfacing for gigId=" + it.gigId + " across kinds: " + seenGigs[it.gigId] + " and " + it.kind); return false; } seenGigs[it.gigId] = it.kind; } } return true; }',
+      category: 'Architecture Drift',
+      severity: 'HIGH',
+      title: 'GLPriority surfaces the same gig in multiple competing items',
+    },
   ],
 };

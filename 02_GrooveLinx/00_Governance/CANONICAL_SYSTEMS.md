@@ -73,6 +73,59 @@ Migrate these in a follow-up pass when those surfaces are touched for other reas
 
 ---
 
+## Operational Priority Orchestration (Operational Prioritization Layer Phase 1, 2026-05-25 — Stab numbering proposed, awaiting Drew + ChatGPT formalization in STABILIZATION_DASHBOARD.md)
+
+Canonical owner:
+`window.GLPriority` (in `js/core/gl-priority.js`)
+
+The single canonical answer to **"What matters MOST right now?"** — a transparent compositional layer that ranks operational priorities from existing canonical signals. Per Drew's commission 2026-05-25: prevents the "simultaneous importance syndrome" of competing urgency systems (Smart Nudge + Next-Action + Focus Areas + GrooveMate ambient + NBA) drifting independently. Declared BEFORE Home rollout per Drew's explicit "avoid another C7 situation later" directive.
+
+**Authoritative API:**
+- `GLPriority.computeTopPriorities(opts)` → Promise resolving to ranked array of `{kind, weight, reason, action, ...}` (highest urgency first)
+- `GLPriority.computeTopPrioritiesSync(opts, recentRehearsals)` → synchronous variant for surfaces with hydrated data (Runtime Health, tests)
+- `GLPriority.getStats()` → `{producers, maxItemsDefault, readinessOwner, lastRunAt, lastRunDurationMs, lastItemCount}` for Runtime Health overlay
+
+**Output item shape:**
+```
+{
+  kind: 'gig-readiness-gap' | 'gig-no-rehearsal' | 'rsvp-gap' | 'plan-neglect' | 'practice-neglect',
+  weight: number,                  // higher = more urgent; ordering only, not user-facing
+  reason: string,                  // band-felt, specific, names the signal source
+  action: { label, target, payload? },
+  // kind-specific fields: gigId / venue / daysOut / songTitle / missingMembers / ...
+}
+```
+
+**Phase 1 signal producers (transparent compositional rules — NOT AI scoring):**
+1. **gig-readiness-gap** — `GLStore.getGigs() ∩ getSetlists()` within lookahead → `GLStatus.filterByBand(setlistSongs, ['rough','learning','unknown'])`. Example reason: `"Southern Roots Tavern in 5 days — 2 in Rough, 3 in Learning (Franklin's Tower, Sugaree, ...)"`
+2. **gig-no-rehearsal** — `getGigs()` ≤ 14 days out ∩ zero `RehearsalSession.loadRecent` entries between now and gig. Example: `"No rehearsal scheduled before Southern Roots Tavern (8 days out)"`
+3. **rsvp-gap** — `RehearsalSession.loadRecent` upcoming ≤7d ∩ `rsvps[memberKey].status !== 'yes'`. Example: `"Brian and Pierce still haven't RSVP'd for tomorrow's rehearsal"`
+4. **plan-neglect** — today's `rehearsal_plan_{YYYY-MM-DD}` ∩ `localStorage.glSongPracticeStats.{title}.lastPracticedAt > 14 days`. Example: `"3 on tonight's plan unpracticed: In Memory of Elizabeth Reed (45d), Birthday (28d), Deep Elem (never practiced)"`
+5. **practice-neglect** — active songs ∩ `lastPracticedAt > 30 days` ∩ band ≠ {`gigReady`,`locked`}. Single item per run (deliberately bounded). Example: `"One Way Out — 47 days since last practice"`
+
+**Prohibited:**
+- New inline "what should I do next" computations in feature files. Surfaces consume `GLPriority.computeTopPriorities()` instead of forking their own ranking.
+- Opaque AI scoring / fake motivational reasons. Every priority item's `reason` field MUST name the signal source so the user can trace it (e.g., "In Saturday's setlist — Rough band" not "AI recommends this song").
+- Adding a new ranking input outside `js/core/gl-priority.js`. New producers belong in the `_PRODUCERS` array there, not in feature files.
+- Surfacing GrooveMate / NBA / Smart Nudge / Next-Action alongside `GLPriority`. They are predecessors being REPLACED, not peers (per Drew's "Replace, don't add" directive). When `GLPriority` ships on Home, those surfaces are subordinated/removed per Progressive Capability Depth (`specs/groovelinx_product_philosophy.md`).
+
+**Permitted (intentional exceptions):**
+- Tier B Founder Experience UAT findings (`uat_lab_v1.md` §4) can FLAG priority-layer issues but don't compute their own priority.
+- GrooveMate may eventually consume `GLPriority` as a signal source (C8 decision). NOT the other way around.
+- Surfaces other than Home may CONSUME priority items contextually (e.g., a `🎯 in next setlist` chip on Song Detail) but don't RANK them differently.
+
+**Anti-drift enforcement:**
+- `tests/uat-lab/contracts/songs.triage.desktop.js` carries 3 HIGH-severity `Architecture Drift` assertions: GLPriority loaded + helpers present; `computeTopPriorities()` returns ≤5 items with non-empty reasons; no two items refer to the same `gigId` (catches duplicate-urgency surfacing). Run via `node scripts/uat-lab/run.js songs.triage.desktop`.
+
+**Conscious deferrals (Phase 2+):**
+- Marker-based "recent rehearsal findings" surfacing — zero marker data today (UX Convergence Pass 1 shipped them this morning).
+- Annotation staleness — Annotation primitive Phase 2/3 not built (see `system/FEATURE_LINEAGE.md`).
+- Stabilization-queue items as priority — markdown queue, not programmatically queryable.
+- Per-member personalization — Phase 2.
+- Mobile/iPhone hero surface — UAT Lab Phase 2 contract.
+
+---
+
 ## Song Status — Active Set
 Canonical owner:
 `GLStore.ACTIVE_STATUSES` + `GLStore.isActiveSong(title)` (in `js/core/groovelinx_store.js`)
