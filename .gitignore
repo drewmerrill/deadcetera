@@ -28,6 +28,7 @@ node_modules/
 # --- Test artifacts (Playwright) ---
 test-results*/
 playwright-report/
+.playwright-mcp/
 
 # --- macOS junk ---
 .DS_Store

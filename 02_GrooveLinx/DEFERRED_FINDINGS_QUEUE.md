@@ -303,6 +303,38 @@ orphan helpers, broken fallbacks.
   - **Discovered:** 2026-05-23 · 9d7a85df (issue #47)
   - **Status:** open
 
+- **Finding:** Phase 4C `plan_priors` matching is deployed (worker
+  passthrough + Modal `segment_endpoint` reads + 1.5× boost in
+  `_match_segment_to_setlist`) but no existing multitrack session
+  surfaces the `🎯 ON PLAN` chip — the Phase 4B+4C UAT pass on
+  2026-05-25 confirmed 0/141 segments on `rsess_mt_mpju4yyn_7pko`
+  carry `onPlan` / `planMatch` / `provenance.matchSource='plan'`.
+  Root cause: the only multitrack sessions in `bands/deadcetera/
+  rehearsal_sessions` (`rsess_mt_moz3077x_5793` from 5/10 and
+  `rsess_mt_mpju4yyn_7pko` from 5/24) were both analyzed BEFORE
+  Phase 4C shipped, so their segment objects predate the
+  `provenance` schema and never went through the plan-prior code
+  path. Feature is shipped, data is stale.
+  - **Why deferred:** No new bug — Phase 4C works for the next
+    rehearsal that runs through Analyze. Backfilling old sessions
+    requires re-running `_mtAnalyzeRun` per session, which is a
+    paid Modal call (~5-15 min each for a 3-hour rehearsal).
+    Premature to backfill before Drew has seen the chip on a
+    fresh session and decided it's worth the spend.
+  - **Trigger:** (a) next multitrack rehearsal lands — verify the
+    chip surfaces on the fresh analysis without action; OR (b)
+    Drew explicitly wants the chip visible on `rsess_mt_mpju4yyn_7pko`
+    today for screenshot/demo purposes — then hit `🎯 Analyze` in
+    that session's transport to re-run with current plan priors.
+  - **Implementation sketch (if Drew wants opportunistic backfill):**
+    a one-shot `scripts/reanalyze-with-plan-priors.js` that walks
+    `bands/{slug}/rehearsal_sessions/*` where `type === 'multitrack'`
+    and `analysis.story.segments[0].provenance == null`, queues
+    `_mtAnalyzeRun` for each. Skips sessions older than ~90 days.
+    Idempotent. Logs Modal cost per session.
+  - **Discovered:** 2026-05-25 · 87ec930b (Phase 4B+4C UAT)
+  - **Status:** open
+
 ## 2. UX Coherence Debt
 
 Inconsistent terminology, duplicate interaction models, source

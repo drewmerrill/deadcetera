@@ -2,14 +2,16 @@
 
 **Build Under Test:** 20260524-193407
 
+> **2026-05-25 UAT pass (Playwright MCP).** All 5 Phase 4B+4C visual checks + all 4 Bug #17 acceptance criteria were driven against the 5/18 multitrack session (`rsess_mt_mpju4yyn_7pko`) on the live `app.groovelinx.com` build. **Net: 5 clean passes** (Phase 4B+4C #1/#2/#3/#5, Bug #17 AC2), **1 architecture pass** (Bug #17 AC1 — Review Mode default + render exists, cold-start UI not exercised), **2 feature-deployed-but-data-gapped** (Phase 4B+4C #4 ON PLAN chip — plan_priors not in pre-4C analyses; Bug #17 AC3 §8.1 banner — gated on missing `session.durationSec`), **1 real bug found** (Bug #17 AC4 Export Mix surfaced new Bug #19). Two new bugs opened (#18, #19); one item added to the Deferred Findings Queue (Phase 4C plan_priors re-analyze for old sessions). See Bug #17 entry below for per-AC verdict + screenshots in `02_GrooveLinx/uat/screenshots/2026-05-25/` (`mt-review-modal.png`, `mt-row-expanded.png`, `isolate-mode.png`, `export-after.png`).
+
 > **2026-05-25 recovery update.** Between the original Bug #17 fix at build `20260524-170407` and the current build `20260524-193407`, six commits shipped the Rehearsal Intelligence Convergence sprint (Phases 2 → 4B+4C) on top of the multitrack render pipeline. Modal `segment.py` + `render.py` were redeployed during the sprint; worker was redeployed for Phase 4C plan-priors passthrough. The Bug #17 architectural fix (Review Mode as default + Isolate Mode as opt-in) is still in effect and was extended by Custom Mix UX (commit `48a697ab`: 🔊 30s preview, phase progress timeline, "Close (keeps running)" relabel). The "Awaiting deploy" status below is **superseded** — deploys happened during the sprint. Visual verification of Phase 4B+4C is what's outstanding now; see `CLAUDE_HANDOFF.md` top entry. The original Bug #17 acceptance criteria (4 items) remain valid.
 
 ## Open
 
-### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH — FIX SHIPPED + DEPLOYED, AWAITING IN-BROWSER VERIFICATION)
+### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH — ARCHITECTURE VERIFIED 2026-05-25, AC3/AC4 SURFACED FOLLOW-ON BUGS)
 
 **Build shipping the fix:** `20260524-170407` (architectural fix); extended through `20260524-193407` (Custom Mix UX + Phase 4 trust engineering)
-**Status:** Architectural fix shipped AND deployed — Review Mode (single stream) is the default playback path; 17-stream sync is now an opt-in "Isolate Stems" toggle behind a honest banner. Drift is **structurally eliminated** for the >99% review use case (one stream, one clock). Modal `services/multitrack-render/render.py` and worker.js were deployed during the 2026-05-24 evening sprint. Custom Mix UX (commit `48a697ab`) added per-render phase progress + 🔊 30s preview so users can A/B mixes without committing to a full render. **What's left:** Drew's in-browser verification per the 4 acceptance criteria below.
+**Status (2026-05-25 UAT):** Core fix verified — Review Mode (single stream) is the default, far seek is fast, and structural drift is eliminated. AC1 + AC2 PASS clean. AC3 (Isolate banner) revealed missing `session.durationSec` field → tracked as **Bug #18**. AC4 (Export Mix) revealed Modal-502 + JSON-parse silent-fail in the polling loop → tracked as **Bug #19**. Bug #17 itself is **considered resolved**; the new bugs are independent issues that surfaced through the AC tests but do not regress the architectural fix.
 
 **What was shipped (code-only, deploy pending):**
 - **R1** `services/multitrack-render/render.py` — Modal endpoint that pulls per-track FLACs from R2, applies a mix recipe (gain/mute/solo/reverbSend/master wet) via ffmpeg, renders WAV/MP3/FLAC, uploads back to R2.
@@ -21,11 +23,56 @@
 
 **Why this is the architectural fix (not another patch):** Three browser-side patches in the prior session all failed because the problem is structural — 17 streams × 6-connection-per-origin cap = 20-30s tail latency on far seeks, plus HTML5 `<audio>` elements with independent clocks. Single-stream playback has 1 clock and 1 range request. Drift is impossible.
 
-**Acceptance criteria (Drew, after deploy):**
-1. Open a multitrack rehearsal that has no render yet → expect "⏳ Preparing review mix…" → ~30-60s later flips to "✓ Rendered" → ▶ Play works.
-2. Seek to 90:00 → lands in <1s.
-3. 🎚 Isolate → 17-stream player opens with §8.1 banner → seek may still take 20-30s (acknowledged trade-off; the user is in opt-in territory).
-4. 📤 Export Mix → pick mp3 → ~30-60s wait → file downloads.
+**Acceptance criteria (Drew, after deploy) — UAT results 2026-05-25:**
+1. **AC1 (auto-render on session open)** — ✅ **ARCHITECTURE PASS.** `_mtOpenPlayer('rsess_mt_mpju4yyn_7pko')` opened Review Mode with the `single stream` badge. `/multitrack/render/status` returned 4 existing renders for this session; the player loaded the auto-rendered mix cleanly. Cold-start UI (no-render → "⏳ Preparing review mix…" → "✓ Rendered") was not exercised because renders already exist on the test session — needs a brand-new session for full end-to-end visual confirmation.
+2. **AC2 (far seek lands fast)** — ✅ **PASS — 169ms.** Loaded the 11,274-second (3:07:54) full auto-render, set `audio.currentTime = 5400` (90:00), measured time-to-`seeked` event: **169 ms**, `readyState = 4` (HAVE_ENOUGH_DATA). Well under the 1s spec. Single-stream architecture confirmed end-to-end.
+3. **AC3 (Isolate + §8.1 banner)** — ⚠️ **TOGGLE PASS, BANNER BLOCKED.** 🎚 Isolate switches cleanly into the 17-stream player (Mute/Solo/Reverb/Volume per row visible). §8.1 banner code is in place at `multitrack-rehearsal.js:1206` but gated on `session.durationSec ≥ 30 min`; the session's Firebase record has **no `durationSec` field** (3:07:54 only known from the audio file itself). Tracked as **Bug #18** below.
+4. **AC4 (Export Mix → mp3 → download)** — ❌ **FAILED — silent error.** Front-end fires correctly: `📤 Export` → native prompt for format → POST `/multitrack/render/start` → live `⏳ Rendering (Ns)…` timer counts up. After ~150s the button reverted to `📤 Export` with no download surfaced. Console reveals `/multitrack/render/check` returned **502** with body literal `"modal-http…"` (Modal HTTP-level error string, not JSON). Frontend hit `SyntaxError` trying to `.json()` it and silently abandoned the poll (`multitrack-rehearsal.js:1824`). Pipeline itself works — `custom-1779662941171.mp3` (450 MB) was successfully produced on this same session 17h earlier. Tracked as **Bug #19** below.
+
+### Bug #18 — Multitrack session is missing `durationSec` → §8.1 long-session banner never fires (MED — OPEN)
+
+**Build first seen:** `20260524-193407` (UAT pass 2026-05-25)
+**Reporter:** Playwright MCP UAT, surfaced as a side-effect of Bug #17 AC3
+**Surface:** Isolate Mode (`js/features/multitrack-rehearsal.js:1144` `_mtOpenIsolateMode`)
+
+**Symptom:** The §8.1 honest banner ("Long-session multi-stream playback may drift on far seeks. Switch to Review Mode…") is supposed to render when the session duration ≥ 30 min. On `rsess_mt_mpju4yyn_7pko` (a 3:07:54 rehearsal — well over the threshold), the banner does NOT render. User is left in Isolate Mode with no honest warning about the known drift behavior the banner exists to communicate.
+
+**Root cause:** `_mtOpenIsolateMode` at line 1148 reads `session.durationSec || session.duration` from the Firebase session record. This 5/24 session's record has neither field — the keys present are `{analysis, createdAt, createdBy, date, mixState, multitrackSegments, sessionId, tracks, type, updatedAt, updatedBy, venue}`. The audio file itself is 11,274s but the duration is never persisted to Firebase. So `durHint = 0`, `showLongBanner = false`, and the banner is silently suppressed.
+
+**Suspected upstream:** Whichever code writes the multitrack session on upload (`_mtUploadOne` / `_mtMaybeFinalizeSession` chain in `multitrack-rehearsal.js`) does not capture per-track or master duration. The R2 audio file metadata has it; Firebase doesn't.
+
+**Fix sketch:**
+1. **Short-term (browser-side fallback):** when `_mtOpenIsolateMode` loads the session and `durationSec` is missing, read `audio.duration` off the master audio element once it fires `loadedmetadata`, then render or remove the banner based on the actual value. Doesn't fix the data gap but unblocks the banner immediately.
+2. **Long-term (persistence fix):** capture `audio.duration` during upload finalization (or render completion) and `db.update({durationSec: N})` into `bands/{slug}/rehearsal_sessions/{sid}`. Backfill existing sessions via a one-shot script reading R2 audio metadata.
+
+**Acceptance:** Open Isolate Mode on `rsess_mt_mpju4yyn_7pko` (or any session ≥ 30 min). Expect amber §8.1 banner at top of modal with "Switch to Review Mode" inline link. Dismissible via × button (persists hidden for the rest of the browser session).
+
+### Bug #19 — Export Mix `/render/check` 502 from Modal silently abandons render polling (HIGH — OPEN)
+
+**Build first seen:** `20260524-193407` (UAT pass 2026-05-25)
+**Reporter:** Playwright MCP UAT, Bug #17 AC4
+**Surface:** Export Mix flow (`js/features/multitrack-rehearsal.js:1824` `_mtExportRehearsalMix` polling loop)
+
+**Symptom:** User clicks `📤 Export` → picks `mp3` → button shows live `⏳ Rendering (Ns)…` timer. After ~2-3 minutes the button silently reverts to `📤 Export` with no download triggered, no toast, no error message. The user has no idea the render failed and cannot retry intelligently. UAT 2026-05-25 saw this at the 150s mark; no new render landed in R2.
+
+**Console trace:**
+```
+[ERROR] Failed to load resource: status 502 () @ https://deadcetera-proxy.drewmerrill.workers.dev/multitrack/render/check
+[WARNING] [Multitrack] export render failed: SyntaxError: Unexpected token 'm', "modal-http"... is not valid JSON @ multitrack-rehearsal.js:1824
+```
+
+**Root cause (two coupled issues):**
+1. **Worker passes Modal HTTP errors through verbatim.** When the Modal `/render/check` upstream returns a 502 with a body like `modal-http: function call timed out` (or any non-JSON Modal error envelope), the Cloudflare worker's `handleMultitrackRenderCheck` does NOT wrap it as a structured JSON error — it just streams the bytes back with the upstream status code. The frontend assumes every response body is JSON.
+2. **Frontend swallows the JSON parse exception.** The polling loop at `multitrack-rehearsal.js:1824` catches `SyntaxError` from `.json()`, logs a `[WARNING]` to console, and aborts the poll silently. No user-visible error, no retry, no telemetry write.
+
+**Pipeline IS working.** Same session has `custom-1779662941171.mp3` (450 MB) successfully rendered 17h earlier via the same `/multitrack/render/start` → `/multitrack/render/check` path. The 502 is a transient Modal-side error (likely a function-call timeout under load), not a structural break.
+
+**Fix sketch:**
+1. **Worker (`worker.js` `handleMultitrackRenderCheck`):** if upstream returns non-JSON or status ≥ 500, return `{ ok: false, error: 'modal_upstream', upstreamStatus: 502, body: <truncated text> }` as JSON. Frontend can then react meaningfully.
+2. **Frontend (`multitrack-rehearsal.js:1824`):** when the poll receives `{ok:false}` (or fails to parse), surface a visible toast/banner: "Export failed at render-check (Modal 502) — tap to retry". Don't silently revert the button.
+3. **Retry logic (optional):** on 5xx from `/render/check`, retry with exponential backoff up to 3 attempts before surfacing the error. Modal cold-starts often produce one transient 502.
+
+**Acceptance:** Trigger an Export Mix render. If Modal returns 502 at any point during polling: expect a visible error toast and a "Retry" button. The button should NOT silently revert to the default state.
 
 ### Bug #17 (legacy entry — superseded by the fix above)
 

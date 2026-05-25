@@ -2,7 +2,78 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-25 (recovery session after MacBook crash) — handoff reconstructed from git commits `68f09b83` → `87ec930b`. Build under test: `20260524-193407`._
+_Last updated: 2026-05-25 ~15:00 UTC — **Phase 4B+4C + Bug #17 UAT pass complete (Playwright MCP).** 9-item acceptance checklist closed: 5 clean passes, 1 architecture pass, 2 feature-deployed-but-data-gapped, 1 real bug. Two new bugs (#18, #19) filed; one Deferred Findings Queue item added. **No code changes this session.** Build still `20260524-193407`._
+
+_**UAT results — quick verdict per item:**_
+- _**Phase 4B+4C #1** (solid confidence chips) — ✅ PASS_
+- _**Phase 4B+4C #2** (progressive disclosure ▶ ⋯ ✓ ⊘ → ▶ ✂ ⛓ ↕ × ✓ ⊘) — ✅ PASS_
+- _**Phase 4B+4C #3** (sticky `🎵 Reviewing: …` header) — ✅ PASS_
+- _**Phase 4B+4C #4** (🎯 ON PLAN chip) — ⚠️ FEATURE DEPLOYED, NO DATA — predates Phase 4C analyzer. Added to Deferred Findings Queue._
+- _**Phase 4B+4C #5** (MT_SAFE_TITLE_THRESHOLD = 0.75 → "Possible: …" placeholders) — ✅ PASS_
+- _**Bug #17 AC1** (Review Mode default + auto-render) — ✅ ARCHITECTURE PASS (cold-start UI needs a render-less session)_
+- _**Bug #17 AC2** (far seek lands fast) — ✅ PASS — **169 ms** to seek to 90:00 on the full 3:07:54 mix_
+- _**Bug #17 AC3** (Isolate + §8.1 banner) — ⚠️ TOGGLE PASS, BANNER BLOCKED → opened **Bug #18** (session.durationSec field missing)_
+- _**Bug #17 AC4** (Export Mix → mp3 → download) — ❌ SILENT FAIL → opened **Bug #19** (Modal 502 + worker non-JSON passthrough + frontend `.json()` SyntaxError swallowed)_
+
+_**Bugs opened this session:** Bug #18 (MED — durationSec missing → §8.1 banner gated off), Bug #19 (HIGH — Export Mix `/render/check` 502 silently abandons polling). Both in `02_GrooveLinx/uat/bug_queue.md` with root cause + fix sketches + acceptance criteria._
+
+_**Deferred Findings Queue addition:** Phase 4C plan_priors not visible on pre-4C sessions — feature deployed, data stale; backfill script sketch included if Drew wants to surface chips on `rsess_mt_mpju4yyn_7pko` for demo._
+
+_**Screenshots (Playwright MCP, in `02_GrooveLinx/uat/screenshots/2026-05-25/`):** `mt-review-modal.png`, `mt-row-expanded.png`, `isolate-mode.png`, `export-after.png`._
+
+_**Playwright MCP operational notes worth remembering:**_
+- _Playwright launches its own Chrome with `--no-sandbox` (the yellow Chromium banner is cosmetic — it's the MCP-launched browser, not GrooveLinx)._
+- _The MCP Chrome profile carries NO cookies from Drew's normal browser. First UAT session requires Drew to complete Google OAuth once in the Playwright window before band data becomes reachable._
+- _The app uses Google OAuth for Drive scope only — `firebase.auth().currentUser` stays null even after sign-in. Don't gate test scripts on Firebase Auth state; use direct RTDB reads via the open `bands/.read: true` rule for inspection._
+- _Multitrack data lives at `bands/{slug}/multitrack_sessions/{sid}` and `bands/{slug}/rehearsal_sessions/{sid}` — NOT at top-level `multitrackSessions/*` (which is permission-denied)._
+- _Entry function: `window._mtOpenPlayer(sessionId)` opens Review Mode by default (correct path for AC1)._
+
+## Restart prompt for next session
+
+```
+Build under test still 20260524-193407 (commit 87ec930b). No code changes
+in the 2026-05-25 UAT session. Phase 4B+4C + Bug #17 have all 9 acceptance
+items closed — see CURRENT_PHASE.md top entry for per-item verdicts.
+
+TWO NEW BUGS opened this session (uat/bug_queue.md):
+  - Bug #18 (MED) — Multitrack session is missing `durationSec` field;
+    §8.1 long-session banner is silently suppressed on Isolate Mode for
+    sessions ≥ 30 min. Short-term browser-side fallback proposed (read
+    audio.duration on loadedmetadata); long-term needs upload finalization
+    to persist durationSec to Firebase + a backfill script.
+  - Bug #19 (HIGH) — Export Mix /render/check 502 from Modal returns a
+    non-JSON body ("modal-http..."); frontend hits SyntaxError and
+    silently abandons the poll. Worker needs to wrap Modal HTTP errors
+    as JSON envelopes; frontend needs to surface poll failures + retry.
+
+ONE DEFERRED ITEM in DEFERRED_FINDINGS_QUEUE.md:
+  - Phase 4C plan_priors are not visible on pre-4C sessions. The only two
+    multitrack sessions in bands/deadcetera/rehearsal_sessions were
+    analyzed before 4C shipped, so no segments carry `provenance.matchSource
+    = 'plan'`. Backfill script sketch included; only run if Drew wants
+    the chip visible on rsess_mt_mpju4yyn_7pko for screenshot/demo.
+
+SUGGESTED NEXT ACTIONS (in order):
+  1. Drew picks: ship Bug #19 fix first (HIGH, affects every Export Mix
+     attempt), or knock out Bug #18 + Phase 4C backfill first (lower
+     urgency, MED + cosmetic).
+  2. After fixes, re-run UAT for the affected ACs only (AC3 + AC4).
+  3. Bug #17 itself is considered resolved; the new bugs are independent.
+
+DO NOT:
+  - Re-touch the multitrack architecture (Review Mode default + single
+    stream + 17-stream Isolate behind toggle is verified working).
+  - Create new analyzer engines (Phase 4C plan_priors are already shipped
+    on the Modal side — just need the data to flow through old sessions).
+
+If Drew wants to UAT Spotify/YouTube next (cross-source teardown Bug #15
+was fixed 2026-05-20), Playwright MCP CAN drive it — needs Drew to
+complete Spotify OAuth once in the Playwright window first, same auth
+gate as Google. Setlist with mixed Spotify + YouTube source assignments
+is the test fixture.
+```
+
+_Previous: 2026-05-25 (recovery session after MacBook crash) — handoff reconstructed from git commits `68f09b83` → `87ec930b`. Build under test: `20260524-193407`._
 
 _**RECOVERY CONTEXT.** Drew's MacBook crashed late in the 2026-05-24 evening session, after a 6-commit sprint that shipped Rehearsal Intelligence Convergence Phase 2, Phase 3, Custom Mix UX, three UX nits, Phase 4A, and Phase 4B+4C. The repo is the source of truth — every commit pushed to `origin/main` before the crash. The Phase 1 handoff (below) is stale: Drew's "go" green-lit Phase 2; Phase 2 led to Phase 3 (Drew said proceed); a UAT pass produced the Custom Mix UX + UX-nit bundles; Phase 4A landed; Drew said "still feels analyzer-centric" → memory `feedback_rehearsal_review_centric` → ChatGPT reframe → Phase 4B+4C. Build went `20260524-202212 → 20260524-193407` across six commits with Modal redeploys for `segment.py` (Phase 3) + `render.py` (Custom Mix), and a worker redeploy for Phase 4C. See `CURRENT_PHASE.md` top entry for the full per-commit breakdown — it carries the canonical narrative of what landed._
 
