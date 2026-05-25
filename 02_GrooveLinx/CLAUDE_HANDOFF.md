@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-25 22:56 UTC · Build under test: `20260525-225157` · Commit: `9adcb4c3` · Branch: `main`_
+_Last refreshed: 2026-05-25 23:09 UTC · Build under test: `20260525-225157` (unchanged this turn) · Branch: `main` · Mode: **OBSERVATION PHASE** (Pass 2 mobile + render visibility live, awaiting in-the-wild reactions per Drew's 2026-05-25 23:00 UTC directive — "this is product anthropology, not feature expansion. Do not reopen broad convergence work yet.")_
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -106,6 +106,95 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-25 23:09 UTC — OBSERVATION PHASE active · Pass 2 reception logged · ingestion architecture spec commissioned
+
+**No code change this turn.** Build still `20260525-225157` (commit `9adcb4c3`). Drew's 23:00 UTC reception of Pass 2 explicitly framed the next phase as observation — "this is product anthropology, not feature expansion. Do not reopen broad convergence work yet" — then immediately commissioned a NEW architecture spec for X32/X-Live → Reaper → GrooveLinx ingestion (sep section below).
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260525-225157` (unchanged — observation-phase turn)
+* **Branch:** `main`
+* **Mode:** **OBSERVATION PHASE** — no broad convergence work until Pass 2 real-world evidence comes back
+* **Deployed systems:** browser live, Modal (Phase A.5 reverb fix STILL PENDING `modal deploy`), worker unchanged, R2 unchanged, Firebase unchanged
+* **Active convergence work:** none currently shipping. Mobile Convergence v1 paused at Pass 2; Passes 3/4 deferred per Drew. Render visibility consumer surface live since 22:56 UTC.
+* **Open bugs:** #17 architecture-verified · #18 MED (`durationSec` missing) · #19 HIGH → MITIGATED
+* **Stabilization items in flight:** none picked up this turn
+* **Active initiatives:** (1) **OBSERVATION** of Pass 2 in the wild; (2) **NEW: Recording Ingestion Architecture v1 spec** commissioned by Drew — covering X32/X-Live chunked recordings, Reaper-centered workflows, FAT32 chunk handling, sequential chunk validation, hex filename normalization, metadata-aware reconstruction, Reaper export templates, future direct X-Live ingestion + Recording Import Assistant + future recorder adapters. To be authored next, implementation spec only.
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — (a) Drew exercises Pass 2 in actual iPhone Safari + reports friction; (b) Drew runs `modal deploy services/multitrack-render/render.py` + A/B listens reverb; (c) Claude authors the Recording Ingestion Architecture v1 spec (NEW per Drew's 23:00 UTC directive — implementation-spec only, no code).
+* **NEXT** — Convert real friction findings from (a) into targeted Pass 2.5 patches OR sequence to Pass 3 mobile tabs. Convert ingestion spec into a phased implementation plan once Drew + ChatGPT review.
+* **LATER** — Pass 3 mobile (~200 LOC tabs); Pass 4 mobile (~100 LOC 6-category tag grouping); Drew's recommended-execution items 4-6 (continue A.5 render continuity → reverb verification → homepage emotional coherence pass once mobile stabilizes).
+* **DEFERRED** — Firebase-backed cross-device render sync (Open Decision #4); aecho→afir convolution swap (only if Phase A.5 ratio boost insufficient); Stab #N formalization; C7 Phase 2; UAT calendar contract; EXDATE bug; **progressive disclosure INSIDE focus mode** (Drew explicitly said "Do NOT implement immediately. Observe real user behavior first.").
+
+## 3. OPEN PRODUCT DECISIONS
+
+| # | Decision | Owner | Status |
+|---|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Drew + ChatGPT | Still open |
+| 2 | Calendar Model B (soft-cancel) | Drew + ChatGPT | Still open |
+| 3 | Operational Prioritization Phase 2 scope | Drew + ChatGPT | Still open |
+| 4 | Firebase-backed cross-device render sync | Drew | Still open |
+| 5 | Pass 3 vs Pass 4 vs non-mobile follow-up sequencing | Drew | Pending Pass 2 friction findings |
+| 6 | **Adoption-metric instrumentation for Pass 2 surfaces** | Drew | **NEW this turn** — see §4 |
+| 7 | **Recording Ingestion Architecture v1 — sequencing + scope of phased implementation** | Drew + ChatGPT | **NEW this turn** — pending spec landing |
+
+## 4. OPERATIONAL RISKS
+
+* **Modal deploy debt (3rd session in a row).** `services/multitrack-render/render.py` wet-branch ratio boost shipped 18:00 UTC ago and still hasn't taken effect. Every additional session reduces the cost of running `modal deploy` (1 minute) relative to the cost of misdiagnosis ("the reverb fix didn't work").
+* **Observation infrastructure gap for Pass 2 adoption metrics.** Audit this turn: `js/core/gl-ux-tracker.js` (Stab #10-adjacent) is live and writes to `bands/{slug}/ux_events/` in Firebase. It captures FRICTION (rage clicks, dead clicks, hesitation 15s+, abandoned flows, slow renders, JS errors) automatically. Pass 2 surfaces benefit from this — rage clicks on `_mtMobileFocusRow` / `+ Add note` / Save buttons will fire without any new wiring. **But adoption metrics are NOT captured today:** focus rate (taps per player open), note save rate, render chip "Play it" CTR, "+ more tags" disclosure expand rate, time-to-focus from player open. These require lightweight instrumentation (~30-50 LOC). **Decision flagged as #6.** Drew can either: (a) approve minimal adoption-metric instrumentation, (b) rely on the existing friction net + qualitative band reports, or (c) defer until Pass 3+ when there's more surface to measure.
+* **Bootstrapping continuity protocol — 3rd session under protocol, first observation-phase turn.** The pinned restart prompt + 5-section structure are designed for code-shipping sessions. An observation-phase turn (no code) is the first stress test of "what does the handoff look like when nothing shipped?" — solved by including the observation-phase mode tag in the pinned prompt header so a fresh chat knows immediately we're not shipping right now.
+* **Two-fronts risk.** Drew commissioned the ingestion spec in the same message that confirmed observation phase. Once the spec lands, there will be temptation to start implementing it. That would violate "Do not reopen broad convergence work yet" — the spec is design-only until Drew explicitly greenlights implementation phases (matches the Pass 1 mobile pattern: spec → Drew approval → ship).
+* **Pass 2 focus mode still exposes too many simultaneous actions** (Drew's explicit feedback). Progressive disclosure INSIDE focus mode (Level 1: play / quick note / quick reaction / next-prev; Level 2: rename / exclude / detailed / advanced markers) is the right direction but **deferred pending behavioral evidence**. Risk: a future session might try to "fix" focus density without the observation evidence Drew specifically requested.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew exercises Pass 2 on actual iPhone Safari and reports back any friction.** Specifically: did focus mode feel natural, did "+ Add note" land as moment-driven, did anything feel like "I'm operating a workstation"? Per Drew's recommendation #1-2, this is the friction-finding pass.
+
+**In parallel, Claude authors the Recording Ingestion Architecture v1 spec** at `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` covering the 8 areas Drew enumerated + Recording Import Assistant + future-adapter extensibility, implementation spec only.
+
+After both: Drew + ChatGPT review the ingestion spec, decide on Open Decision #6 (adoption instrumentation yes/no), and either greenlight a Pass 2.5 friction fix pass, the first ingestion phase, or Pass 3 mobile tabs as the next ship.
+
+---
+
+## Pass 2 Reception (Drew's 23:00 UTC framing)
+
+**Strongest signal:** focus-model + dimmed-surrounding pattern reads as "musical attention direction" rather than "technical segment table." Contextual composer ("+ Add note at HH:MM") feels rehearsal-native and moment-driven. These are foundationally correct.
+
+**Render visibility chip** transformed "hidden async uncertainty" → "visible operational continuity." Highly correct priority.
+
+**Strong agreement** on deferred items: tabs, broader navigation reorg, Firebase render sync, tag category over-expansion. "Correct discipline. Need real-world behavioral evidence first."
+
+**Most important remaining UX issue Drew named:** focus mode still exposes too many simultaneous actions. Mobile users are "listen + react" not "operate a workstation." Direction (not for this session): progressive disclosure inside focus mode itself — Level 1 (play / quick note / quick reaction / next-prev), Level 2 (rename / exclude / detailed / advanced markers). **DO NOT IMPLEMENT IMMEDIATELY** — Drew was explicit.
+
+**Product direction reinforcement:** continue optimizing for "does this help a band tighten music together?" not "does this expose system capability?" Moat is increasingly persistent operational musical continuity, not raw feature density.
+
+**Next phase = product anthropology, not feature expansion.** Observe hesitation points, ignored controls, repeated taps, misunderstood states, annotation adoption, focus-mode emotional effect, playback/review natural flow.
+
+## What observation infrastructure is in place TODAY (audit summary)
+
+`js/core/gl-ux-tracker.js` (already shipped, Stab #10-adjacent) is live and captures the following automatically — every Pass 2 surface benefits without any new wiring:
+
+| Event | Fires when | Pass 2 relevance |
+|---|---|---|
+| `rage_click` | Same element clicked 3+ times in 2s | Catches confusion on `_mtMobileFocusRow`, `+ Add note`, Save, marker buttons |
+| `dead_click` | Non-interactive element (DIV/SPAN/P) clicked, no closest button/anchor | Catches users tapping a "dead" area of the focused row expecting it to do something |
+| `hesitation` | 15s+ on a page with no clicks after navigation | Catches users opening Review Mode on iPhone and not knowing what to do next |
+| `abandoned_flow` | A `startFlow`-tracked flow's owning page changes before `completeFlow` | Would catch "user focused row but navigated away without saving note" — but currently NOT wired for the focus state (gap in §4 Risk) |
+| `slow_render` | Page render >3s | Catches mobile performance regressions |
+| `js_error` | Any unhandled JS error | Catches Pass 2 logic bugs like the note save path failing silently |
+
+Events write to `bands/{slug}/ux_events/{type}_{ts}` in Firebase and also stream to console. `GLFeedbackService` bridges `rage_click` + `slow_render` into the friction queue Drew already reviews.
+
+**Gap for Pass 2 specifically — adoption metrics:** no instrumentation for focus rate per player open, note save rate, render chip "Play it" CTR, "+ more tags" disclosure expand rate, or time-to-focus from player open. The friction net catches FAILURES; adoption metrics measure SUCCESS. Drew's product-anthropology framing leans on qualitative band reports + the friction net for the next phase; explicit instrumentation is Open Decision #6.
+
+**What Claude can do without expanding architecture:** post-deploy, periodically query `bands/deadcetera/ux_events/` for events scoped to multitrack-rehearsal surfaces and surface findings to Drew. No new code needed.
 
 ---
 
