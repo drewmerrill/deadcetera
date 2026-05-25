@@ -80,6 +80,7 @@
       prepForGig: _prepSnap(),
       multitrack: _multitrackSnap(),
       stems: _stemsSnap(),
+      renders: _rendersSnap(),
       onboarding: _onboardingSnap(),
       teardowns: _teardownsSnap(),
       warnings: [],
@@ -107,6 +108,18 @@
     try {
       if (!window.GLStems || typeof window.GLStems.getStats !== 'function') return { available: false };
       var s = window.GLStems.getStats() || {};
+      return s;
+    } catch (e) { return { available: false, error: e && e.message }; }
+  }
+
+  // Phase A.5 — surface multitrack render-job persistence state. Reads
+  // window.GLMultitrackRenders.getStats(). No worker URLs, no callIds, no
+  // recipes, no publicUrls leaked — just counts + timing.
+  function _rendersSnap() {
+    try {
+      if (!window.GLMultitrackRenders || typeof window.GLMultitrackRenders.getStats !== 'function') return { available: false };
+      var s = window.GLMultitrackRenders.getStats() || {};
+      s.available = true;
       return s;
     } catch (e) { return { available: false, error: e && e.message }; }
   }
@@ -370,12 +383,29 @@
         '</div>';
     }
 
+    // Phase A.5 — Multitrack render-job persistence (Custom Mix workflow).
+    var rdRows;
+    if (s.renders && s.renders.available) {
+      rdRows = [
+        _row('Active', String(s.renders.activeCount || 0)),
+        _row('Processing', String(s.renders.processing || 0)),
+        _row('Completed', String(s.renders.completed || 0)),
+        _row('Failed', String(s.renders.failed || 0)),
+        _row('Cancelled', String(s.renders.cancelled || 0)),
+        _row('Live loops', String(s.renders.liveLoops || 0)),
+        _row('Last poll', _fmtAge(s.renders.lastPollAt)),
+      ];
+    } else {
+      rdRows = [_row('Status', s.renders && s.renders.error ? _esc(s.renders.error) : 'unavailable')];
+    }
+
     _body.innerHTML = warningHtml +
       _renderSection('Core', coreRows) +
       _renderSection('Service Worker / Update', swRows) +
       _renderSection('Route Lifecycle', rlRows) +
       _renderSection('Playback / pauseAll', pbRows) +
       _renderSection('Spotify Connect', spRows) +
+      _renderSection('Multitrack Renders', rdRows) +
       _renderSection('Teardown exports', tdRows);
   }
 

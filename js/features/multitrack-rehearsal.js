@@ -1970,35 +1970,60 @@ window._mtOpenCustomMixModal = async function() {
             '<div id="mtCmxLabel_' + key + '" style="font-family:ui-monospace,monospace;font-size:0.78em;color:var(--text-dim);text-align:right">' + defaultPct + '%</div>' +
             '</div>';
     }
-    function reverbRow() {
+    function reverbRow(defaultPct) {
         return '<div style="display:grid;grid-template-columns:120px 1fr 48px;gap:10px;align-items:center;margin-bottom:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">' +
-            '<div style="font-size:0.88em;color:var(--text)"><span style="margin-right:6px">💧</span>Master reverb</div>' +
-            '<input type="range" id="mtCmxReverb" min="0" max="100" value="0" step="1" oninput="document.getElementById(\'mtCmxReverbLabel\').textContent=this.value+\'%\';_mtCmxUpdateSendsDimmer()" style="width:100%;accent-color:#06b6d4;cursor:pointer">' +
-            '<div id="mtCmxReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.78em;color:var(--text-dim);text-align:right">0%</div>' +
+            '<div style="font-size:0.88em;color:var(--text)"><span style="margin-right:6px">💧</span>Master reverb amount</div>' +
+            '<input type="range" id="mtCmxReverb" min="0" max="100" value="' + defaultPct + '" step="1" oninput="document.getElementById(\'mtCmxReverbLabel\').textContent=this.value+\'%\';_mtCmxUpdateSendsDimmer()" style="width:100%;accent-color:#06b6d4;cursor:pointer">' +
+            '<div id="mtCmxReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.78em;color:var(--text-dim);text-align:right">' + defaultPct + '%</div>' +
             '</div>';
     }
-    function sendsRow() {
+    function sendsRow(restored) {
         // Per-group reverb-send checkboxes. Defaults: vocals only ON.
-        // Greyed visually when master reverb is at 0% (since sends have no
-        // audible effect without a master wet level), but checkboxes stay
-        // interactive so user can pre-arrange routing before raising the slider.
+        // Routing is binary per group (on/off). The "amount" comes from
+        // the master reverb slider above. Greyed visually when master
+        // reverb is at 0% (sends have no audible effect without a master
+        // wet level), but checkboxes stay interactive so user can
+        // pre-arrange routing before raising the slider.
         function chk(key, label, checked) {
             return '<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:0.78em;color:var(--text-dim);user-select:none">'
                 + '<input type="checkbox" id="mtCmxSend_' + key + '"' + (checked ? ' checked' : '') + ' style="cursor:pointer">'
                 + label
                 + '</label>';
         }
+        function dflt(key, fallback) {
+            if (restored && restored[key] != null) return !!restored[key];
+            return fallback;
+        }
         return '<div id="mtCmxSendsRow" style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin-bottom:8px;opacity:0.55;transition:opacity 120ms">'
-            + '<div style="font-size:0.78em;color:var(--text-dim)">Send to reverb</div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim)" title="Per-group routing is on/off; the slider above sets how much reverb">Send to reverb</div>'
             + '<div style="display:flex;gap:14px;flex-wrap:wrap">'
-            + chk('vocals',  '🎤 Vocals',  true)
-            + chk('guitars', '🎸 Guitars', false)
-            + chk('bass',    '🎸 Bass',    false)
-            + chk('drums',   '🥁 Drums',   false)
-            + chk('keys',    '🎹 Keys',    false)
+            + chk('vocals',  '🎤 Vocals',  dflt('vocals',  true))
+            + chk('guitars', '🎸 Guitars', dflt('guitars', false))
+            + chk('bass',    '🎸 Bass',    dflt('bass',    false))
+            + chk('drums',   '🥁 Drums',   dflt('drums',   false))
+            + chk('keys',    '🎹 Keys',    dflt('keys',    false))
             + '</div>'
             + '</div>';
     }
+
+    // Phase A.5 — recipe restore. If there's an in-flight (or recently
+    // completed) render for this session, restore the slider/send values
+    // so the user re-enters the recipe they were tweaking, not factory
+    // defaults. recipeUI is persisted in GLMultitrackRenders alongside the
+    // job record.
+    var restoreJob = (typeof GLMultitrackRenders !== 'undefined' && GLMultitrackRenders.findInFlightForSession)
+        ? GLMultitrackRenders.findInFlightForSession(p.sessionId, { isPreview: false }) : null;
+    var restoreUI = (restoreJob && restoreJob.recipeUI) || null;
+    function _cmxGroupPct(key, fallback) {
+        if (restoreUI && restoreUI.groupGains && restoreUI.groupGains[key] != null) {
+            return Math.round(restoreUI.groupGains[key] * 100);
+        }
+        return fallback;
+    }
+    var reverbDefaultPct = (restoreUI && restoreUI.masterReverbWet != null)
+        ? Math.round(restoreUI.masterReverbWet * 100) : 0;
+    var sendsDefault = (restoreUI && restoreUI.sendsByGroup) || null;
+    var songsOnlyDefault = !!(restoreUI && restoreUI.songsOnly);
 
     modal.innerHTML =
         '<div style="max-width:480px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;overflow-y:auto">' +
@@ -2008,13 +2033,13 @@ window._mtOpenCustomMixModal = async function() {
                 '<button onclick="document.getElementById(\'mtCustomMixModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>' +
             '</div>' +
             '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px">Dial each group, then render. The new mix becomes Review Mode\'s playback.</div>' +
-            sliderRow('🎤', 'Vocals', 'vocals', 100) +
-            sliderRow('🎸', 'Guitars', 'guitars', 100) +
-            sliderRow('🎸', 'Bass', 'bass', 100) +
-            sliderRow('🥁', 'Drums', 'drums', 100) +
-            sliderRow('🎹', 'Keys', 'keys', 100) +
-            reverbRow() +
-            sendsRow() +
+            sliderRow('🎤', 'Vocals', 'vocals', _cmxGroupPct('vocals', 100)) +
+            sliderRow('🎸', 'Guitars', 'guitars', _cmxGroupPct('guitars', 100)) +
+            sliderRow('🎸', 'Bass', 'bass', _cmxGroupPct('bass', 100)) +
+            sliderRow('🥁', 'Drums', 'drums', _cmxGroupPct('drums', 100)) +
+            sliderRow('🎹', 'Keys', 'keys', _cmxGroupPct('keys', 100)) +
+            reverbRow(reverbDefaultPct) +
+            sendsRow(sendsDefault) +
             // Segment-aware render toggle — gated on a successful Analyze run.
             (function() {
                 var songSegs = _mtCollectSongSegments(p);
@@ -2023,7 +2048,7 @@ window._mtOpenCustomMixModal = async function() {
                 var minLabel = totalSec > 0 ? (' ~' + Math.round(totalSec / 60) + ' min of audio') : '';
                 return '<div style="margin-top:14px;padding:10px 12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px">'
                     + '<label style="display:flex;align-items:flex-start;gap:8px;cursor:' + (hasSegs ? 'pointer' : 'not-allowed') + '">'
-                    + '<input type="checkbox" id="mtCmxSongsOnly"' + (hasSegs ? '' : ' disabled') + ' style="margin-top:2px;cursor:' + (hasSegs ? 'pointer' : 'not-allowed') + '">'
+                    + '<input type="checkbox" id="mtCmxSongsOnly"' + (hasSegs ? '' : ' disabled') + (hasSegs && songsOnlyDefault ? ' checked' : '') + ' style="margin-top:2px;cursor:' + (hasSegs ? 'pointer' : 'not-allowed') + '">'
                     + '<div style="flex:1">'
                     + '<div style="font-weight:700;font-size:0.86em;color:' + (hasSegs ? '#c7d2fe' : 'var(--text-dim)') + '">Render songs only' + (hasSegs ? ' (' + songSegs.length + ' segments' + minLabel + ')' : '') + '</div>'
                     + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px">'
@@ -2058,11 +2083,15 @@ window._mtOpenCustomMixModal = async function() {
             '</div>' +
         '</div>';
     document.body.appendChild(modal);
-    // If a render was already in flight (modal reopened mid-run), reflect
-    // that state immediately rather than showing the default "Cancel"
-    // label + idle status.
+    // Phase A.5 — if a render is already in flight for this session (modal
+    // reopened mid-run, or reopened after page reload via GLMultitrackRenders
+    // boot-resume), reflect that state. Persistence is canonical; the closure
+    // _customMixInFlight no longer exists.
     var pp = _mtState.player;
-    if (pp && pp._customMixInFlight) {
+    var inFlight = (pp && typeof GLMultitrackRenders !== 'undefined' && GLMultitrackRenders.findInFlightForSession)
+        ? GLMultitrackRenders.findInFlightForSession(pp.sessionId, { isPreview: false })
+        : null;
+    if (inFlight) {
         _mtRenderCustomMixStatus();
         var cancelBtnExisting = document.getElementById('mtCmxCancelBtn');
         if (cancelBtnExisting) cancelBtnExisting.textContent = 'Close (keeps running)';
@@ -2258,77 +2287,67 @@ async function _mtCustomMixRunRender(opts) {
     if (songsOnly) recipe.segments = songSegs;
     if (isPreview && previewSliceSec) recipe.previewSliceSec = previewSliceSec;
 
-    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
-    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
-    var progressId = 'rg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-
-    // Stash in-flight state so the modal status panel can render the
-    // phase timeline as polls tick.
-    p._customMixInFlight = {
-        progressId: progressId,
-        startedAt: Date.now(),
-        isPreview: isPreview,
-        serverPhase: null,
+    // Phase A.5 (2026-05-25) — persistence + recipe restore. Delegate the
+    // start+poll loop to GLMultitrackRenders so a modal close, page reload,
+    // or session switch no longer strands the render. recipeUI persists the
+    // group-level slider state for modal reopen restoration; the persisted
+    // record is the single source of truth for status (no more closure-scoped
+    // _customMixInFlight). The Review Mode banner subscriber (attached at
+    // module load) reacts to glRenderJobUpdated events so completion can
+    // land while the modal is closed.
+    var recipeUI = {
+        groupGains: groupGains,
+        masterReverbWet: masterReverbWet,
+        sendsByGroup: sendsByGroup,
+        songsOnly: songsOnly,
     };
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+
+    if (typeof GLMultitrackRenders === 'undefined' || !GLMultitrackRenders.start) {
+        throw new Error('GLMultitrackRenders unavailable');
+    }
     _mtRenderCustomMixStatus();
-
-    var startRes = await fetch(workerBase + '/multitrack/render/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            bandSlug: slug,
-            sessionId: p.sessionId,
-            renderId: renderId,
-            recipe: recipe,
-            progressId: progressId,
-        })
+    return await GLMultitrackRenders.start({
+        bandSlug: slug,
+        sessionId: p.sessionId,
+        renderId: renderId,
+        recipe: recipe,
+        recipeUI: recipeUI,
+        isPreview: isPreview,
+        onProgress: function(phase) {
+            _mtRenderCustomMixStatus();
+            if (phase === 'processing') {
+                var cancelBtn = document.getElementById('mtCmxCancelBtn');
+                if (cancelBtn && cancelBtn.textContent === 'Cancel') {
+                    cancelBtn.textContent = 'Close (keeps running)';
+                }
+            }
+        },
     });
-    var startJson = await startRes.json();
-    if (!startRes.ok || !startJson || !startJson.call_id) {
-        p._customMixInFlight = null;
-        _mtRenderCustomMixStatus();
-        throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
-    }
-    var callId = startJson.call_id;
-    // Relabel Cancel → Close once server is in flight (mirrors Analyze fix).
-    var cancelBtn = document.getElementById('mtCmxCancelBtn');
-    if (cancelBtn) cancelBtn.textContent = 'Close (keeps running)';
-
-    // 15-min poll budget for full renders; 5-min for previews (shorter
-    // by definition — should finish in <2 min).
-    var maxAttempts = isPreview ? 60 : 180;
-    for (var attempt = 0; attempt < maxAttempts; attempt++) {
-        await new Promise(function(r) { setTimeout(r, 5000); });
-        if (!_mtState.player || _mtState.player !== p) return;
-        var checkRes = await fetch(workerBase + '/multitrack/render/check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ call_id: callId, progressId: progressId })
-        });
-        var checkJson = await checkRes.json();
-        if (checkJson && checkJson.progress && p._customMixInFlight) {
-            p._customMixInFlight.serverPhase = checkJson.progress;
-        }
-        _mtRenderCustomMixStatus();
-        if (checkJson && checkJson.status === 'done' && checkJson.publicUrl) {
-            p._customMixInFlight = null;
-            return checkJson;
-        }
-        if (checkJson && (checkJson.success === false || checkJson.status === 'error')) {
-            p._customMixInFlight = null;
-            throw new Error((checkJson.error || checkJson.detail || 'render_error'));
-        }
-    }
-    p._customMixInFlight = null;
-    throw new Error('render timed out');
 }
 
 function _mtRenderCustomMixStatus() {
     var p = _mtState.player;
     var status = document.getElementById('mtCmxStatus');
     if (!status) return;
-    if (p && p._customMixInFlight) {
-        status.innerHTML = _mtRenderProgressHtml(p._customMixInFlight);
+    // Phase A.5 — read in-flight state from GLMultitrackRenders (persistent)
+    // rather than the closure-scoped p._customMixInFlight (removed).
+    // Prefer non-preview render for the status panel; the 🔊 Preview path
+    // shows its own inline player on success so we don't need to mirror it
+    // here. If only a preview is in flight, show it too — the user did
+    // request progress visibility.
+    var job = null;
+    if (p && typeof GLMultitrackRenders !== 'undefined' && GLMultitrackRenders.findInFlightForSession) {
+        job = GLMultitrackRenders.findInFlightForSession(p.sessionId, { isPreview: false })
+            || GLMultitrackRenders.findInFlightForSession(p.sessionId, { isPreview: true });
+    }
+    if (job) {
+        // Adapter to _mtRenderProgressHtml's expected shape.
+        status.innerHTML = _mtRenderProgressHtml({
+            startedAt: job.startedAt,
+            isPreview: job.isPreview,
+            serverPhase: job.serverPhase,
+        });
         status.style.minHeight = '0';
     } else {
         status.innerHTML = '';
@@ -2351,6 +2370,13 @@ window._mtCustomMixRender = async function() {
     try {
         var checkJson = await _mtCustomMixRunRender({ preview: false });
         if (!checkJson) return;
+        // Phase A.5 — modal-open-at-completion check. The banner subscriber
+        // (glRenderJobUpdated listener) handles the closed-modal path with its
+        // own toast + audio swap. If we toast here unconditionally we'd
+        // double-toast whenever the user closed the modal mid-render. Only
+        // run the foreground completion branch when the modal is still open.
+        var modalElAtDone = document.getElementById('mtCustomMixModal');
+        if (!modalElAtDone) return;
         // Swap audio.src in Review Mode so playback uses the new mix.
         var audio = document.getElementById('mtReviewAudio');
         if (audio) {
@@ -2370,8 +2396,7 @@ window._mtCustomMixRender = async function() {
             }
         }
         if (typeof showToast === 'function') showToast('✓ Custom mix ready — Review Mode is now playing it');
-        var modalEl = document.getElementById('mtCustomMixModal');
-        if (modalEl) modalEl.remove();
+        modalElAtDone.remove();
     } catch (e) {
         console.warn('[Multitrack] custom mix render failed:', e);
         var statusEl = document.getElementById('mtCmxStatus');
@@ -6353,5 +6378,88 @@ window._mtSetMemberFilter = function(memberKey) {
     p.commentFilterMember = memberKey || '';
     _mtRefreshCommentPanel();
 };
+
+// ── Phase A.5 — Review Mode render banner subscriber ──────────────────────
+// Once-only listener that reacts to `glRenderJobUpdated` events from
+// GLMultitrackRenders. Keeps the in-modal status panel + the Review Mode
+// banner in sync regardless of whether the user has the Custom Mix modal
+// open. When a render completes while the user is on a different page or
+// has closed the modal, the banner updates and a toast fires so the user
+// notices the result landed.
+if (typeof window !== 'undefined' && !window._mtRenderListenerAttached) {
+    window._mtRenderListenerAttached = true;
+    document.addEventListener('glRenderJobUpdated', function(ev) {
+        try {
+            var d = (ev && ev.detail) || {};
+            var p = _mtState.player;
+            // Only react when the event is for the currently-open session.
+            if (!p || !p.sessionId || p.sessionId !== d.sessionId) return;
+
+            // Keep modal status panel fresh (no-op if modal not open).
+            _mtRenderCustomMixStatus();
+
+            // Skip preview job notifications — they have their own inline
+            // player surfaced inside the modal. Banner shows full renders.
+            if (d.isPreview) return;
+
+            var banner = document.getElementById('mtReviewStatusBanner');
+            var modalOpen = !!document.getElementById('mtCustomMixModal');
+
+            if (d.status === 'processing') {
+                if (banner) {
+                    // Look up the job so we have startedAt + serverPhase for
+                    // accurate elapsed-label.
+                    var jp = (typeof GLMultitrackRenders !== 'undefined' && GLMultitrackRenders.findInFlightForSession)
+                        ? GLMultitrackRenders.findInFlightForSession(p.sessionId, { isPreview: false }) : null;
+                    if (jp) {
+                        var elapsedSec = Math.max(0, Math.round((Date.now() - jp.startedAt) / 1000));
+                        var elapsedLabel = elapsedSec < 60
+                            ? elapsedSec + 's'
+                            : Math.floor(elapsedSec / 60) + 'm ' + String(elapsedSec % 60).padStart(2, '0') + 's';
+                        var phaseLabel = (jp.serverPhase && jp.serverPhase.phase) ? ' · ' + jp.serverPhase.phase : '';
+                        banner.innerHTML = '🎬 Custom mix rendering · ' + elapsedLabel + ' elapsed' + phaseLabel;
+                    }
+                }
+                return;
+            }
+
+            if (d.status === 'completed' && d.publicUrl) {
+                // Persist the renderInfo on the player so other subsystems
+                // (re-open Review Mode etc.) see the latest mix.
+                p.renderInfo = {
+                    url: d.publicUrl,
+                    renderId: d.jobId || null,
+                };
+                if (banner) {
+                    banner.innerHTML = '✓ Custom mix ready — ' + (modalOpen ? 'modal will close' : '<button onclick="(function(){var a=document.getElementById(\'mtReviewAudio\');if(a){a.src=\'' + d.publicUrl.replace(/'/g, "\\'") + '\';a.load();a.play().catch(function(){});}})()" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);border-radius:4px;color:#a5b4fc;padding:3px 9px;cursor:pointer;font-size:0.85em;font-weight:700">▶ Play</button>');
+                }
+                // If the modal is NOT open, the foreground completion path
+                // in _mtCustomMixRender never ran, so swap audio.src + toast
+                // here. Modal-open case is already handled inline.
+                if (!modalOpen) {
+                    var audio = document.getElementById('mtReviewAudio');
+                    if (audio) {
+                        audio.src = d.publicUrl;
+                        audio.load();
+                    }
+                    if (typeof showToast === 'function') showToast('✓ Custom mix ready');
+                }
+                return;
+            }
+
+            if (d.status === 'failed') {
+                if (banner) {
+                    banner.innerHTML = '✗ Render failed — <button onclick="_mtOpenCustomMixModal()" style="background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);border-radius:4px;color:#fca5a5;padding:3px 9px;cursor:pointer;font-size:0.85em;font-weight:700">Retry</button>';
+                }
+                if (!modalOpen && typeof showToast === 'function') {
+                    showToast('Render failed — tap Multitrack to retry');
+                }
+                return;
+            }
+        } catch (e) {
+            console.warn('[Multitrack] render listener error:', e && e.message);
+        }
+    });
+}
 
 console.log('🎚 multitrack-rehearsal.js loaded (Phase A + B)');
