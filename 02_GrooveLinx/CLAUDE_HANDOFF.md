@@ -4,6 +4,124 @@
 
 ---
 
+# 📍 SESSION UPDATE — 2026-05-25 22:29 UTC — Pass 1 of Mobile Review Mode Convergence SHIPPED
+
+**Build live:** `20260525-222102` (commit `ce17f8db`) — pushed to `main`, Vercel auto-deploying to `app.groovelinx.com` within ~30s.
+
+## Arc
+
+Drew escalated mobile Review Mode from "responsive polish" to "workflow architecture" in a long structured directive. Three turns this session:
+
+1. **Audit + proposal authored** — read `multitrack-rehearsal.js` (6,465 LOC) end-to-end for the relevant surfaces, surfaced 10 desktop-shaped assumptions (D1–D10) leaking onto mobile, then authored `02_GrooveLinx/specs/mobile_review_mode_convergence_v1.md` (570 lines, 19 sections) — covers all 8 of Drew's requested deliverables (info hierarchy, navigation, segment row redesign, header redesign, comments redesign, progressive disclosure, bottom sheets, desktop-only capabilities), with ASCII wireframes, 4-pass implementation sequencing, principle cross-reference to `groovelinx-ui-principles`, `groovelinx_product_philosophy §Progressive Capability Depth`, `feedback_one_job_per_screen`, `feedback_workbench_no_new_destinations`. **The single most damning finding:** the desktop segment row uses `grid-template-columns: 4px 22px 78px 78px 1fr 175px` totaling **357px of fixed columns**; on a 390px iPhone with 36px chrome padding (~354px usable), the title `<input>` flexes to negative width and actions clip — that's not polish, that's math.
+
+2. **Drew approved direction** with 6 explicit decisions: tabs (not accordion) for navigation, 6 tag categories (Timing/Pitch/Arrangement/Dynamics/Tone/Workflow — added Dynamics to my proposed 6), lightweight "+ Add note at current time" affordance when no segment selected, desktop redirect for Isolate Mode (no reduced per-member view), Pass 1→2→3→4 order locked, mobile Pass 1 now higher priority than C7 Phase 2 / UAT calendar contract / recurrence EXDATE.
+
+3. **Pass 1 shipped** (~330 LOC delta in `js/features/multitrack-rehearsal.js`) — closes the 4 strict-scope items + mobile detection foundation.
+
+## What Pass 1 ships (build `20260525-222102` / commit `ce17f8db`)
+
+- **`_mtIsMobile()` helper** (~30 LOC) — `matchMedia('(max-width:640px)').matches`, re-evaluated on every call, single resize listener triggers `_mtRenderSegmentsPanel()` on viewport-cross so row/filter layout updates without a player reopen. Single breakpoint (640px) matches the existing calendar `@media` block in `index.html:72`.
+
+- **Header collapse on mobile** — both `_mtOpenReviewMode` (~25 LOC fork) and `_mtOpenIsolateMode` (~25 LOC fork). Single-line title, no metadata line, no Keeper button, no "Review Mode [single stream]" label cluttering. Tools button becomes `⋯` overflow. Modal padding tightens 20px → 12px on mobile (claws back ~16px horizontal). **Header ~110px → ~40px** (verified visually).
+
+- **Tools menu mobile branch** in `_mtToggleToolsMenu` — bottom-sheet shape (`position:fixed;left:0;right:0;bottom:0;border-radius:14px 14px 0 0`), full-width, `env(safe-area-inset-bottom)` padded, 12×16px tap targets at 0.95em. Review mode prepends `☆ Keeper`; Isolate mode prepends Keeper + `👁 Switch to Review` + `📦 Download stems` so the collapsed Isolate header doesn't lose actions.
+
+- **Mobile-stacked segment row** in `_mtRenderSegmentRow` — replaces 357px-fixed 6-column grid with stacked 2-row flex (kind emoji + title input + state/conf chips on row 1; time + provenance + marker summary + actions right-aligned on row 2). Waveform canvas kept in DOM but `display:none` so `_mtPaintSegmentStrips` doesn't error. Marker + trim panels render as full-width siblings below main row (flex doesn't support `grid-column:1/-1`).
+
+- **`_mtRenderRowActions` hides ↕ trim button on mobile** — trim panel uses ±0.5s fine-motor controls; per spec §11 trim is desktop-only.
+
+- **Mobile filter pill simplification** in `_mtRenderFilterPills` — renders only Songs + Needs Review + `+ More · N on` overflow chip (the `N on` count reflects how many of the 5 hidden pills are currently active so users know something is filtered behind the chip).
+
+- **New `_mtOpenMobileFilterSheet()` + `_mtFilterSheetOutsideClick`** (~75 LOC) — bottom sheet exposing all 7 pills with checkbox UI + per-pill counts + the short-silence threshold control. Inline handler for the shorts checkbox to bypass the desktop-only `#mtSegShowShorts` element ID dependency in the global `_mtSegmentsToggleShorts`.
+
+## Visual evidence (Playwright MCP at 390×844 iPhone viewport)
+
+Screenshots in `02_GrooveLinx/uat/screenshots/2026-05-25/mobile-review-pass1/20260525-222102/`:
+
+1. `01-review-mode-mobile-fullview.png` — collapsed 40px header + simplified 3-chip filter bar (Songs 31 / Needs Review 0 / + More) + 4 visible stacked segment rows (Music Never Stopped 96%, After Midnight 97%, Sugaree 92%, Sugaree 92%) — title input + actions all visible, no truncation, no horizontal scroll.
+2. `01-review-mode-mobile-header.png` — annotated with surrounding onboarding context, useful for showing the surrounding desktop-fragment leaks (gl-spot-box coachmark, musician dropdown) that Pass 1 doesn't touch.
+3. `02-tools-sheet-mobile.png` — Tools sheet bottom-anchored with `☆ Keeper — mark this rehearsal` as first item (mobile-only prepend), followed by Mix, Export, Text band, Isolate, Stems.
+4. `03-filter-sheet-mobile.png` — Filter sheet bottom-anchored with all 7 pill rows + checkbox UI + counts. Songs (highlighted at top, ON), Needs Review (ON), Unnamed/Transitions/Chatter/Silence/Excluded (OFF).
+
+## Desktop regression check
+
+UAT contract `node scripts/uat-lab/run.js songs.triage.desktop` **PASS in 6.3s, 0 findings, 0 console errors** on build `20260525-222102`. All Pass 1 changes are gated on `_mtIsMobile()` with desktop code paths preserved verbatim.
+
+## Out of Pass 1 scope (deferred per spec §12)
+
+| Pass | LOC | Goal | Why deferred |
+|---|---|---|---|
+| Pass 2 | ~120 | Comments hierarchy fix (empty-region domination) + transport polish (±5/±30 demotion + sticky compact transport) | Drew said "Ship Pass 1 only. Run screenshots before/after. Then decide from evidence." |
+| Pass 3 | ~200 | Mobile tabs `[Segments] [Comments] [Mix] [Tools]` + restructure modal | Largest architectural change; needs Pass 1 visual UAT first |
+| Pass 4 | ~100 | Tag categorization into 6 categories + filter sheet polish | Schema-unchanged (presentation only); ship after tabs |
+
+Also visibly present-but-deferred on mobile (Pass 2 candidates surfaced by the screenshots):
+
+- **Keyboard shortcut hint** still renders at the bottom of the segments panel (`⌨ Click a row, then: S=Song · C=Chatter · T=Transition…`) — useless on touchscreens, planned hide in Pass 2.
+- **Comments panel** "No comments yet — scrub to a moment, type a note." still claims ~120px below segments — the D4 inverted-hierarchy leak, planned fix in Pass 2.
+- **Workflow hint banner** "Name songs · flag chatter · then 🎛 Tools → Mix → Render songs only" still renders — already dismissable per existing localStorage path.
+- **Coachmarks** (`gl-spot-box` "This is your rehearsal plan…") still surface ON TOP of the mobile player — orthogonal issue, not multitrack-rehearsal scope.
+
+## Outstanding deploy (carried from prior session, unchanged)
+
+- `modal deploy services/multitrack-render/render.py` — Phase A.5 reverb wet-branch ratio boost still pending Modal redeploy.
+- Drew audio listen on Custom Mix `master_reverb_wet=0/0.5/0.75/1.0` to verify the ratio fix dominates.
+
+## Restart prompt for next session
+
+```
+GrooveLinx is at build 20260525-222102 (commit ce17f8db) live on
+app.groovelinx.com.
+
+Session 2026-05-25 (post-handoff) shipped Pass 1 of Mobile Review
+Mode Convergence v1. The spec at
+02_GrooveLinx/specs/mobile_review_mode_convergence_v1.md is the
+canonical plan; Pass 1 closed the foundation (mobile detection +
+header collapse + segment row math fix + filter pill simplification);
+Passes 2-4 are designed and awaiting Drew's go-ahead (informed by
+the iPhone screenshots in
+02_GrooveLinx/uat/screenshots/2026-05-25/mobile-review-pass1/20260525-222102/).
+
+READ FIRST (in order):
+  1. 02_GrooveLinx/CLAUDE_HANDOFF.md top "SESSION UPDATE 22:29 UTC"
+  2. 02_GrooveLinx/specs/mobile_review_mode_convergence_v1.md
+     (especially §12 sequencing + §15 open questions)
+  3. 02_GrooveLinx/uat/screenshots/2026-05-25/mobile-review-pass1/
+     (visual evidence of Pass 1)
+  4. 02_GrooveLinx/CURRENT_PHASE.md top entries
+
+DEFERRED (Claude-implementable when Drew prioritizes):
+  - Pass 2 mobile (~120 LOC): comments hierarchy + transport polish
+  - Pass 3 mobile (~200 LOC): mobile tabs [Segments][Comments][Mix][Tools]
+  - Pass 4 mobile (~100 LOC): tag categorization (6 categories)
+  - C7 Phase 2 (~80 LOC)
+  - UAT Lab calendar contract (~100 LOC)
+  - Recurrence EXDATE bug (~150 LOC)
+
+OUTSTANDING DEPLOY (still pending from earlier today):
+  - `modal deploy services/multitrack-render/render.py` for reverb fix
+  - Drew audio listen on Custom Mix wet levels
+
+OPEN PRODUCT DECISIONS (queued for Drew + ChatGPT):
+  1. Formalize Stab #15 + GLPriority numbering
+  2. Calendar Model B (soft-cancel with status:'cancelled')
+  3. Operational Prioritization Phase 2 scope
+
+OPEN BUGS: #17 (architecture-verified), #18 (MED durationSec),
+#19 (HIGH → MITIGATED by Phase A.5)
+
+DO NOT:
+  - Ship Passes 2-4 without Drew's go-ahead
+  - Assign Stab #N numbers (Drew + ChatGPT own)
+  - Touch SYSTEM LOCKs from CLAUDE.md §7
+  - Add new top-level destinations (Workbench-No-New-Destinations)
+
+UAT: `node scripts/uat-lab/run.js songs.triage.desktop` should PASS
+in <10s with 0 findings on build 20260525-222102.
+```
+
+---
+
 # 🛑 SESSION CLOSE — 2026-05-25 19:52 UTC (REVISED — post-MacBook-crash recovery)
 
 **Final build:** `20260525-195215` (commit `6c84c52c`) — live on `app.groovelinx.com` via Vercel auto-deploy.
