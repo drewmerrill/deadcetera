@@ -2,7 +2,149 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-25 ~15:00 UTC — **Phase 4B+4C + Bug #17 UAT pass complete (Playwright MCP).** 9-item acceptance checklist closed: 5 clean passes, 1 architecture pass, 2 feature-deployed-but-data-gapped, 1 real bug. Two new bugs (#18, #19) filed; one Deferred Findings Queue item added. **No code changes this session.** Build still `20260524-193407`._
+---
+
+# 🛑 SESSION CLOSE — 2026-05-25 19:10 UTC
+
+**Final build:** `20260525-191011` (commit `f58e38b8`) — live on `app.groovelinx.com` via Vercel auto-deploy.
+
+**Session arc (12 ship-commits over ~14 hours after MacBook-crash recovery):**
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `a7c5cb64` | UAT Lab v1 draft + Bugs #18/#19 filed from Phase 4B+4C UAT pass |
+| 2 | `af79ac0e` | Bug #15 re-verified via Playwright MCP (659 ms cross-source teardown) |
+| 3 | `0ac0f4ee` | UAT Lab v1 proposal (had inventory error — corrected in next commit) |
+| 4 | `ad9a2ea6` | UAT Lab v1 v2 (corrected) + Operational Visibility v1 spec |
+| 5 | `7ffd7800` | Competitive Positioning Reframe (background agent, 315 lines) |
+| 6 | `0b3f9c84` | System Intelligence + Governance Mapping (background agent, 8 docs, 1,541 lines) |
+| 7 | `be3ed592` | AI Synchronization Layer — 5 rolling sync surfaces under `system/` |
+| 8 | `e8774879` | UAT Lab Phase 1 SHIPPED — first deterministic Playwright flow (`songs.triage.desktop`) |
+| 9 | `05ec72b7` | UX Convergence Pass 1 — multitrack header consolidation + per-kind row weight + 5 musical-moment markers + text density reduction |
+| 10 | `acd4bf9c` | **C7 Readiness Canonicalization SHIPPED as Stab #15** — 6-band GLStatus model + top-site migrations + 3 anti-drift UAT assertions |
+| 11 | `86beae7c` | Operational Prioritization Layer v1 proposal |
+| 12 | `d44c9121` | **GLPriority Phase 1 SHIPPED** + Custom Mix audit spec + Calendar audit spec (2 background agents) |
+| 13 | `f58e38b8` | **Calendar stale-selected-event FIX SHIPPED** + operational-intent labels (Model A) |
+
+**Build chain this session:** `20260524-193407` → `20260525-173406` → `20260525-183202` → `20260525-185925` → `20260525-191011` (4 atomic build bumps).
+
+## What's now live (user-facing)
+
+- **Multitrack Review Mode UX Convergence Pass 1**: 7-action equal-weight header → ☆ Keeper + 🛠 Tools ▾ + ×; per-kind segment row weight (songs dominate, chatter compact + italic, silence minimal, transition purple-bridge); 5 musical-moment markers per segment (⭐⚠🎤🥁🎸) with always-visible summary chip + expanded toggle panel; workflow hint tightened ~40%; Songs onboarding modal progressive disclosure (3 bullets + Show all)
+- **C7 Readiness Canonicalization (Stab #15)**: `GLStatus` extended with 6-band canonical model (`unknown / rough / learning / ready / gigReady / locked`) + 5 helper functions; 5 inline-threshold sites migrated; 7 deferred sites tracked
+- **GLPriority Phase 1**: new `js/core/gl-priority.js` (~330 LOC); 5 transparent compositional producers; Home dashboard hero replaces Smart Nudge + Next-Action + Focus Areas competition (downstream demoted to 55% opacity, NOT deleted)
+- **Calendar stale-panel fix**: `calendarEventsChanged` event + hybrid rebind-or-close handler; "Edit / Delete" → operational-intent labels per event type ("Edit Details / Cancel Gig / Cancel Rehearsal / End Series")
+- **Capability Hierarchy principle** codified in `specs/groovelinx_product_philosophy.md` ("Progressive Capability Depth") + cross-ref from UI principles
+
+## What's now live (governance / docs)
+
+- **`02_GrooveLinx/system/` directory** with 12 docs (7 Discovery Maps + 5 Rolling Sync Surfaces + ReadMe). The sync surfaces are designed for fast ChatGPT ↔ Claude sync without conversational replay
+- **2 new canonical declarations** in `00_Governance/CANONICAL_SYSTEMS.md`: Song Readiness (`GLStatus`) + Operational Priority Orchestration (`GLPriority`)
+- **`00_Governance/STABILIZATION_DASHBOARD.md`** records Stab #15 entry + flags Audit #10 (Home Hierarchy) referenced by System Mapping; Stab number for GLPriority proposed pending Drew + ChatGPT formalization
+- **`00_Governance/STABILIZATION_QUEUE.md`** readiness-divergence entry marked IMPLEMENTED
+- **3 new feature/audit specs** in `02_GrooveLinx/specs/`: `uat_lab_v1.md` (v2), `operational_visibility_v1.md`, `competitive_positioning_reframe.md`, `operational_prioritization_layer_v1.md`, `custom_mix_hybrid_architecture_v1.md`, `calendar_stale_selected_event_v1.md`
+- **UAT Lab harness** at `tests/uat-lab/` + `scripts/uat-lab/`; 10 expectations on `songs.triage.desktop` (4 Tier A QA + 3 C7 + 3 GLPriority anti-drift); `_founder_review.md` template + `_findings.md` per run; artifacts in `02_GrooveLinx/uat/screenshots/2026-05-25/`
+
+## Open product decisions (queued for Drew + ChatGPT)
+
+| # | Decision | Spec ref |
+|---|---|---|
+| 1 | **Formalize Stab #15 + GLPriority numbering** (Claude proposed, awaiting Drew + ChatGPT confirm) | `STABILIZATION_DASHBOARD.md` |
+| 2 | **Calendar Model B (soft-cancel)** — `status:'cancelled'` field + Reinstate button + render branch. Recommended for rehearsals + gigs; Model A for meetings/other | `specs/calendar_stale_selected_event_v1.md` §6.4 |
+| 3 | **Custom Mix reverb routing fix** — multi-cause; most likely dominant is `alimiter` at `render.py:509` compressing wet branch with dry peaks. ~5-LOC `render.py` change recommended | `specs/custom_mix_hybrid_architecture_v1.md` §5 |
+| 4 | **Custom Mix Phase 1** — render job PERSISTENCE (mirror Stab #14 `gl_stem_jobs_active` pattern, ~300 LOC). NOT reverb, NOT live preview. Unblocks both | `specs/custom_mix_hybrid_architecture_v1.md` §6 |
+| 5 | **Operational Prioritization Phase 2** — marker-priority surfacing (needs marker data from 2-3 real rehearsals first); per-member personalization; secondary surface (Multitrack Review priority chip) | `specs/operational_prioritization_layer_v1.md` §6 |
+
+## Queued follow-ups (Claude-implementable when prioritized)
+
+| Task | Spec | Size |
+|---|---|---|
+| **C7 Phase 2** — migrate 7 remaining inline-threshold sites to `GLStatus` (home-dashboard color tiers, gl-song-coach-signal, rehearsal_agenda_engine, gl-song-value, stoner-mode) | `00_Governance/CANONICAL_SYSTEMS.md` Song Readiness § Phase 2 | ~80 LOC |
+| **Mobile calendar bottom-sheet card** (`_calShowMobileDateCard`) has the same stale-panel vulnerability — Stage 2 of the calendar fix | `specs/calendar_stale_selected_event_v1.md` §9 | ~30 LOC |
+| **UAT Lab calendar contract** — new `calendar.stale-panel.desktop.js` covering 4 scenarios (sync while panel open / event moved / recurrence update / reconnect during selection) | `specs/calendar_stale_selected_event_v1.md` §7 | ~100 LOC |
+| **Pre-existing recurrence-instance bug** — `gl-calendar-sync.js:1591-1593` `expandRecurringEvents` is unaware of Google EXDATE/RECURRENCE-ID overrides. Surfaced by Calendar audit; separate from stale-panel fix | `specs/calendar_stale_selected_event_v1.md` §9.2 | ~150 LOC |
+| **GLMultitrack-renders persistence module** (Custom Mix Phase 1) | `specs/custom_mix_hybrid_architecture_v1.md` §6 | ~300 LOC |
+
+## Open bugs (per `uat/bug_queue.md`)
+
+| # | Severity | Title | Status |
+|---|---|---|---|
+| #17 | HIGH | Multitrack player playback sync collapse on far seek | Architecture verified 2026-05-25 (Review Mode default, 169ms seek measured) |
+| #18 | MED | Multitrack session is missing `durationSec` → §8.1 long-session banner never fires | OPEN |
+| #19 | HIGH | Export Mix `/render/check` 502 silently abandons polling | OPEN — Custom Mix audit at `specs/custom_mix_hybrid_architecture_v1.md` provides architecture for proper fix |
+
+## Reading order for the next session
+
+1. **`02_GrooveLinx/system/CURRENT_SYSTEM_STATE.md`** — fast operational truth (build, priorities, workstreams, open convergence)
+2. **`02_GrooveLinx/system/CURRENT_ARCHITECTURE_STATE.md`** — canonical owners, active migrations, SYSTEM LOCKs
+3. **`02_GrooveLinx/system/CURRENT_UAT_STATE.md`** — stable/unstable flows, bugs, Playwright maturity
+4. **`02_GrooveLinx/system/CURRENT_UX_STATE.md`** — hero principles, simplification efforts, confusion zones
+5. **`02_GrooveLinx/system/AI_OPERATING_MODEL.md`** — canonical truth hierarchy, escalation rules, what Claude may / must not do
+6. **`02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md`** — declared canonical owners (GLStatus + GLPriority now included)
+7. **`02_GrooveLinx/00_Governance/STABILIZATION_DASHBOARD.md`** — Stab #N ledger including Stab #15 (C7)
+8. **`02_GrooveLinx/CURRENT_PHASE.md`** top entries — full per-commit narrative
+9. **The 6 new spec docs** in `02_GrooveLinx/specs/` — read whichever's relevant to the next priority
+
+## Restart prompt for next session
+
+```
+GrooveLinx is at build 20260525-191011 (commit f58e38b8) live on
+app.groovelinx.com.
+
+Yesterday/today shipped 13 commits across recovery → UAT pass →
+governance arc (5 strategic specs + system mapping + sync layer) →
+canonical-system convergence (C7 Stab #15 readiness model, GLPriority
+Phase 1 hero, Calendar stale-event fix). Two background agents
+produced Custom Mix + Calendar audit specs.
+
+READ FIRST (in order):
+  1. 02_GrooveLinx/system/CURRENT_SYSTEM_STATE.md
+  2. 02_GrooveLinx/system/CURRENT_ARCHITECTURE_STATE.md
+  3. 02_GrooveLinx/system/CURRENT_UAT_STATE.md
+  4. 02_GrooveLinx/system/AI_OPERATING_MODEL.md
+  5. 02_GrooveLinx/CLAUDE_HANDOFF.md top "SESSION CLOSE" entry
+  6. 02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md (GLStatus +
+     GLPriority are the two newest canonical declarations)
+  7. 02_GrooveLinx/CURRENT_PHASE.md top entries (per-commit narrative)
+
+5 OPEN DECISIONS need Drew + ChatGPT calls before next implementation:
+  1. Formalize Stab numbering for #15 (C7) + GLPriority
+  2. Calendar Model B (soft-cancel with status:'cancelled')
+  3. Custom Mix reverb routing fix (~5 LOC, alimiter @ render.py:509
+     identified as most likely dominant cause)
+  4. Custom Mix Phase 1 render-job persistence (~300 LOC, mirror
+     Stab #14 pattern) — unblocks both reverb fix + live preview
+  5. Operational Prioritization Phase 2 scope
+
+5 QUEUED FOLLOW-UPS (Claude can ship when prioritized):
+  - C7 Phase 2 (7 remaining inline-threshold sites, ~80 LOC)
+  - Mobile calendar bottom-sheet stale-panel (same pattern, ~30 LOC)
+  - UAT Lab calendar.stale-panel.desktop contract (~100 LOC)
+  - Pre-existing recurrence EXDATE/RECURRENCE-ID bug (~150 LOC)
+  - GLMultitrack-renders persistence module (~300 LOC)
+
+3 OPEN BUGS: #17 architecture-verified · #18 (MED, durationSec
+missing) · #19 (HIGH, Export Mix 502 — Custom Mix audit provides
+architecture for proper fix)
+
+DO NOT:
+  - Assign Stab #N numbers yourself (Drew + ChatGPT own)
+  - Declare new canonical owners (Drew owns CANONICAL_SYSTEMS.md)
+  - Touch SYSTEM LOCKs from CLAUDE.md §7
+  - Add new governance docs (extend existing)
+  - Add Sentry/PostHog/LogRocket — duplicate existing or violate
+    CANONICAL_SYSTEMS.md monkey-patch prohibition
+  - Use the test sign-in path expecting real Firebase data — it
+    doesn't populate
+
+UAT loop: `node scripts/uat-lab/run.js songs.triage.desktop` should
+PASS in <10s with 10 expectations (4 Tier A + 3 C7 + 3 GLPriority
+anti-drift). If it fails, that's the first thing to investigate.
+```
+
+---
+
+_Previous: 2026-05-25 ~15:00 UTC — **Phase 4B+4C + Bug #17 UAT pass complete (Playwright MCP).** 9-item acceptance checklist closed: 5 clean passes, 1 architecture pass, 2 feature-deployed-but-data-gapped, 1 real bug. Two new bugs (#18, #19) filed; one Deferred Findings Queue item added. **No code changes this session.** Build still `20260524-193407`._
 
 _**UAT results — quick verdict per item:**_
 - _**Phase 4B+4C #1** (solid confidence chips) — ✅ PASS_
