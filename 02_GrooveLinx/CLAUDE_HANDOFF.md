@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 10:30 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **PASS 2.5 SHIPPED — Bugs #20 + #21 + #22 all ✅ RESOLVED.** Trust-layer fix live (per-row localStorage draft persistence). Desktop session composer hidden on mobile (cascading closure of 5 harvest findings). Composer scroll-into-view on note-open. New canonical memory `project_musical_operational_memory.md` formalizes trust-layer bug categorization. Modal Phase A.5 reverb fix LIVE (deployed overnight by Drew, A/B verification still pending)._
+_Last refreshed: 2026-05-26 11:00 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** (Drew's post-Pass-2.5 strategic direction). 5-item roadmap canonicalized in `00_Governance/CURRENT_PRIORITIES.md`: (1) Trust Hardening NOW → (2) Musical Moment System → (3) Recording Ingestion Reliability (REAPER-first) → (4) Homepage Convergence → (5) Real AI Layer. Two new canonical memories: `project_musical_operational_memory` (strategic frame + roadmap + moat) and `feedback_observe_before_expand` (default-to-observation discipline). **NOT a feature-expansion phase.** Trust hardening + observation outranks new feature surfaces._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -16,10 +16,17 @@ live on app.groovelinx.com via Vercel. Modal services/multitrack-render/
 render.py is DEPLOYED — Phase A.5 reverb wet-branch ratio boost LIVE
 (A/B verification still pending Drew).
 
+POST-PASS-2.5 PHASE: Workflow Refinement + Operational Intelligence
+(Drew 2026-05-26 strategic direction). 5-item roadmap canonical in
+00_Governance/CURRENT_PRIORITIES.md. This is NOT a feature-expansion
+phase. Trust hardening + real-world observation outranks new surfaces.
+
 PASS 2.5 MUST-FIX PACKAGE SHIPPED 2026-05-26 morning. Bugs #20 + #21 +
-#22 all RESOLVED. New strategic frame canonicalized:
-"musical operational memory" (memory project_musical_operational_memory).
-Trust-layer bug categorization is now canonical for future triage.
+#22 all RESOLVED. Two canonical memories formalize the strategic stance:
+* project_musical_operational_memory — strategic frame, trust-layer bug
+  categorization, 5-item roadmap, moat = continuity not feature density
+* feedback_observe_before_expand — default to observation when no
+  behavioral evidence supports the next move
 
 OVERNIGHT FRICTION HARVEST (2026-05-25 23:28 - 2026-05-26 00:10 UTC)
 SHIPPED FINDINGS ONLY (no code). Full evidence in:
@@ -89,14 +96,28 @@ NEXT RECOMMENDED ACTION:
   text restored? Also verify Save button is visible on first composer
   open without scrolling.
 
-  After Drew's behavioral observation: pick next ship from
-  - Bug #26 (auto-active-segment highlight cold-open) — visual coherence
-  - Bug #24 (tabbar over player) / Bug #25 (chatbot over player) —
-    global-shell focus polish
-  - Bug #27 / Bug #18 (durationSec on home page) — data backfill
-  - STABILIZATION_QUEUE Pass 2.5 candidates (8 entries)
-  - Pass 3 mobile tabs (~200 LOC, larger restructure)
-  - Recording Ingestion Architecture v1 Phase 1 (still in design review)
+  After Drew's real-world validation: roadmap is Phase 1 Trust Hardening
+  (see 00_Governance/CURRENT_PRIORITIES.md). Candidate next moves
+  WITHIN Trust Hardening, ranked by behavioral-evidence weight:
+  - Bug #26 (auto-active-segment highlight cold-open) — visual trust
+    coherence, ~10-20 LOC
+  - Bug #24/#25 (tabbar + chatbot over player) — focus calmness on
+    mobile player surface, ~20-30 LOC combined
+  - Bug #27/#18 (durationSec backfill) — eliminates "0m" stale-state
+    on home page, ~30-50 LOC
+  - STABILIZATION_QUEUE Pass 2.5 candidates (6 remaining Trust-Hardening-
+    aligned entries: now-reviewing label collapse, focus-dim vs auto-
+    highlight, keyboard-hint footer, overflow-tag visibility, player-
+    state-survives-reopen, Possible-prefix confidence duplication)
+
+  DO NOT jump to Phase 2 (Musical Moment System) or beyond without
+  Phase 1 Trust Hardening showing real-world evidence of completeness.
+  Per feedback_observe_before_expand memory: default to observation when
+  no behavioral evidence supports the next move.
+
+  Reverb A/B + Pass 2.5 real-world validation are the gating
+  observations. Recording Ingestion Architecture v1 spec review remains
+  open for Drew + ChatGPT in parallel.
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Formalize Stab #15 + GLPriority numbering
@@ -127,6 +148,99 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 11:00 UTC — Post-Pass-2.5 strategic direction codified (no code, governance + memory)
+
+**No code change this turn.** Build still `20260526-102503`. Drew issued post-Pass-2.5 strategic direction declaring the next phase as **Workflow Refinement + Operational Intelligence** with a 5-item roadmap. Filed into existing surfaces only (per Session Continuity Protocol + Drew's standing "no new governance" directive).
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-102503` (unchanged this turn)
+* **Branch:** `main`
+* **Mode:** **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** (Drew's post-Pass-2.5 strategic direction)
+* **Deployed systems:** browser live, Modal Phase A.5 LIVE, worker unchanged, R2 unchanged, Firebase unchanged
+* **Active convergence work:** none in flight. Pass 2.5 closed; next moves gated on Drew real-world Pass 2.5 validation + reverb A/B.
+* **Open bugs:** 6 (unchanged from prior handoff) — #17 / #18 / #19 / #23 / #24 / #25 / #26 / #27 (technically 8 but #19 is MITIGATED and #18 = #27 root cause)
+* **Stabilization items in flight:** 6 STABILIZATION_QUEUE Pass 2.5 candidates remaining (2 closed by Pass 2.5 Bug #22)
+* **Active initiatives:** Pass 2.5 real-world validation pending Drew; reverb A/B pending Drew; Recording Ingestion Architecture v1 spec review pending Drew + ChatGPT
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew real-world Pass 2.5 validation on iPhone Safari + Custom Mix reverb A/B (wet=0/0.5/1.0).
+* **NEXT** — Phase 1 Trust Hardening (per new 5-item roadmap in `00_Governance/CURRENT_PRIORITIES.md`). Specific candidates ranked by behavioral-evidence weight: Bug #26 (auto-active-segment cold-open coherence), Bug #24/#25 (tabbar + chatbot over player), Bug #27/#18 (durationSec backfill), 6 remaining STABILIZATION_QUEUE Pass 2.5 candidates.
+* **LATER** — Phase 2 Musical Moment System (comments → operational musical memory); Phase 3 Recording Ingestion Reliability (REAPER-first); Phase 4 Homepage Convergence (calm orientation, not dashboard); Phase 5 Real AI Layer (operational musical guidance, not chatbot theater).
+* **DEFERRED** — Pass 3 mobile tabs / Pass 4 tag categories — these are Workflow Refinement work but lower priority than the Trust Hardening targets above. Re-evaluate after Pass 2.5 validation evidence comes in. Also deferred: progressive disclosure inside focus mode (per Drew's earlier "observe first" directive), Firebase render sync, aecho→afir convolution, Stab #N formalization.
+
+## 3. OPEN PRODUCT DECISIONS
+
+| # | Decision | Owner | Status |
+|---|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Drew + ChatGPT | Still open |
+| 2 | Calendar Model B (soft-cancel) | Drew + ChatGPT | Still open |
+| 3 | Operational Prioritization Phase 2 scope | Drew + ChatGPT | Still open |
+| 4 | Firebase-backed cross-device render sync | Drew | Still open |
+| 5 | Next-ship sequencing post-Pass-2.5 within Trust Hardening Phase 1 | Drew | Pending validation |
+| 6 | Adoption-metric instrumentation for Pass 2/2.5 surfaces | Drew | Still open |
+| 7 | Recording Ingestion Architecture v1 Phase 1 vs Phase 2 priority | Drew + ChatGPT | Spec landed; review pending |
+| 8 | Bug #23 ownership (global-shell, not multitrack-rehearsal) | Drew | Still needs assignment |
+
+## 4. OPERATIONAL RISKS
+
+* **Phase 1 vs Phase 2 jump risk.** The new 5-item roadmap explicitly says "work top-to-bottom, do not jump ahead." Risk: a future session might pick the most-interesting open spec (Recording Ingestion, Pass 3 tabs) and start architecting before Trust Hardening is exhausted. The `feedback_observe_before_expand` memory + the CURRENT_PRIORITIES.md ordering are the safeguards. If a session does jump ahead, file as protocol violation.
+* **Real-world validation gap.** Pass 2.5 is verified in Playwright but Drew hasn't touched it on his actual iPhone yet. Every additional session without validation = compounding risk that the "📝 unsaved draft" badge reads as nagging rather than reassuring (an emotional UX failure not detectable in DOM tests).
+* **Reverb A/B still pending Drew.** Modal Phase A.5 has been LIVE on production since overnight 2026-05-25/26. Each session without A/B = unknown perceptual audibility. The wet-branch ratio boost math says wet_pct should climb from ~7% to ~26% at full master — but only ear-test verifies.
+* **Roadmap discipline is a memory.** The 5-item roadmap is now in `CURRENT_PRIORITIES.md` (canonical) AND in `project_musical_operational_memory` (memory). If future sessions ignore both, that's a serious operational drift — would warrant a CLAUDE.md SYSTEM LOCK addition. Drew should flag if a session ever proposes a Phase-2-or-beyond move without Phase-1 evidence.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew validates Pass 2.5 on actual iPhone Safari** + does Custom Mix reverb A/B (wet=0/0.5/1.0). Report any in-the-wild friction the Playwright UAT couldn't catch — emotional response to the "📝 unsaved draft" badge specifically.
+
+After validation evidence: Claude picks the highest-leverage Phase 1 Trust Hardening item from the candidate list (Bug #26 / Bugs #24+#25 / Bug #27+#18 / STABILIZATION_QUEUE remaining 6). Will NOT jump to Phase 2-5 without Phase 1 evidence of completeness, per `feedback_observe_before_expand` discipline.
+
+In parallel: Drew + ChatGPT review the Recording Ingestion Architecture v1 spec (Phase 3 of the roadmap), but Phase 3 doesn't ship before Phase 1 is exhausted.
+
+---
+
+## Session Narrative (trace, supplementary to §1–§5)
+
+### What landed this turn
+
+1. **`00_Governance/CURRENT_PRIORITIES.md` extended** — new "Workflow Refinement + Operational Intelligence" phase header at top, with the 5-item roadmap (Trust Hardening → Musical Moment System → Recording Ingestion Reliability → Homepage Convergence → Real AI Layer) + standing discipline section (Bug/Ops Workflow as cockpit, Session Continuity Protocol as critical infrastructure, observation-before-architecture default). Legacy P0-P3 priorities preserved below for reference but explicitly superseded by the new phase ordering.
+
+2. **`project_musical_operational_memory.md` extended** — added "Post-Pass-2.5 Roadmap" section (5 items mirroring CURRENT_PRIORITIES.md) + "The moat — what NOT to chase" section formalizing the strategic stance (NOT feature density / media management / generic AI tooling; IS persistent operational musical continuity).
+
+3. **`feedback_observe_before_expand.md` NEW memory** — codifies the discipline that post-Pass-2.5, default response to "what should we build next?" without behavioral evidence = "let's harvest first / let's let Drew validate the last ship first." The exception is explicit Drew greenlight. Cross-references existing memories (project_musical_operational_memory, feedback_session_continuity_protocol, feedback_competitive_strategy_lens).
+
+4. **`MEMORY.md` index updated** — both memories indexed at top of memory index for high-prominence inheritance into future sessions.
+
+5. **`CLAUDE_HANDOFF.md` pinned restart prompt refreshed** — reflects new phase mode tag, calls out the 2 new memories explicitly, READ FIRST list expanded to include CURRENT_PRIORITIES.md new phase section. NEXT RECOMMENDED ACTION rewritten to call out Phase 1 Trust Hardening as the active phase + explicit do-not-jump-ahead reminder.
+
+### Why governance-only this turn
+
+Drew explicitly framed this as STRATEGIC DIRECTION, not a ship request. Per `feedback_observe_before_expand` (which this turn establishes), the default response to "here's the direction" without an explicit ship trigger is to PERSIST the direction so future sessions inherit it, then hand back. No code, no specs, no architecture sketches.
+
+### Files touched this session
+
+- `02_GrooveLinx/00_Governance/CURRENT_PRIORITIES.md` (extended with Workflow Refinement phase + roadmap)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/project_musical_operational_memory.md` (extended with roadmap + moat-what-NOT)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/feedback_observe_before_expand.md` (NEW)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/MEMORY.md` (index)
+- `02_GrooveLinx/CLAUDE_HANDOFF.md` (this entry + pinned restart prompt refresh)
+- `02_GrooveLinx/CURRENT_PHASE.md` (synced)
+
+### What's NOT in this turn
+
+- No code changes
+- No build bump
+- No Vercel deploy
+- No new specs
+- No Modal/worker/Firebase changes
+- No SYSTEM LOCK touches
+- No new governance docs (extended existing CURRENT_PRIORITIES.md only)
 
 ---
 
