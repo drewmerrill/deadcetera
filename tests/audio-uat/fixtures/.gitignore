@@ -1,0 +1,9 @@
+# Synthetic fixtures are regenerable from generate-synth.sh — not committed.
+# Real-render fixtures (e.g. real_render_5_18_excerpt.mp3) ARE committed —
+# they're the ground-truth audio the harness validates against.
+sine_440hz_10sec.wav
+click_at_5sec.wav
+silence_2sec.wav
+
+# Optional cache of full Modal renders (committed: only the short excerpt)
+.cache/
