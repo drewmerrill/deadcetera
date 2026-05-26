@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 18:10 UTC · Build under test: `20260526-181017` (commit `56ff5a54` — Tier 2 Single-Tap Loop MVP) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Tier 2 first ship LIVE.** The post-philosophy implementation arc has begun. **Tier 2 Single-Tap Loop MVP** delivers the approved minimum interaction model: single thought → single gesture → single sound. Tap row → loop target set silently; tap Play → audio enters loop bounds; loop persists across close/reopen/nav/reload/cross-session; playback never auto-resumes on restore; anchor sentence resolves loop+playback into one grammatical phrase. **Bug #26 RESOLVED** + **Bug #11 DISSOLVED** by the same change (predicted as coherent pair, prediction held). **Ten canonical memories standing:** `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`, `project_one_musical_truth`, `project_session_intent_persistence`, `project_accompaniment_axis`, `project_prepared_for`. Plus Tier 1 tooling (`CLAUDE.md §OPERATIONAL DISCIPLINE` + `.claude/commands/glx-*` + 2 hooks). **GitHub Project sync mandatory** per `AI_WORKFLOW.md §Required Project sync`. **3-surface operational model:** Product (app) · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory (repo governance/docs/handoffs)._
+_Last refreshed: 2026-05-26 20:00 UTC · Build under test: `20260526-200044` (commit `79557c7d` — Working-Thought Restoration P1) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Two Tier 2 ships LIVE in one implementation arc** (Single-Tap Loop → WTR P1). The post-philosophy implementation arc has begun. **Tier 2 Single-Tap Loop MVP** delivers the approved minimum interaction model: single thought → single gesture → single sound. Tap row → loop target set silently; tap Play → audio enters loop bounds; loop persists across close/reopen/nav/reload/cross-session; playback never auto-resumes on restore; anchor sentence resolves loop+playback into one grammatical phrase. **Bug #26 RESOLVED** + **Bug #11 DISSOLVED** by the same change (predicted as coherent pair, prediction held). **Ten canonical memories standing:** `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`, `project_one_musical_truth`, `project_session_intent_persistence`, `project_accompaniment_axis`, `project_prepared_for`. Plus Tier 1 tooling (`CLAUDE.md §OPERATIONAL DISCIPLINE` + `.claude/commands/glx-*` + 2 hooks). **GitHub Project sync mandatory** per `AI_WORKFLOW.md §Required Project sync`. **3-surface operational model:** Product (app) · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory (repo governance/docs/handoffs)._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -205,6 +205,68 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 20:00 UTC — Working-Thought Restoration P1 SHIPPED (persistent musical thought, ambient + invitational)
+
+**Code shipped.** Build `20260526-200044` (commit `79557c7d`). Second Tier 2 ship in the post-philosophy implementation arc. ~55 LOC delta. UAT 8/8 scenarios verified on the live build. Audio UAT harness extended with 3 new consent-chain invariants (9/9 hold).
+
+> _Generated via the `/glx-handoff` ritual._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-200044` (WTR P1)
+* **Branch:** `main` · **Working tree:** clean (after this commit)
+* **Latest code commit:** `79557c7d` — `WTR P1: investigating bit on comments + anchor-sentence unresolved clause`
+* **Prior code commit:** `56ff5a54` (Tier 2 Single-Tap Loop MVP, earlier same day)
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE · Phase 1 Trust Hardening extending into Tier 2 musical-flow-preservation work
+* **Deployed systems:** browser live on `app.groovelinx.com` (Vercel auto-deployed). Modal Phase A.5 LIVE. Worker/R2/Firebase unchanged.
+* **Active convergence work:** Tier 2 implementation arc continues. WTR P1 builds directly on Tier 2 Single-Tap Loop. Next candidates per the post-WTR-P1 priority queue: Bug #23 fix (still queued — HIGH trust-layer candidate) · Transition View (P2 of the original WTR plan) · Listening Modes (P3).
+* **Open bugs:** unchanged from prior session. Bug #26 + Bug #11 dissolved by Tier 2. Bug #23 still queued.
+* **Ten canonical memories standing.** Six load-bearing rules in `CLAUDE.md`. Four product-philosophy frameworks in agent memory: `project_one_musical_truth`, `project_accompaniment_axis`, `project_prepared_for`, `project_session_intent_persistence`.
+* **Audio UAT harness V1** (commit `b66ccea2` earlier today) — 4 tests, 9 restoration-state invariants now (was 6 before WTR P1). All 8/8 PASS against current code.
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew validates BOTH the Tier 2 ship AND WTR P1 on real iPhone Safari. Two checklists exist: Tier 2 (`02_GrooveLinx/uat/checklists/tier2-single-tap-loop-iphone-validation-2026-05-26.md`) + an implicit WTR P1 check (open Review Mode, focus a row with an existing comment, tap 🔍 in top-right of the comment card on DESKTOP — mobile users only see the anchor count). For real audio-feel validation of the loop wrap (Tier 2 scenario #3), only Drew's ear can confirm.
+* **NEXT** — Drew greenlights the next ship. Top candidates: (a) **Bug #23 fix** (Songs onboarding overlay intercepts unrelated flows — HIGH trust-layer candidate, ~5-30 LOC); (b) **WTR P2: investigation-aware filter** in the comments panel (small follow-up if Drew wants the desktop filter dimension); (c) **Transition View** (the underdeveloped moat from the prior WTR thinking).
+* **LATER** — Listening Modes · Patterns doorway · Phase 2 Musical Moment System · Phase 3 Recording Ingestion · Phase 4 Homepage Convergence · Phase 5 Real AI Layer.
+* **DEFERRED** — Pass 3 mobile tabs · Pass 4 tag categories · Firebase render sync · Stab #N formalization · C7 Phase 2 · UAT Lab calendar contract · recurrence EXDATE bug · all Tier 2/3 *tooling* (per Tooling Tier Discipline) — note: the audio UAT harness was explicitly approved as a Tier 2 *tooling* addition; further Tier 2 tooling additions still require greenlight.
+
+## 3. OPEN PRODUCT DECISIONS
+
+1. **Reverb A/B verification** (Drew) — unchanged.
+2. **Pass 2.5 + Tier 2 + WTR P1 iPhone Safari emotional validation** (Drew) — three surfaces' emotional landing now waiting on real-device check.
+3. **Custom Mix persistence semantics A vs B** (Drew + ChatGPT) — unchanged; Session Intent Persistence pattern applies once this is greenlit.
+4. **Calendar Model B** (Drew + ChatGPT) — unchanged.
+5. **Recording Ingestion sequencing** (Drew + ChatGPT) — unchanged.
+6. **GitHub Project sync formalization** — formalized; this session executes.
+7. **Claude Web usage limits** — unchanged.
+8. **One Musical Truth as canonical principle status** (Drew) — Tier 2 + WTR P1 are now TWO shipping decisions shaped by the framework. Promotion criteria say 2-3 shipping decisions + holds across ≥2 surfaces + Drew greenlight. Two shipping decisions met. One more surface (anything outside Review Mode) before promotion can be considered.
+9. **NEW: WTR P2 vs Bug #23 vs Transition View as the next single move** (Drew) — three small candidates, all contained, Drew picks ordering.
+10. **Wording question (deferred per Drew's "ship first, evaluate emotionally later"):** "1 unresolved note" vs "1 live note." Drew flagged "unresolved" may carry workflow energy where "live" feels more musical/held. Evaluate after real-iPhone exposure.
+
+## 4. OPERATIONAL RISKS
+
+* **Mobile/desktop asymmetry in WTR P1.** Mobile users can SEE the unresolved count in the anchor sentence but cannot REACH the 🔍 toggle (comments panel is gated off on mobile per Pass 2.5 Bug #22 fix). Acceptable v1 boundary but worth Drew's awareness: a band member who uses only mobile can read but not mark. If this becomes friction in practice, the fix is to surface a 🔍 affordance in the mobile contextual composer flow — but that's a follow-up, not P1.
+* **WTR P1 only validates against synthetic test comments.** The UAT created one comment, exercised it, deleted it. No real band-authored comments were tested against the new logic. Drew's real-device session will be the first time the feature touches authentic content.
+* **Persistence test depended on local in-memory toggle.** The Firebase round-trip was confirmed via `_mtSaveComment` returning true, but I didn't perform a force-reload to verify the field survives full page reload. Mobile/desktop asymmetry made this awkward; could be added to UAT next session.
+* **Audio UAT restoration-state is grep-based, not behavioral.** It catches a SPECIFIC set of source patterns. A refactor that re-introduces auto-play via a DIFFERENT pattern (e.g., calling `_mtTogglePlayAll` inside a callback wrapper) would slip through. Mitigation: tests should be reviewed when restoration paths change. Not a v1 blocker.
+* **Two ships in one day = more surface area for Drew to validate at once.** Tier 2 + WTR P1 land simultaneously. Drew's real-device session will exercise both. If issues surface, separating which ship caused them may require extra investigation.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew runs both real-iPhone validations in a single ~20-minute session:**
+
+1. Tier 2 Single-Tap Loop checklist (existing 7 items at `02_GrooveLinx/uat/checklists/tier2-single-tap-loop-iphone-validation-2026-05-26.md`)
+2. WTR P1 quick check (open Review Mode on a session with existing comments; on desktop view, confirm 🔍 appears at top-right of each comment card at low opacity; tap to set; confirm icon becomes more visible; verify anchor sentence on mobile shows the count when paused with marker on the loop segment)
+
+**Why both at once:** they share the same surfaces (Review Mode, anchor sentence) and the emotional check has overlapping context. Doing them in one session means one mental load swap.
+
+**After Drew's validation:** Drew picks the next single-move from the queue. Three small candidates available. The implementation pace has been clean: two contained ships, both UAT-verified, both philosophy-aligned, no scope creep.
+
+**Blocker if not done:** continuing to add ships without real-device validation risks compounding any emotional UX issue across multiple surfaces. The audio-uat harness catches technical breakage; only Drew's ear catches musical feel.
 
 ---
 

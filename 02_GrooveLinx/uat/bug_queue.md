@@ -1,6 +1,8 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260526-181017 (Tier 2 Single-Tap Loop MVP live, commit `56ff5a54`)
+**Build Under Test:** 20260526-200044 (WTR P1 live, commit `79557c7d`)
+
+> **2026-05-26 20:00 UTC — Working-Thought Restoration P1 shipped.** Investigating bit on comments + anchor-sentence unresolved clause. ~55 LOC delta in `multitrack-rehearsal.js`. Anchor sentence now grammatically reflects N unresolved notes on the loop segment when paused, replacing the "paused" clause. Mobile-anchor / desktop-toggle asymmetry per the Pass 2.5 Bug #22 comments-panel-hidden-on-mobile constraint (desktop has the 🔍 toggle UI; mobile users see the count via the anchor sentence). Audio-uat restoration-state extended with 3 new WTR-P1 invariants (9/9 hold). 8 UAT scenarios verified end-to-end on the live build. No bugs resolved by this ship (no open bugs were in scope). Screenshots at `02_GrooveLinx/uat/screenshots/2026-05-26/wtr-p1/`.
 
 > **2026-05-26 18:10 UTC — Tier 2 ship update.** Single-Tap Loop MVP shipped. **Bug #26 ✅ RESOLVED** (auto-active-segment outline on cold open) — the highlight now follows the loop target if set, OR the playhead during actual playback, never both fallback-to-row-0-at-startup. **Bug #11 ✅ DISSOLVED** by the same change (the dual-lit-state can no longer occur because the highlight goes on exactly one row: the loop, never a "second lit" auto-active). Both bugs were predicted by Drew + ChatGPT to be a coherent pair; that prediction was correct. UAT evidence at `02_GrooveLinx/uat/screenshots/2026-05-26/tier2-single-tap-loop/` (8 scenario screenshots).
 
