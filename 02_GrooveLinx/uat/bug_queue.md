@@ -1,6 +1,8 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260526-200044 (WTR P1 live, commit `79557c7d`)
+**Build Under Test:** 20260526-211605 (Bug #23 ambient-inviolability fix live, commit `9a274456`)
+
+> **2026-05-26 21:16 UTC — Bug #23 RESOLVED (ambient inviolability).** ~11 LOC delta in `help.js` — `glCheckOnboarding` converted to a documented no-op. The help-registry first-visit auto-overlay had been intercepting conductor intent on every cold open (user taps REHEARSAL → overlay says "first let me tell you about Rehearsal"). The reframe is what made this surgical: the problem was not onboarding fatigue, it was **ambient self-promotion** — ambient surfaces may INFORM intent but may not INTERRUPT intent ([[project_one_musical_truth]]). All user-invoked help paths preserved (❓ button, inline page trigger, `/help` page). Live-build invariant pass: `overlayPresent_after_glCheck_t0/t500 = false`, `overlayPresent_after_glShow_userInvoked = true`. Screenshots at `02_GrooveLinx/uat/screenshots/2026-05-26/bug23-ambient-inviolability/`.
 
 > **2026-05-26 20:00 UTC — Working-Thought Restoration P1 shipped.** Investigating bit on comments + anchor-sentence unresolved clause. ~55 LOC delta in `multitrack-rehearsal.js`. Anchor sentence now grammatically reflects N unresolved notes on the loop segment when paused, replacing the "paused" clause. Mobile-anchor / desktop-toggle asymmetry per the Pass 2.5 Bug #22 comments-panel-hidden-on-mobile constraint (desktop has the 🔍 toggle UI; mobile users see the count via the anchor sentence). Audio-uat restoration-state extended with 3 new WTR-P1 invariants (9/9 hold). 8 UAT scenarios verified end-to-end on the live build. No bugs resolved by this ship (no open bugs were in scope). Screenshots at `02_GrooveLinx/uat/screenshots/2026-05-26/wtr-p1/`.
 
@@ -155,7 +157,26 @@ Post-fix verification: DOM check confirmed `mtCommentPanel`, `mtComposerArea`, `
 
 ---
 
-### Bug #23 — Rehearsal-plan onboarding card auto-shows + blocks Rehearsal page on every cold mobile open (HIGH — OPEN, orthogonal to Pass 2, global-shell concern)
+### Bug #23 — Rehearsal-plan onboarding card auto-shows + blocks Rehearsal page on every cold mobile open (HIGH — ✅ RESOLVED 2026-05-26 build `20260526-211605` commit `9a274456`, AMBIENT-INVIOLABILITY FIX)
+
+**RESOLUTION:** Reframed during fix proposal: the symptom is onboarding overlay friction, but the underlying violation is **ambient self-promotion** — a help registry (ambient tier) was intercepting conductor intent on every `showPage()` call. Per [[project_one_musical_truth]] three-tier authority model and [[project_accompaniment_axis]] ("AI accompanies inside the door the user walked through, doesn't follow them around the room"), this is incompatible with the current product philosophy.
+
+**Fix:** `help.js:glCheckOnboarding` converted to a documented no-op. The 350ms auto-show timer is removed; the callsite in `js/ui/navigation.js:312` is preserved as a deliberate hook point with the philosophy comment at the function body. All user-invoked help paths untouched: ❓ button (`glHelpCurrentPage`), inline page trigger (`glInjectPageHelpTrigger`), the `/help` page.
+
+**Storage-key clarification:** The original filing referenced `gl_onboard_rehearsal_done` — that key belongs to the Avatar Guide 3-step funnel tracker, not the help overlay. The help overlay's actual flag is `gl_onboarded_rehearsal` (prefix `gl_onboarded_`, no `_done` suffix). The bug filer was watching the wrong key; the auto-show was still firing on every cold open in the first-visit case AND on any iOS Safari localStorage eviction.
+
+**Post-fix verification (live build `20260526-211605`, iPhone 14 Pro 390×844 Playwright invariant):**
+- `glCheckOnboarding.toString()` contains philosophy comment + bare `return;` ✓
+- With `gl_onboarded_rehearsal` cleared, `glCheckOnboarding('rehearsal')` produces NO overlay at t=0 AND t=500ms (past the previous 350ms timer) ✓
+- User-invoked `glShowOnboarding('rehearsal', true)` correctly injects overlay + backdrop with card title "Rehearsals" ✓ — negative-preservation test confirms help system stays available when invited
+
+**Compressed philosophy line embedded in code comment:** *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent."*
+
+Screenshots: `02_GrooveLinx/uat/screenshots/2026-05-26/bug23-ambient-inviolability/01-rehearsal-no-overlay-on-cold-open.png` + `02-overlay-still-works-when-user-invoked.png`.
+
+---
+
+### Bug #23 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.1 first-time mobile user)

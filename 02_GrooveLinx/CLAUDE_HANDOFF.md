@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 20:00 UTC · Build under test: `20260526-200044` (commit `79557c7d` — Working-Thought Restoration P1) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Two Tier 2 ships LIVE in one implementation arc** (Single-Tap Loop → WTR P1). The post-philosophy implementation arc has begun. **Tier 2 Single-Tap Loop MVP** delivers the approved minimum interaction model: single thought → single gesture → single sound. Tap row → loop target set silently; tap Play → audio enters loop bounds; loop persists across close/reopen/nav/reload/cross-session; playback never auto-resumes on restore; anchor sentence resolves loop+playback into one grammatical phrase. **Bug #26 RESOLVED** + **Bug #11 DISSOLVED** by the same change (predicted as coherent pair, prediction held). **Ten canonical memories standing:** `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`, `project_one_musical_truth`, `project_session_intent_persistence`, `project_accompaniment_axis`, `project_prepared_for`. Plus Tier 1 tooling (`CLAUDE.md §OPERATIONAL DISCIPLINE` + `.claude/commands/glx-*` + 2 hooks). **GitHub Project sync mandatory** per `AI_WORKFLOW.md §Required Project sync`. **3-surface operational model:** Product (app) · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory (repo governance/docs/handoffs)._
+_Last refreshed: 2026-05-26 21:16 UTC · Build under test: `20260526-211605` (commit `9a274456` — Bug #23 ambient-inviolability fix) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Three Tier-2-era ships in one day** (Single-Tap Loop → WTR P1 → Bug #23). **Bug #23 RESOLVED via ambient-inviolability reframe:** the help-registry first-visit auto-overlay had been intercepting conductor intent on every cold open. Reframe ("not onboarding friction — ambient self-promotion") made the fix surgical: `glCheckOnboarding` → documented no-op. 11 LOC. All user-invoked help paths preserved. Compressed philosophy line embedded in code: *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent."* Live-build Playwright invariant pass: overlay absent on auto-call, present on user-invoke. **Ten canonical memories standing:** `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`, `project_one_musical_truth`, `project_session_intent_persistence`, `project_accompaniment_axis`, `project_prepared_for`. Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -205,6 +205,57 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 21:16 UTC — Bug #23 RESOLVED via AMBIENT-INVIOLABILITY REFRAME (the help-registry overlay was self-promoting to conductor authority)
+
+**Code shipped.** Build `20260526-211605` (commit `9a274456`). Third Tier-2-era ship in a single day (Single-Tap Loop → WTR P1 → Bug #23). ~11 LOC delta in `help.js`. Live-build Playwright invariant pass on iPhone 14 Pro 390×844: overlay absent on auto-call, present on user-invoke.
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-211605` (Bug #23 ambient-inviolability fix)
+* **Branch:** `main` · **Working tree:** clean
+* **Latest code commit:** `9a274456` — `Bug #23: ambient inviolability — disable auto-show onboarding overlay`
+* **Prior code commit:** `79557c7d` (WTR P1, earlier same day)
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE
+* **Deployed systems:** browser live on `app.groovelinx.com`. Modal/Worker/R2/Firebase unchanged.
+* **Open bugs:** Bug #23 ✅ RESOLVED. Remaining open: Bug #17 architecture-verified · Bug #18 MED · Bug #19 HIGH→MITIGATED · Bug #24/#25 MED · Bug #27 MED.
+* **Ten canonical memories standing.**
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew real-iPhone-validates the Bug #23 fix is invisible (which is the point — the absence of the overlay is the success criterion). Combined with Tier 2 + WTR P1 from earlier today, that's three surfaces to feel in one session.
+* **NEXT** — Drew picks the next single move. Candidates (per [[feedback_observe_before_expand]] — NO new architectural moves without behavioral evidence): (a) Bug #24/#25 (tabbar + chatbot z-index over player, ~20-30 LOC combined, same body-class mechanism); (b) WTR P2 investigation-aware filter (deferred per Drew's explicit "do NOT begin WTR P2 yet"); (c) Bug #27/#18 durationSec backfill (~30-50 LOC). Most-aligned-with-current-philosophy candidate: Bug #24/#25 — also a "global-shell calmness" pass that the player surface has been waiting on.
+* **LATER** — Listening Modes · Transition View · Patterns doorway · Phase 2 Musical Moment System.
+* **DEFERRED** — unchanged from prior session.
+
+## 3. OPEN PRODUCT DECISIONS
+
+Unchanged from WTR P1 handoff. One addition:
+
+11. **NEW: Ambient inviolability as canonical principle status** (Drew) — Bug #23 is the FIRST shipping decision shaped by treating ambient-self-promotion as a class of violation (not a single overlay's bug). The compressed philosophy line *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent."* now lives in code at `help.js:glCheckOnboarding`. Promotion criteria (per [[feedback_load_bearing_memory_promotion]]): 2-3 shipping decisions + holds across ≥2 surfaces + Drew greenlight. ONE shipping decision met. Watch the next ambient surface that auto-promotes — that will be the validation moment.
+
+## 4. OPERATIONAL RISKS
+
+* **Help-discovery cold start.** A genuinely new user no longer gets the overlay tutorial. The ❓ topbar button + inline page triggers remain, but a user who never clicks them never sees the overlay. Acceptable per the principle (help must be invited), but worth observing if real new-user signups appear to land confused. Not a v1 blocker.
+* **Same-day ship density.** Three ships in one day (Single-Tap Loop, WTR P1, Bug #23) means Drew is validating compound surface area in one real-device session. Bug #23's success criterion is *absence* of a behavior, which is easy to verify but easy to forget to check.
+* **No regression sweep ran across all auto-onboarding pages.** `glCheckOnboarding` was a single-function no-op so the change is universal (Songs / Practice / Rehearsal / Setlists / Gigs / Stage Plot / Ideas registry entries ALL no longer auto-show). This is by design per the philosophy reframe, but means *every* registered page lost its auto-overlay simultaneously. If any specific page genuinely needs the first-visit affordance, that's a future user-invoked redesign — not a regression to fix.
+* **Storage-key misdirection in the original bug filing.** The filer's reference to `gl_onboard_rehearsal_done` was for a different system (Avatar Guide funnel). The actual flag is `gl_onboarded_rehearsal`. Documented in the bug entry — future debuggers should not chase the wrong key.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew runs a single ~5-minute cold-iPhone check** on the live build (`20260526-211605`):
+
+1. Force-refresh `app.groovelinx.com` to pick up the new build.
+2. Clear site data (or land on `#rehearsal` directly).
+3. Verify NO overlay appears on cold open of Rehearsal page.
+4. Tap the ❓ topbar button → verify the overlay DOES appear (negative-preservation).
+5. Dismiss → confirm clean return to the page.
+
+**Why a separate session:** the previous two ships (Tier 2 + WTR P1) need *audible* validation; this one needs *visual* validation (the overlay's absence). Drew may want to wrap all three into a single iPhone session if energy allows.
+
+**Blocker if not done:** none — the Playwright invariant already confirms the DOM-level behavior on the live build. Drew's real-device check is a sanity confirmation, not a gate. Next ship can proceed on Drew's signal.
 
 ---
 
