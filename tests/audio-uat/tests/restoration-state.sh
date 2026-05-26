@@ -105,8 +105,41 @@ else
   check "loop-target localStorage prefix unchanged" fail "prefix may have been renamed — existing user state would be orphaned"
 fi
 
+# --- Working-Thought Restoration P1 invariants ---
+
+# 7. Toggle handler exists for the investigating bit.
+if grep -q "window._mtToggleInvestigating = " "$FILE"; then
+  check "WTR P1: investigating toggle handler defined" pass
+else
+  check "WTR P1: investigating toggle handler defined" fail
+fi
+
+# 8. Toggle handler does NOT auto-play and does NOT auto-open the composer.
+#    It must remain a pure state-change gesture — no audio authority claim,
+#    no UI surface promotion. This is the consent-chain rule applied at the
+#    toggle layer.
+TOGGLE_BODY=$(awk '/window._mtToggleInvestigating/,/^};/' "$FILE")
+if [ -n "$TOGGLE_BODY" ]; then
+  if ! echo "$TOGGLE_BODY" | grep -qE "_mtTogglePlayAll\(|audio\.play\(|_mtMobileToggleNote\(|masterPlaying = true|_mobileNoteOpenIdx = "; then
+    check "WTR P1: toggle handler does NOT seize audio/composer authority" pass
+  else
+    check "WTR P1: toggle handler does NOT seize audio/composer authority" fail "found forbidden authority-grab call"
+  fi
+else
+  check "WTR P1: toggle handler does NOT seize audio/composer authority" fail "could not locate toggle handler body"
+fi
+
+# 9. Toggle persists via the canonical Firebase write path (_mtSaveComment),
+#    NOT via localStorage. Investigating state is shared band-level liveness,
+#    not personal local state.
+if echo "$TOGGLE_BODY" | grep -q "_mtSaveComment(p.sessionId, comment)"; then
+  check "WTR P1: toggle persists via _mtSaveComment (Firebase, not localStorage)" pass
+else
+  check "WTR P1: toggle persists via _mtSaveComment (Firebase, not localStorage)" fail
+fi
+
 if [ "$VERDICT" = "PASS" ]; then
-  echo "restoration-state: 6/6 invariants hold verdict=PASS"
+  echo "restoration-state: 9/9 invariants hold verdict=PASS"
   exit 0
 else
   echo "restoration-state: invariants_broken=$FAILED_CHECKS verdict=FAIL"

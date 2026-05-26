@@ -80,6 +80,10 @@ tests/audio-uat/
     └── restoration-state.sh
 ```
 
+## Future tests under consideration (not implemented)
+
+- **unresolved-anchor-consistency** — if the loop restores with N investigating comments anchored within the loop segment's time range, the anchor sentence must grammatically reflect that count when paused (`N unresolved note(s)` replaces `paused`). Tests the integration between Working-Thought Restoration P1's persistence layer and the anchor-sentence builder. Would catch refactors that silently detach the count from the visible anchor. Not implemented in V1; harness scope stays at objective audio failure modes for now. Acknowledging the concept here so that anchor grammar is recognized as becoming operationally meaningful, without prematurely operationalizing a test for it.
+
 ## Discipline
 
 Per `feedback_tooling_tier_discipline` memory: this harness is a Tier 2 tooling addition, explicitly greenlit by Drew. Do NOT expand to Tier 3 (audio intelligence layer, ML-based analysis, perceptual scoring) without explicit Drew greenlight. Every new test must answer: *"what repeated proven friction does this remove?"*

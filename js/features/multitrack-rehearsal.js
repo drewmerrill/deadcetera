@@ -5631,12 +5631,44 @@ function _mtUpdateNowReviewingLabel(p, activeOrigIdx) {
     else                            titleColor = '#f1f5f9';
     if (isLoop) {
         // Loop anchor sentence — resolves loop/playback into one phrase.
-        var playState = p.masterPlaying ? 'playing' : 'paused';
-        var playColor = p.masterPlaying ? '#a5b4fc' : 'var(--text-dim)';
+        // Working-Thought Restoration P1: when paused, if there are
+        // investigating comments anchored within the loop segment, the
+        // count REPLACES "paused" — investigation is more emotionally
+        // primary than absence-of-playback when the musician is in
+        // evaluative cognition. During playback the count is suppressed
+        // (musical cognition takes the foreground).
+        var stateLabel;
+        var stateColor;
+        if (p.masterPlaying) {
+            stateLabel = 'playing';
+            stateColor = '#a5b4fc';
+        } else {
+            var unresolved = 0;
+            if (Array.isArray(p.comments)) {
+                var startSec = (typeof seg.startSec === 'number') ? seg.startSec : 0;
+                var endSec = (typeof seg.endSec === 'number') ? seg.endSec : 0;
+                for (var ci = 0; ci < p.comments.length; ci++) {
+                    var cm = p.comments[ci];
+                    if (cm && cm.investigating === true
+                            && typeof cm.timestampSec === 'number'
+                            && cm.timestampSec >= startSec
+                            && cm.timestampSec < endSec) {
+                        unresolved++;
+                    }
+                }
+            }
+            if (unresolved > 0) {
+                stateLabel = unresolved + ' unresolved note' + (unresolved > 1 ? 's' : '');
+                stateColor = 'var(--text-dim)';
+            } else {
+                stateLabel = 'paused';
+                stateColor = 'var(--text-dim)';
+            }
+        }
         el.innerHTML = '<span style="opacity:0.7">🔁 </span>'
             + '<b style="color:' + titleColor + '">' + escHtml(labelTitle) + '</b>'
             + '<span style="opacity:0.6;font-family:ui-monospace,monospace;font-size:0.92em"> · ' + range + '</span>'
-            + '<span style="color:' + playColor + ';font-weight:600;margin-left:6px">· ' + playState + '</span>';
+            + '<span style="color:' + stateColor + ';font-weight:600;margin-left:6px">· ' + stateLabel + '</span>';
         return;
     }
     // Non-loop (legacy behavior preserved for desktop + transient playback):
@@ -7006,6 +7038,47 @@ async function _mtLoadComments(sessionId) {
     }
 }
 
+// Working-Thought Restoration P1 — toggle the `investigating` bit on a
+// comment. The bit is the entire investigation state: true means "this
+// musical thought is still live"; absent/false means "ordinary comment."
+// No new entity, no workflow, no priority levels — just one bit per comment.
+//
+// Tap once → mark; tap again → unmark. The toggle IS the resolution.
+// Any band member can toggle any comment (it's collective musical liveness,
+// not personal task ownership).
+window._mtToggleInvestigating = async function(commentId) {
+    var p = _mtState.player;
+    if (!p || !p.sessionId || !Array.isArray(p.comments)) return;
+    var idx = -1;
+    for (var i = 0; i < p.comments.length; i++) {
+        if (p.comments[i] && p.comments[i].commentId === commentId) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    var comment = p.comments[idx];
+    var nextState = !comment.investigating;
+    // Optimistic local update so the icon flips immediately; revert if Firebase fails.
+    comment.investigating = nextState;
+    _mtRefreshCommentPanel();
+    // Force anchor-sentence refresh — the unresolved-count clause depends
+    // on this field. Resetting _lastActiveSegIdx makes the next highlight
+    // call treat it as a transition and re-render the label.
+    p._lastActiveSegIdx = undefined;
+    if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+        setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+    }
+    // Persist via the canonical comment-save path (Firebase shared state).
+    var ok = await _mtSaveComment(p.sessionId, comment);
+    if (!ok) {
+        // Revert on failure — keep local state consistent with persisted truth.
+        comment.investigating = !nextState;
+        _mtRefreshCommentPanel();
+        p._lastActiveSegIdx = undefined;
+        if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+            setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+        }
+    }
+};
+
 async function _mtSaveComment(sessionId, comment) {
     // C2 Phase 2: route through canonical setField when available.
     try {
@@ -7155,7 +7228,16 @@ function _mtRenderCommentList() {
         var practiceBtn = c.promotedTaskId
             ? ''
             : '<button onclick="_mtPromoteCommentToTask(\'' + escHtml(c.commentId) + '\')" title="Convert this comment into a practice task for the relevant song" style="background:none;border:1px solid rgba(34,197,94,0.3);color:#86efac;cursor:pointer;font-size:0.62em;padding:1px 5px;border-radius:4px;font-family:inherit;white-space:nowrap;font-weight:600">🎯 Practice this</button>';
-        return '<div class="mt-comment-row" data-comment-time="' + c.timestampSec + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
+        // Working-Thought Restoration P1 — investigating-bit toggle.
+        // Always-visible low-opacity 🔍 when unset (0.28); slightly emphasised
+        // when set (0.72). Monochrome (text-dim color). No badge, no animation,
+        // no tooltip prose. The icon's existence is ambient; only the engaged
+        // state claims any attention.
+        var investigating = !!c.investigating;
+        var investBtn = '<button onclick="_mtToggleInvestigating(\'' + escHtml(c.commentId) + '\')"'
+            + ' title="' + (investigating ? 'Mark as resolved' : 'Mark as still investigating') + '"'
+            + ' style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em;padding:0;line-height:1;opacity:' + (investigating ? '0.72' : '0.28') + ';transition:opacity 120ms">🔍</button>';
+        return '<div class="mt-comment-row" data-comment-time="' + c.timestampSec + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
             + '<button onclick="_mtJumpToComment(' + c.timestampSec + ')" title="Jump to ' + _mtFmtTime(c.timestampSec) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(c.timestampSec) + '</button>'
             + '<div style="min-width:0">'
               + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + '</div>'
@@ -7165,6 +7247,7 @@ function _mtRenderCommentList() {
               + '</div>'
             + '</div>'
             + '<div style="align-self:center">' + practiceBtn + '</div>'
+            + '<div style="align-self:start">' + investBtn + '</div>'
             + '<button onclick="_mtDeleteCommentUI(\'' + escHtml(c.commentId) + '\')" title="Delete" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:0">×</button>'
             + '</div>';
     }).join('');
