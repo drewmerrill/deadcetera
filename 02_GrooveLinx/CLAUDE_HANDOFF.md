@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 21:16 UTC · Build under test: `20260526-211605` (commit `9a274456` — Bug #23 ambient-inviolability fix) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Three Tier-2-era ships in one day** (Single-Tap Loop → WTR P1 → Bug #23). **Bug #23 RESOLVED via ambient-inviolability reframe:** the help-registry first-visit auto-overlay had been intercepting conductor intent on every cold open. Reframe ("not onboarding friction — ambient self-promotion") made the fix surgical: `glCheckOnboarding` → documented no-op. 11 LOC. All user-invoked help paths preserved. Compressed philosophy line embedded in code: *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent."* Live-build Playwright invariant pass: overlay absent on auto-call, present on user-invoke. **Ten canonical memories standing:** `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`, `project_one_musical_truth`, `project_session_intent_persistence`, `project_accompaniment_axis`, `project_prepared_for`. Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
+_Last refreshed: 2026-05-26 21:31 UTC · Build under test: `20260526-213143` (commit `1c0180fe` — Bugs #24 + #25 ambient-spatial-recede fix) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **FOUR Tier-2-era ships in one day** (Single-Tap Loop → WTR P1 → Bug #23 → Bugs #24/#25). **Bugs #24 + #25 RESOLVED via ambient-spatial-recede reframe:** ambient shell surfaces (mobile tabbar z-index 8000 + avatar fab z-index 9000) were sitting above the multitrack player (z-index 5000), occluding the conductor surface and accepting stray taps. Same authority violation as Bug #23 in SPACE rather than TIME. Fix: `body.gl-mt-player-open` set by player open, removed by close; two CSS rules hide both ambient surfaces. ~6 LOC delta across 3 files. Embedded concept phrase in code comment: *"Conductor surfaces temporarily suppress ambient shell presence."* Live-build Playwright invariant pass: tabbar/fab `flex → none → flex` across class toggle; both CSS rules confirmed loaded. **Ten canonical memories standing.** Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -205,6 +205,60 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 21:31 UTC — Bugs #24 + #25 RESOLVED via AMBIENT-SPATIAL-RECEDE (conductor surfaces temporarily suppress ambient shell presence)
+
+**Code shipped.** Build `20260526-213143` (commit `1c0180fe`). Fourth Tier-2-era ship in one day. ~6 LOC delta across `multitrack-rehearsal.js` + `gl-left-rail.js` + `gl-avatar-ui.js`. Live-build Playwright invariant pass: both CSS rules loaded; tabbar `flex → none → flex` and fab `flex → none → flex` across the class toggle.
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-213143` (Bugs #24 + #25 ambient-spatial-recede fix)
+* **Branch:** `main` · **Working tree:** clean
+* **Latest code commit:** `1c0180fe` — `Bug #24/#25: ambient inviolability in SPACE — body.gl-mt-player-open hides tabbar + avatar fab while player is open`
+* **Prior code commit:** `9a274456` (Bug #23, earlier same day)
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE
+* **Deployed systems:** browser live on `app.groovelinx.com`. Modal/Worker/R2/Firebase unchanged.
+* **Open bugs:** Bugs #24 + #25 ✅ RESOLVED. Remaining open: Bug #17 architecture-verified · Bug #18 MED · Bug #19 HIGH→MITIGATED · Bug #27 MED.
+* **Ten canonical memories standing.**
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew real-iPhone validates the ambient-recede fix. Open a multitrack session → confirm bottom tabbar disappears + avatar fab disappears → close player → both return. Combined with the three prior ships today, four surfaces to feel in one session.
+* **NEXT** — Drew picks the next single move. Candidates (per [[feedback_observe_before_expand]] — NO new architectural moves without behavioral evidence): (a) **Bug #27 + #18** (durationSec backfill, ~30-50 LOC, eliminates "0m" stale-state — pure trust-layer cleanup since #18 is the upstream); (b) **WTR P2 investigation-aware filter** (explicitly deferred per Drew "do NOT begin WTR P2 yet"); (c) **Transition View** (larger, would need a fresh spec pass).
+* **LATER** — Listening Modes · Transition View · Patterns doorway · Phase 2 Musical Moment System.
+* **DEFERRED** — unchanged.
+
+## 3. OPEN PRODUCT DECISIONS
+
+Unchanged from prior handoffs. Two additions:
+
+12. **NEW: Ambient inviolability promoted to a class principle, not just one violation type** (Drew + ChatGPT 2026-05-26 21:30 reframe) — Bug #23 was temporal, Bugs #24/#25 are spatial. Both shipped under the same principle. The compressed concept phrases now live in code at both fix sites: *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent."* (Bug #23) + *"Conductor surfaces temporarily suppress ambient shell presence."* (Bugs #24/#25). Promotion criteria (per [[feedback_load_bearing_memory_promotion]]): 2-3 shipping decisions + holds across ≥2 surfaces + Drew greenlight. **TWO shipping decisions met across TWO surfaces** (help registry + multitrack player + shell). Memory framework promotion to `CLAUDE.md` is now eligible — awaiting Drew greenlight.
+
+13. **NEW: Is `gl-mt-player-open` the right name for the body class** (Drew, low-stakes) — feature-prefixed deliberately to leave Rehearsal Mode / Live Gig Mode as separate decisions. If those surfaces should ALSO suppress ambient shell presence, separate body classes (`gl-rehearsal-mode-open` / `gl-live-gig-open`) are the cheap incremental adds. NOT a generalized abstraction (no helper, no registry).
+
+## 4. OPERATIONAL RISKS
+
+* **The body class is feature-specific.** A future agent shipping a new fullscreen surface needs to add its own `gl-*-open` toggle + CSS rules — there's no central mechanism enforcing this. The doc-comment at the Isolate Mode construction site is the only documentation. Net: low risk because the precedent is now two-deep (`sd-stems-overlay-open` + `gl-mt-player-open`), and the class names self-explain.
+* **No Rehearsal Mode / Live Gig Mode coverage.** Those are the OTHER full-screen modes per CLAUDE.md. They were intentionally NOT touched per the bug scope. If Drew observes the same tabbar/fab visual conflict in those modes, the fix is two more body classes — not a refactor.
+* **Multitrack player has TWO open paths.** Both `_mtOpenReviewMode` (line ~1578) and the Isolate Mode construction (line ~1183) set the class; if a third open path is ever added without setting the class, the ambient surfaces will reappear. The doc-comment at the first site documents the contract; future agents must extend it.
+* **Same-day ship density (4 ships).** Drew is validating compound surface area in real-device sessions. Audio feel from Tier 2, anchor sentence from WTR P1, overlay absence from Bug #23, shell calmness from Bugs #24/#25 — four distinct success criteria. If anything feels wrong, isolation may need iteration.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew runs a single ~10-min iPhone validation session on the live build (`20260526-213143`):**
+
+1. Force-refresh + reach `#rehearsal` → confirm NO overlay on cold open (Bug #23 confirmation).
+2. Tap a multitrack session → player opens → confirm **bottom tabbar disappears** + **avatar fab disappears** (Bugs #24/#25 confirmation).
+3. Tap a segment row → loop sets silently (Tier 2 Single-Tap Loop confirmation).
+4. Tap Play → audio enters loop bounds; wrap reads as one phrase + matches the anchor sentence (Tier 2 #3 audio-feel).
+5. Close player → tabbar + fab return (negative-preservation confirmation).
+6. On desktop view of a session with existing comments → 🔍 toggle appears top-right of comment card; tap → unresolved count updates in anchor (WTR P1 confirmation).
+
+**Why one session covers all four ships:** they share the same surfaces (Rehearsal page → multitrack player → Review Mode). Drew swaps mental load once.
+
+**Blocker if not done:** none — all four ships have passed automated invariants on the live build. Drew's real-device check is emotional validation, not a gate. Next ship can proceed on Drew's signal.
 
 ---
 

@@ -1,6 +1,8 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260526-211605 (Bug #23 ambient-inviolability fix live, commit `9a274456`)
+**Build Under Test:** 20260526-213143 (Bugs #24 + #25 ambient-spatial-recede fix live, commit `1c0180fe`)
+
+> **2026-05-26 21:31 UTC — Bugs #24 + #25 RESOLVED (ambient inviolability in SPACE).** ~6 LOC delta across `multitrack-rehearsal.js` + `gl-left-rail.js` + `gl-avatar-ui.js`. Same authority violation as Bug #23 expressed in space instead of time: the mobile tabbar (`#glBottomTabs` z-index 8000) and avatar fab (`#glAvatarBtn` z-index 9000) sat above the multitrack player overlay (`#mtPlayerOverlay` z-index 5000), occluding the conductor surface and accepting stray taps. Fix: `body.gl-mt-player-open` class set by `_mtOpenReviewMode` + Isolate Mode construction, removed by `_mtClosePlayer`; two CSS rules hide both ambient surfaces under the class. Feature-prefixed class name (not `gl-player-open`) leaves Rehearsal/Live Gig modes as separate decisions. Matches existing `sd-stems-overlay-open` precedent. Live-build invariant pass: rules loaded in `glTabBarCSS` + `glAvatarStyles`; tabbar `flex → none → flex` and fab `flex → none → flex` across class toggle. **Embedded concept phrase in code comment:** *"Conductor surfaces temporarily suppress ambient shell presence."*
 
 > **2026-05-26 21:16 UTC — Bug #23 RESOLVED (ambient inviolability).** ~11 LOC delta in `help.js` — `glCheckOnboarding` converted to a documented no-op. The help-registry first-visit auto-overlay had been intercepting conductor intent on every cold open (user taps REHEARSAL → overlay says "first let me tell you about Rehearsal"). The reframe is what made this surgical: the problem was not onboarding fatigue, it was **ambient self-promotion** — ambient surfaces may INFORM intent but may not INTERRUPT intent ([[project_one_musical_truth]]). All user-invoked help paths preserved (❓ button, inline page trigger, `/help` page). Live-build invariant pass: `overlayPresent_after_glCheck_t0/t500 = false`, `overlayPresent_after_glShow_userInvoked = true`. Screenshots at `02_GrooveLinx/uat/screenshots/2026-05-26/bug23-ambient-inviolability/`.
 
@@ -190,7 +192,17 @@ Screenshots: `02_GrooveLinx/uat/screenshots/2026-05-26/bug23-ambient-inviolabili
 
 ---
 
-### Bug #24 — Bottom navigation tabbar visible over the Review Mode overlay on mobile (MED — OPEN)
+### Bug #24 — Bottom navigation tabbar visible over the Review Mode overlay on mobile (MED — ✅ RESOLVED 2026-05-26 build `20260526-213143` commit `1c0180fe`, AMBIENT-SPATIAL-RECEDE FIX)
+
+**RESOLUTION:** Shipped jointly with Bug #25 — same `body.gl-mt-player-open` mechanism. `_mtOpenReviewMode` + Isolate Mode construction set the class; `_mtClosePlayer` removes it. One CSS rule in `gl-left-rail.js` `#glTabBarCSS` block: `body.gl-mt-player-open #glBottomTabs { display: none !important; }`. Live-build invariant pass: tabbar `flex → none → flex` across the class toggle on iPhone 14 Pro 390×844. Avatar `#glAvatarBtn` z-index 9000 was actually the highest-conflict surface — both fixes ship together as one ambient-recede pass.
+
+**Authority framing:** This is the SPATIAL form of the same violation as Bug #23 (temporal). The conductor surface (multitrack player at z-index 5000) was being occluded + tap-stolen by ambient surfaces at z-index 8000/9000. Conductor surfaces temporarily suppress ambient shell presence. Feature-prefixed class name (`gl-mt-player-open` not generic `gl-player-open`) leaves Rehearsal/Live Gig modes as separate decisions — no premature abstraction. Matches existing `sd-stems-overlay-open` precedent.
+
+Screenshots: `02_GrooveLinx/uat/screenshots/2026-05-26/bugs24-25-ambient-spatial-recede/01-baseline-tabbar-visible.png` + `02-ambient-receded-class-active.png`.
+
+---
+
+### Bug #24 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.1)
@@ -208,7 +220,17 @@ Screenshots: `02_GrooveLinx/uat/screenshots/2026-05-26/bug23-ambient-inviolabili
 
 ---
 
-### Bug #25 — Floating chatbot avatar (bottom-right) overlaps player UI on mobile (MED — OPEN)
+### Bug #25 — Floating chatbot avatar (bottom-right) overlaps player UI on mobile (MED — ✅ RESOLVED 2026-05-26 build `20260526-213143` commit `1c0180fe`, AMBIENT-SPATIAL-RECEDE FIX)
+
+**RESOLUTION:** Shipped jointly with Bug #24 — same `body.gl-mt-player-open` mechanism. The "chatbot" in the bug filing is actually the `#glAvatarBtn` GLAvatarUI fab (no separate chatbot module exists). One CSS rule in `gl-avatar-ui.js` `glAvatarStyles` block: `body.gl-mt-player-open #glAvatarBtn, body.gl-mt-player-open #glAvatarPanel { display: none !important; }` (both fab AND slide-out panel covered for the edge case where the panel is open when the player opens).
+
+Live-build invariant pass: forced fab `display: flex` → `display: none` under class → `display: flex` after class removed. Rule confirmed loaded in `glAvatarStyles` stylesheet.
+
+See Bug #24 entry for authority framing + the shared `body.gl-mt-player-open` contract. Screenshots co-located at `02_GrooveLinx/uat/screenshots/2026-05-26/bugs24-25-ambient-spatial-recede/`.
+
+---
+
+### Bug #25 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.1)
