@@ -1,6 +1,8 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260526-102503 (Pass 2.5 trust-layer fix live)
+**Build Under Test:** 20260526-181017 (Tier 2 Single-Tap Loop MVP live, commit `56ff5a54`)
+
+> **2026-05-26 18:10 UTC — Tier 2 ship update.** Single-Tap Loop MVP shipped. **Bug #26 ✅ RESOLVED** (auto-active-segment outline on cold open) — the highlight now follows the loop target if set, OR the playhead during actual playback, never both fallback-to-row-0-at-startup. **Bug #11 ✅ DISSOLVED** by the same change (the dual-lit-state can no longer occur because the highlight goes on exactly one row: the loop, never a "second lit" auto-active). Both bugs were predicted by Drew + ChatGPT to be a coherent pair; that prediction was correct. UAT evidence at `02_GrooveLinx/uat/screenshots/2026-05-26/tier2-single-tap-loop/` (8 scenario screenshots).
 
 ---
 
@@ -199,7 +201,13 @@ Post-fix verification: DOM check confirmed `mtCommentPanel`, `mtComposerArea`, `
 
 ---
 
-### Bug #26 — Auto-active-segment highlight fires on cold player open with no audio playing (MED — OPEN, visual trust)
+### Bug #26 — Auto-active-segment highlight fires on cold player open with no audio playing (MED — ✅ RESOLVED 2026-05-26 build `20260526-181017` commit `56ff5a54`, dissolved by Tier 2 Single-Tap Loop)
+
+**RESOLUTION:** Tier 2 Single-Tap Loop MVP changed `_mtUpdateActiveSegmentHighlight` to (a) honor the loop target as the authoritative active segment if `p.loopIdx != null`, (b) suppress the fallback "most-recent-segment-whose-start-≤-playhead" when audio is paused AND playhead is at 0. Cold-open state now shows NO indigo outline on any row; anchor sentence reads "🎵 Tap a song to start" instead of "🎵 Reviewing: Music Never Stopped…". UAT-verified: `rowsWithIndigoOutline: []` at cold open; only the user's loop target row gets the outline. The dual-lit-state (Bug #11) is also dissolved because the highlight goes on exactly one row (the loop), with no second auto-active row to compete. Screenshot: `uat/screenshots/2026-05-26/tier2-single-tap-loop/scenario-9-cold-open-no-false-conductor.png`.
+
+---
+
+### Bug #26 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.1; verified DOM inspection)
