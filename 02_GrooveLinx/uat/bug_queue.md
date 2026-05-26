@@ -1,6 +1,46 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260525-225157 (Pass 2 mobile + render visibility live)
+**Build Under Test:** 20260526-102503 (Pass 2.5 trust-layer fix live)
+
+---
+
+## 🔒 STANDING TRIAGE RULE — Trust-Layer Bug Classification
+
+_Formalized 2026-05-26 (Drew confirmation post Pass 2.5 ship) — was previously implicit in [[project_musical_operational_memory]]; now elevated to a standing operational triage rule that applies to every new bug filed below._
+
+**Definition.** A **trust-layer bug** is any bug that:
+- **LOSES captured user data** — comments, notes, drafts, segments, marks, tasks, renders, recordings, focus state, playback position
+- **OBSCURES the system's current state** — "is this loading? is this current? is this stale? did this save?" with no visible answer
+- **DISPLAYS a value older than the underlying truth** — stale labels, ghost highlights, phantom counts
+
+**Severity.** Trust-layer bugs are **HIGH priority regardless of surface area or LOC.** A 5-LOC trust-layer fix outranks a 100-LOC quality fix. Reason: the moat is persistent operational musical continuity ([[project_musical_operational_memory]]); silent failures destroy that moat regardless of how small the code surface is.
+
+**What is NOT trust-layer.** A bug that adds friction without losing or obscuring data = QUALITY bug, standard severity ranking. Example: an awkward layout, a slow render, a confusing label — those are quality issues, not trust-layer. Trust-layer is specifically about THE SYSTEM'S RELATIONSHIP WITH CAPTURED MUSICAL MEMORY.
+
+**Triage flow on every new bug filing:**
+1. Read the symptom. Does it match LOSES / OBSCURES / STALE?
+2. If yes → tag `(TRUST-LAYER)` in the entry title + HIGH severity regardless of perceived "size"
+3. If no → standard severity rubric
+4. Trust-layer bugs jump the queue for triage even if MED-severity equivalents are older
+
+**Examples shipped under this rule:**
+- Bug #21 — silent data loss on focus-switch with unsaved composer text. 70 LOC fix in `fd347556`. The classification (`TRUST-LAYER FIX`) drove its priority above larger LOC-count peers.
+
+**Examples NOT trust-layer:**
+- Bug #20 — Save button below the fold. HIGH severity (mobile-fit failure) but not trust-layer — no data is lost; it's a layout problem.
+- Bug #22 — double composer rendering. HIGH severity (cognitive split + cascade) but not trust-layer — no data is lost; it's a UX competition problem.
+
+The trust-layer rule applies to FUTURE bugs as they're filed. Re-classifying older bugs is fine when the rule clarifies their priority.
+
+---
+
+> **2026-05-25 23:55 UTC overnight friction harvest update.** 30 findings filed in `uat/findings/mobile-pass2-friction-harvest-2026-05-25.md`. Net new bugs surfaced: **Bug #20** (composer Save below the fold on mobile, HIGH), **Bug #21** (silent data loss on focus-switch with unsaved composer text, HIGH **TRUST-LAYER**), **Bug #22** (desktop session composer ALSO rendered on mobile = double composer, HIGH), **Bug #23** (rehearsal-plan onboarding card auto-shows + blocks page on mobile, HIGH but orthogonal global-shell), **Bug #24** (bottom navigation tabbar visible over Review Mode overlay, MED), **Bug #25** (chatbot avatar overlaps player UI on mobile, MED), **Bug #26** (Music Never Stopped renders with active-segment highlight on cold open with no audio playing, MED visual trust), **Bug #27** (Bug #18 also surfaces as "Last rehearsal · 0m" on home Rehearsal page — extends #18 with new surface). Pass 2 architectural successes also documented (focus state machine, reopen idempotency, render persistence integration). Most-successful interaction: render persistence chip in all 3 states. Most-confusing: composer Save invisible + unsaved-text data loss combination.
+
+> **2026-05-26 11:30 UTC post-Pass-2.5 strategic update.** Bugs #20 + #21 + #22 RESOLVED in `fd347556`. Trust-layer cliff cleared. **Standing Triage Rule** added above. Next priorities per Drew 2026-05-26: (1) reverb perceptual A/B (Drew action), (2) Bugs #24 + #25 global-shell overlap cleanup as next ship after Drew's iPhone validation, (3) lightweight Musical Moment evolution (small passes, NOT giant architecture), (4) continued real-world musician observation. See `00_Governance/CURRENT_PRIORITIES.md` Workflow Refinement + Operational Intelligence phase for full 5-item roadmap.
+
+---
+
+
 
 > **2026-05-25 23:55 UTC overnight friction harvest update.** 30 findings filed in `uat/findings/mobile-pass2-friction-harvest-2026-05-25.md`. Net new bugs surfaced: **Bug #20** (composer Save below the fold on mobile, HIGH), **Bug #21** (silent data loss on focus-switch with unsaved composer text, HIGH), **Bug #22** (desktop session composer ALSO rendered on mobile = double composer, HIGH), **Bug #23** (rehearsal-plan onboarding card auto-shows + blocks page on mobile, HIGH but orthogonal global-shell), **Bug #24** (bottom navigation tabbar visible over Review Mode overlay, MED), **Bug #25** (chatbot avatar overlaps player UI on mobile, MED), **Bug #26** (Music Never Stopped renders with active-segment highlight on cold open with no audio playing, MED visual trust), **Bug #27** (Bug #18 also surfaces as "Last rehearsal · 0m" on home Rehearsal page — extends #18 with new surface). Pass 2 architectural successes also documented (focus state machine, reopen idempotency, render persistence integration). Most-successful interaction: render persistence chip in all 3 states. Most-confusing: composer Save invisible + unsaved-text data loss combination. Recommended smallest/highest-leverage next fix: hide desktop session composer on mobile (Bug #22, ~5-10 LOC) — has cascading positive side effects on Bug #20, Bug #28, F08, F30. See full harvest doc for severity ranking + emotional UX observations.
 
@@ -137,7 +177,9 @@ Post-fix verification: DOM check confirmed `mtCommentPanel`, `mtComposerArea`, `
 
 **Fix options:** (a) Hide tabbar when `#mtPlayerOverlay` is present; (b) Raise player z-index above tabbar.
 
-**Filing:** Pass 2.5 candidate.
+**Recommended approach (post-2026-05-26 strategic direction):** Option (a). Add a `body.gl-player-open` class set/unset by `_mtOpenPlayer` + `_mtClosePlayer`; mobile tabbar CSS gains `body.gl-player-open .tabbar-mobile { display:none }` rule. Restores full vertical real estate to the player. Estimated ~10 LOC across the multitrack module + a small CSS addition.
+
+**Filing:** Pass 2.5 candidate (per Drew 2026-05-26 next-after-reverb-A/B ship target alongside Bug #25 — combined ~20-30 LOC).
 
 ---
 
@@ -151,7 +193,9 @@ Post-fix verification: DOM check confirmed `mtCommentPanel`, `mtComposerArea`, `
 
 **Fix:** Hide chatbot avatar while `#mtPlayerOverlay` is open.
 
-**Filing:** Pass 2.5 candidate.
+**Recommended approach (post-2026-05-26 strategic direction):** Same mechanism as Bug #24 — reuse the `body.gl-player-open` class. Chatbot CSS gains `body.gl-player-open #gl-chatbot-fab { display:none }` (or whatever the actual fab element id is). Both fixes ship together as the "global-shell focus calmness" pass per Drew's 2026-05-26 priority #2 ranking. Estimated ~5 LOC additional once Bug #24's body-class mechanism is in.
+
+**Filing:** Pass 2.5 candidate (ships with Bug #24 as combined ~20-30 LOC pass).
 
 ---
 
