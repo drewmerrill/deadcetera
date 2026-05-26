@@ -1673,12 +1673,21 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
           // Single rendered audio — only created when we have a URL. While
           // waiting for the render, this slot is empty and play() is a no-op.
           '<audio id="mtReviewAudio" preload="metadata" crossorigin="anonymous"' + (renderUrl ? (' src="' + escHtml(renderUrl) + '"') : '') + '></audio>' +
-          // Comments panel + composer — same as Isolate Mode.
           // Segments panel — server-precomputed waveforms + analyzer
           // results. Rehearsal navigation intelligence, not a DAW.
           '<div id="mtSegmentsPanel" style="margin-top:8px;flex-shrink:0"></div>' +
-          '<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:160px"></div>' +
-          '<div id="mtComposerArea"></div>' +
+          // Bug #22 (Pass 2.5) — desktop session composer + comments panel
+          // are HIDDEN on mobile. Mobile note flow routes entirely through the
+          // Pass 2 contextual composer inside the focused segment row.
+          // Side effects: closes F08 (empty-comments real estate) +
+          // F15 (mobile keyboard copy) + F20 (composerTags cross-contamination)
+          // + F30 (17-track dropdown overflow). On desktop both surfaces stay
+          // canonical exactly as before.
+          (_isMobile
+            ? ''
+            : ('<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:160px"></div>' +
+               '<div id="mtComposerArea"></div>')
+          ) +
         '</div>';
     document.body.appendChild(ov);
     // Intentionally NOT wiring backdrop-click-to-close. The player runs
@@ -2699,6 +2708,11 @@ window._mtShareCurrentMix = async function() {
 };
 
 window._mtClosePlayer = function() {
+    // Bug #21 (Pass 2.5) TRUST-LAYER FIX — flush any pending composer draft
+    // before tearing down the overlay. Closing the player should NEVER lose
+    // the user's last keystrokes; drafts persist in localStorage and re-appear
+    // on next player open.
+    if (typeof _mtFlushPendingDraft === 'function') _mtFlushPendingDraft();
     var ov = document.getElementById('mtPlayerOverlay');
     if (ov) ov.remove();
     // Phase 2D: detach keyboard shortcuts when leaving the player.
@@ -4651,6 +4665,11 @@ window._mtMobileFocusRow = function(idx) {
     var p = _mtState.player;
     if (!p) return;
     if (p._mobileFocusedIdx === idx) return;  // already focused, no-op
+    // Bug #21 (Pass 2.5) TRUST-LAYER FIX — switching focus while a note
+    // composer has unsaved text destroys the textarea via re-render. Flush
+    // any pending debounced draft BEFORE the re-render so the user's last
+    // keystrokes survive as a draft, ready to restore when they tap back.
+    _mtFlushPendingDraft();
     // Tapping a different row while one is focused: switch focus + close any
     // sub-state (rename/note) on the previous row.
     p._mobileFocusedIdx = idx;
@@ -4670,6 +4689,9 @@ window._mtMobileFocusRow = function(idx) {
 window._mtMobileUnfocusRow = function() {
     var p = _mtState.player;
     if (!p) return;
+    // Bug #21 (Pass 2.5) TRUST-LAYER FIX — flush any pending draft before
+    // tearing down the focused row.
+    _mtFlushPendingDraft();
     p._mobileFocusedIdx = null;
     p._mobileRenameIdx = null;
     p._mobileNoteOpenIdx = null;
@@ -4698,19 +4720,44 @@ window._mtMobileToggleNote = function(idx) {
     var p = _mtState.player;
     if (!p) return;
     if (p._mobileFocusedIdx !== idx) p._mobileFocusedIdx = idx;
-    if (p._mobileNoteOpenIdx === idx) {
-        p._mobileNoteOpenIdx = null;
-    } else {
+    var opening = (p._mobileNoteOpenIdx !== idx);
+    if (opening) {
         p._mobileNoteOpenIdx = idx;
         p._mobileRenameIdx = null;  // can't rename + note at once
         // Reset composer tag state for a fresh note.
         _mtState.composerTags = {};
+    } else {
+        // Bug #21 (Pass 2.5) TRUST-LAYER FIX — closing the note panel (Cancel
+        // tap, or re-tap of "+ Add note") triggers a re-render that destroys
+        // the textarea. If a debounce timer is pending, flush it synchronously
+        // before the textarea disappears so the very last keystrokes are
+        // preserved as a draft. (Without this, typing the last ~400ms of
+        // characters then tapping Cancel would lose them silently.)
+        _mtFlushPendingDraft();
+        p._mobileNoteOpenIdx = null;
     }
     _mtRenderSegmentsPanel();
     setTimeout(function() {
         var inp = document.getElementById('mtMobileNoteText_' + idx);
         if (inp && inp.focus) { try { inp.focus(); } catch (e) {} }
-    }, 60);
+        // Bug #20 (Pass 2.5) — scroll the composer block fully into view on
+        // open, so Save button + tag chips aren't pushed below the fold on
+        // iPhone 14 Pro (390×844). Previously the focused row + composer
+        // combined render at ~530-580px while visible segments-list area is
+        // ~430-450px, causing Save to sit invisibly below the bottom edge.
+        // Target the composer container (sibling of the textarea); scrollIntoView
+        // with block:'end' aligns its bottom to the viewport bottom. Falls back
+        // to the textarea if container isn't found.
+        if (opening) {
+            var composerBlock = inp && inp.closest ? inp.closest('div[style*="background:rgba(0,0,0,0.25)"]') : null;
+            var scrollTarget = composerBlock || inp;
+            if (scrollTarget && scrollTarget.scrollIntoView) {
+                try { scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'end' }); } catch (e) {
+                    try { scrollTarget.scrollIntoView(false); } catch (e2) {}
+                }
+            }
+        }
+    }, 80);
 };
 
 // Toggle a tag in the composer state from the mobile contextual composer.
@@ -4767,6 +4814,11 @@ window._mtMobileSubmitNote = async function(idx) {
     p.comments = (p.comments || []).concat([comment]).sort(function(a, b) {
         return (a.timestampSec || 0) - (b.timestampSec || 0);
     });
+    // Bug #21 (Pass 2.5) TRUST-LAYER FIX — clear the draft only AFTER Firebase
+    // ack. If the save fails (handled above with early return), the draft
+    // remains so the user's text isn't lost when they retry.
+    if (_mtDraftDebounceTimer) { clearTimeout(_mtDraftDebounceTimer); _mtDraftDebounceTimer = null; }
+    _mtClearDraft(p.sessionId, seg);
     _mtState.composerTags = {};
     p._mobileNoteOpenIdx = null;
     p._mobileNoteMoreTagsOpen = false;
@@ -4803,16 +4855,116 @@ function _mtRenderMobileNoteComposer(idx, atSec, songTitle) {
             + ' <button onclick="event.stopPropagation();_mtMobileToggleMoreNoteTags(' + idx + ')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:0.78em;font-family:inherit;text-decoration:underline">fewer tags</button>'
         : '<button onclick="event.stopPropagation();_mtMobileToggleMoreNoteTags(' + idx + ')" style="background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.15);color:var(--text-dim);border-radius:12px;padding:4px 11px;cursor:pointer;font-size:0.78em;font-family:inherit">+ more tags ▾</button>';
 
+    // Bug #21 (Pass 2.5) TRUST-LAYER FIX — per-row localStorage draft restore.
+    // If the user previously typed text in this segment's composer and walked
+    // away (focus switch, modal close, page reload), restore that text now.
+    // "GrooveLinx forgot my musical thought" is emotionally catastrophic for
+    // a product positioning as musical operational memory; the system must
+    // NEVER silently lose a captured note.
+    var seg = (p.segments || [])[idx];
+    var draft = (seg && p.sessionId) ? _mtLoadDraft(p.sessionId, seg) : '';
+    var hasDraft = !!(draft && draft.length > 0);
+    var draftBadge = hasDraft
+        ? ' · <span style="color:#fbbf24" title="Unsaved draft restored from your last session">📝 unsaved draft</span>'
+        : '';
+
     return '<div style="background:rgba(0,0,0,0.25);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">'
-        + '<div style="font-size:0.78em;color:var(--text-dim);font-family:ui-monospace,monospace">📝 at ' + escHtml(_mtFmtTimeShort(atSec)) + (songTitle ? ' · ' + escHtml(songTitle) : '') + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);font-family:ui-monospace,monospace">📝 at ' + escHtml(_mtFmtTimeShort(atSec)) + (songTitle ? ' · ' + escHtml(songTitle) : '') + draftBadge + '</div>'
         + '<textarea id="mtMobileNoteText_' + idx + '" placeholder="What did you notice?" rows="2" '
-        + 'onclick="event.stopPropagation()" style="width:100%;background:#1e293b;color:#f1f5f9;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 10px;font-size:0.94em;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'
+        + 'oninput="event.stopPropagation();_mtMobileDraftDirty(' + idx + ')" '
+        + 'onclick="event.stopPropagation()" style="width:100%;background:#1e293b;color:#f1f5f9;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 10px;font-size:0.94em;font-family:inherit;resize:vertical;box-sizing:border-box">'
+        + escHtml(draft)
+        + '</textarea>'
         + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + primaryChipsHtml + ' ' + overflowDisclosure + '</div>'
         + '<div style="display:flex;gap:8px;align-items:center;margin-top:2px">'
         + '<button onclick="event.stopPropagation();_mtMobileToggleNote(' + idx + ')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);border-radius:5px;padding:7px 12px;cursor:pointer;font-size:0.86em;font-family:inherit">Cancel</button>'
         + '<button onclick="event.stopPropagation();_mtMobileSubmitNote(' + idx + ')" style="margin-left:auto;background:linear-gradient(135deg,#667eea,#764ba2);border:none;color:#fff;font-weight:700;border-radius:5px;padding:7px 14px;cursor:pointer;font-size:0.88em;font-family:inherit">Save note</button>'
         + '</div>'
         + '</div>';
+}
+
+// ── Bug #21 (Pass 2.5) — Per-row localStorage draft persistence ─────────
+// TRUST-LAYER FIX. Drew (2026-05-26 in response to overnight friction harvest):
+// "Silent note loss becomes 'the app forgot my musical thought.' That is
+// emotionally catastrophic UX. This should be treated as a trust-layer issue,
+// not merely a composer bug."
+//
+// Draft key uses startSec + endSec (not raw idx) so drafts survive re-analyze
+// re-indexing of segments. SegId pattern matches what the canonical comment
+// schema uses for anchors.
+
+var _MT_DRAFT_KEY_PREFIX = 'gl_mt_composer_drafts/';
+var _MT_DRAFT_DEBOUNCE_MS = 400;
+var _mtDraftDebounceTimer = null;
+
+function _mtDraftKey(sessionId, segOrAnchor) {
+    // segOrAnchor can be a segment object {startSec, endSec} or a raw anchor seconds.
+    var anchor;
+    if (typeof segOrAnchor === 'object' && segOrAnchor !== null) {
+        anchor = 's' + Math.round((segOrAnchor.startSec || 0) * 1000) + 'e' + Math.round((segOrAnchor.endSec || 0) * 1000);
+    } else {
+        anchor = 't' + Math.round((segOrAnchor || 0) * 1000);
+    }
+    return _MT_DRAFT_KEY_PREFIX + sessionId + '/' + anchor;
+}
+
+function _mtLoadDraft(sessionId, segOrAnchor) {
+    if (!sessionId || segOrAnchor == null) return '';
+    try { return localStorage.getItem(_mtDraftKey(sessionId, segOrAnchor)) || ''; }
+    catch (e) { return ''; }
+}
+
+function _mtSaveDraft(sessionId, segOrAnchor, text) {
+    if (!sessionId || segOrAnchor == null) return;
+    try {
+        var key = _mtDraftKey(sessionId, segOrAnchor);
+        if (text && text.length > 0) {
+            localStorage.setItem(key, text);
+        } else {
+            localStorage.removeItem(key);
+        }
+    } catch (e) { /* quota / private mode — non-fatal */ }
+}
+
+function _mtClearDraft(sessionId, segOrAnchor) {
+    if (!sessionId || segOrAnchor == null) return;
+    try { localStorage.removeItem(_mtDraftKey(sessionId, segOrAnchor)); } catch (e) {}
+}
+
+// Debounced save handler — called from textarea oninput as the user types.
+// 400ms debounce keeps localStorage writes off the keystroke critical path
+// while ensuring even a fast tap-away preserves the draft within a half-second.
+window._mtMobileDraftDirty = function(idx) {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var seg = (p.segments || [])[idx];
+    if (!seg) return;
+    var inp = document.getElementById('mtMobileNoteText_' + idx);
+    if (!inp) return;
+    var text = inp.value || '';
+    if (_mtDraftDebounceTimer) clearTimeout(_mtDraftDebounceTimer);
+    _mtDraftDebounceTimer = setTimeout(function() {
+        _mtSaveDraft(p.sessionId, seg, text);
+        _mtDraftDebounceTimer = null;
+    }, _MT_DRAFT_DEBOUNCE_MS);
+};
+
+// Synchronously flush any pending draft-save BEFORE the textarea is destroyed
+// by re-render. Called from focus-switch + note-close + player-teardown paths
+// so the very last keystrokes the user typed survive even sub-debounce-window
+// tap-aways.
+function _mtFlushPendingDraft() {
+    if (!_mtDraftDebounceTimer) return;
+    clearTimeout(_mtDraftDebounceTimer);
+    _mtDraftDebounceTimer = null;
+    var p = _mtState.player;
+    if (!p || !p.sessionId || p._mobileNoteOpenIdx == null) return;
+    var idx = p._mobileNoteOpenIdx;
+    var seg = (p.segments || [])[idx];
+    if (!seg) return;
+    var inp = document.getElementById('mtMobileNoteText_' + idx);
+    if (!inp) return;
+    _mtSaveDraft(p.sessionId, seg, inp.value || '');
 }
 
 // Phase 4A — filter pill bar HTML. Each pill is an independent toggle.
