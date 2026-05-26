@@ -289,16 +289,55 @@ A single always-current, always-paste-ready restart prompt lives pinned at the v
 
 The pinned prompt is updated as the last act of every session that ships code or changes operational state. Future chats begin from this prompt — not from founder memory.
 
+## Required Project sync (every code-shipping or major-strategic session)
+
+_Added 2026-05-26 per Drew confirmation post GitHub Project reconciliation. GitHub Project (`drewmerrill/projects/1`) is now the executive operational visibility surface — Pierce and any band member open it to orient in 3 minutes without reading transcripts. It MUST stay synchronized with repo truth or trust decays quickly._
+
+In addition to the 5-section handoff package, every session that ships code OR makes strategic-direction commits MUST reconcile the GitHub Project before close:
+
+1. **For every initiative or bug newly SHIPPED this session:**
+   - Create a `[SHIPPED]` Project item with a Pierce-facing body (what changed / why it matters / current state / next action)
+   - Set Stage=Shipped, Status=Done, Owner, Impact (S/M/L/XL), Effort (1d/3d/1w/2w+), Linked spec
+   - Close the underlying issue if applicable
+2. **For every NEW open bug or initiative scoped this session:**
+   - Create a Project item with current spec state + recommended fix sketch in body
+   - Set Stage (Idea/Exploring/Specced/Ready/Building), Status, Owner, Impact, Effort
+3. **Update the always-visible 📍 Phase Marker item** (currently #67) if the active phase OR active gates changed. This is the single item Pierce opens first to orient.
+4. **Comment on superseded items** linking to their replacement (do NOT close existing items unilaterally — Drew decides closure).
+
+The Project sync section in the 5-section handoff narrative names the items touched + cites the build/commit reference.
+
+**Helper:** `scripts/gh-project-item.sh` encapsulates field IDs + option IDs + the create-issue + add-to-project + set-fields + close workflow. Bash-3 compatible. Use it.
+
+### What this rule does NOT do (anti-bureaucracy guards)
+
+Drew explicitly cautioned: _"Do NOT let GitHub Project become duplicate governance bureaucracy. Avoid enterprise ticket sprawl, duplicate implementation detail, PM theater, over-granular tasking."_ Apply these guards:
+
+- **Do NOT create one Project item per commit.** Items live at the initiative or bug LEVEL only. A 4-commit Pass 2.5 ship = ONE Project item (#52), not four.
+- **Do NOT duplicate implementation detail.** The Project body is Pierce-facing summary; engineering depth lives in repo docs (specs / bug_queue / handoff). Project items LINK to repo, don't replace it.
+- **Do NOT proliferate sub-items / epics / milestones.** Single flat list of initiative/bug items, plus the one Phase Marker.
+- **Do NOT touch items already in Project without explicit Drew direction** unless the new state directly supersedes them (e.g. comment "superseded by #N" — Drew decides closure).
+- **Keep the long-term operational model clean:**
+  - **Product Surface** → GrooveLinx app
+  - **Operational Visibility Surface** → GitHub Project + 📍 Phase Marker
+  - **System Memory Surface** → repo governance / docs / handoffs
+
+If a Project item would duplicate detail that already lives in repo docs, it should LINK to those docs instead of restating them.
+
 ## Anti-patterns
 
 * Do NOT rely on reconstructing context from prior chat transcripts.
 * Do NOT split continuity across multiple new governance docs — converge into existing operational surfaces (`CLAUDE_HANDOFF.md` for narrative + restart prompt; `CURRENT_STATE.md` / `CURRENT_PRIORITIES.md` / `STABILIZATION_QUEUE.md` for canonical state).
 * Do NOT skip the package because "the session was small" — small sessions still ship build numbers + commits that the next chat needs to know about.
 * Do NOT duplicate state already canonical elsewhere — link to `CURRENT_STATE.md` / `CURRENT_PRIORITIES.md` from the handoff narrative; do not copy them in.
+* Do NOT skip the Project sync because the session was internal/governance-only — strategic-direction commits change the operational frame Pierce needs to see.
+* Do NOT let the Project sync grow beyond ~5-10 minutes per session. If it does, you're likely creating items at commit-level not initiative-level — re-scope.
 
 ## Why this exists
 
 Without enforced continuity, every new chat starts from founder memory + repo archaeology. That is not safe at GrooveLinx's current operational tempo (live UAT, multiple convergence streams in flight, MacBook-crash already proven as a single point of failure). This protocol makes "open a new chat" a low-friction, high-fidelity operation.
+
+GitHub Project sync is part of the same continuity infrastructure. Without it, Pierce + ChatGPT + future Claude chats lose the executive view of where GrooveLinx stands. The Project is no longer just a ticket board — it's the operational orientation layer the product culture depends on.
 
 ---
 

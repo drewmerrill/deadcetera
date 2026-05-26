@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 12:30 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** + **GitHub Project reconciled for Pierce visibility**. 20 Project items (#48-#67) created including a pinned 📍 Phase Marker (#67) so any band member can open the Project and orient in 3 minutes without reading Claude transcripts. Helper script at `scripts/gh-project-item.sh`. Recurring-process recommendation: extend Session Continuity Protocol with mandatory Project sync after every code-shipping session — see `02_GrooveLinx/operations/github_project_reconciliation_2026-05-26.md`. Three canonical memories now standing: `project_musical_operational_memory` (strategic frame + roadmap + moat), `feedback_observe_before_expand` (default-to-observation), `feedback_trust_layer_triage_rule` (bugs that LOSE/OBSCURE/STALE = HIGH regardless of LOC)._
+_Last refreshed: 2026-05-26 13:00 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **GitHub Project sync now formalized as mandatory operational hygiene** per `00_Governance/AI_WORKFLOW.md §Required Project sync`. Four canonical memories standing: `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`. **3-surface operational model:** Product Surface (app) · Operational Visibility Surface (GitHub Project + 📍 Phase Marker #67) · System Memory Surface (repo governance/docs/handoffs)._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -22,11 +22,25 @@ POST-PASS-2.5 PHASE: Workflow Refinement + Operational Intelligence
 phase. Trust hardening + real-world observation outranks new surfaces.
 
 PASS 2.5 MUST-FIX PACKAGE SHIPPED 2026-05-26 morning. Bugs #20 + #21 +
-#22 all RESOLVED. Two canonical memories formalize the strategic stance:
-* project_musical_operational_memory — strategic frame, trust-layer bug
-  categorization, 5-item roadmap, moat = continuity not feature density
+#22 all RESOLVED. GitHub Project reconciled with 20 items including
+📍 Phase Marker (#67) for Pierce's 3-min orientation. Project sync now
+MANDATORY operational hygiene per AI_WORKFLOW.md §Required Project sync.
+
+Four canonical memories formalize the operational stance:
+* project_musical_operational_memory — strategic frame, trust-layer
+  bug categorization, 5-item roadmap, moat = continuity not features
+* feedback_trust_layer_triage_rule — bugs that LOSE/OBSCURE/STALE =
+  HIGH priority regardless of LOC; canonical at top of bug_queue.md
 * feedback_observe_before_expand — default to observation when no
   behavioral evidence supports the next move
+* feedback_github_project_sync_mandate — every code-shipping session
+  must sync Project at initiative/bug level only (NEVER per-commit);
+  helper at scripts/gh-project-item.sh
+
+3-SURFACE OPERATIONAL MODEL:
+* Product Surface → GrooveLinx app
+* Operational Visibility Surface → GitHub Project + 📍 Phase Marker #67
+* System Memory Surface → repo governance/docs/handoffs
 
 OVERNIGHT FRICTION HARVEST (2026-05-25 23:28 - 2026-05-26 00:10 UTC)
 SHIPPED FINDINGS ONLY (no code). Full evidence in:
@@ -148,6 +162,88 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 13:00 UTC — GitHub Project sync FORMALIZED as mandatory operational hygiene
+
+**No code change this turn.** Build still `20260526-102503`. Drew confirmed the GitHub Project reconciliation pass + greenlit formalization of Project sync into the Session Continuity Protocol. Single governance edit + 1 new canonical memory. Hand-back below.
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-102503` (unchanged)
+* **Branch:** `main`
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE + Project sync MANDATORY
+* **Deployed systems:** browser live, Modal Phase A.5 LIVE, worker unchanged, R2 unchanged, Firebase unchanged
+* **Active convergence work:** none in flight. Phase 1 Trust Hardening awaits Drew real-world Pass 2.5 validation + reverb A/B before next ship.
+* **Open bugs:** 6 (unchanged) — all tracked in GitHub Project #58-#61 plus 2 not-active.
+* **Stabilization items in flight:** 6 STABILIZATION_QUEUE Pass 2.5 candidates remaining.
+* **Active initiatives:** Drew real-world Pass 2.5 validation + reverb A/B (gating); Recording Ingestion v1 spec review (Drew + ChatGPT, parallel).
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew real-world Pass 2.5 validation on iPhone Safari + Custom Mix reverb A/B (wet=0/0.5/1.0). After both: Pierce reviews GitHub Project LIVE for orientation-clarity / prioritization / sequencing / momentum / transparency / anxiety-reduction feedback per Drew's 2026-05-26 direction.
+* **NEXT** — Phase 1 Trust Hardening (Bug #26 / Bugs #24+#25 / Bug #27+#18 / 6 STABILIZATION_QUEUE candidates) — picked by behavioral-evidence weight after Drew validation.
+* **LATER** — Phase 2 Musical Moment System / Phase 3 Recording Ingestion / Phase 4 Homepage Convergence / Phase 5 Real AI Layer (all in Project as #66/#64/#65/(not yet)).
+* **DEFERRED** — Pass 3 mobile tabs, Pass 4 tag categories, Firebase render sync, Stab #N formalization, progressive disclosure inside focus mode.
+
+## 3. OPEN PRODUCT DECISIONS
+
+Unchanged from prior handoff. All 8+ tracked in GitHub Project as `[DECISION]` items (#62 Calendar Model B, #57 Reverb A/B which is action-gated not decision-gated, etc.) + repo governance docs.
+
+## 4. OPERATIONAL RISKS
+
+* **Project drift risk** — the formalized Project sync rule depends on every future Claude session honoring it. Risk: a session that skips Project sync would create silent drift between Pierce's executive view and repo truth. The rule lives in BOTH `AI_WORKFLOW.md §Required Project sync` AND `feedback_github_project_sync_mandate` memory to maximize survival across sessions.
+* **Anti-bureaucracy guards must hold** — Drew explicitly cautioned the Project must NOT become enterprise ticket sprawl. The §Required Project sync section codifies the guards (initiative/bug level only, never per-commit, single flat list, body is summary not depth, never close existing items unilaterally). Risk: a future session over-zealously creates 1-per-commit items. The memory + the explicit "maintenance ceiling ~5-10 min" line are the safeguards.
+* **All prior risks** — Modal deploy debt RESOLVED · Bug #21 silent loss RESOLVED · Pass 2.5 validation still gating · reverb A/B still gating · Phase 1 vs Phase 2 jump risk standing.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew validates Pass 2.5 on actual iPhone Safari** + does Custom Mix reverb A/B (wet=0/0.5/1.0).
+
+**After both gates pass: Pierce reviews GitHub Project LIVE** (https://github.com/users/drewmerrill/projects/1) — Drew's 2026-05-26 direction is explicit that Pierce's feedback on orientation clarity / prioritization understanding / sequencing trust / perceived momentum / operational transparency / anxiety reduction is the NEXT IMPORTANT STEP. Project is now part of the operational product culture itself.
+
+Claude picks Phase 1 Trust Hardening next ship after both validations.
+
+---
+
+## Session Narrative (trace, supplementary to §1–§5)
+
+### What landed this turn
+
+1. **`00_Governance/AI_WORKFLOW.md §Required Project sync` (NEW sub-section under Session Continuity Protocol).** Codifies the 4-step Project sync discipline (shipped → [SHIPPED] item; new bug/init → Project item with fix sketch; phase/gate change → update 📍 Phase Marker #67; supersede → comment, don't close). Anti-bureaucracy guards explicit: items at initiative/bug level ONLY, body is summary not depth, never touch existing items unilaterally, maintenance ceiling ~5-10 min per session. 3-surface operational model formalized: Product Surface (app) · Operational Visibility Surface (Project) · System Memory Surface (repo).
+
+2. **`feedback_github_project_sync_mandate.md` (NEW memory).** Mirrors the AI_WORKFLOW rule so future sessions auto-inherit the discipline without requiring AI_WORKFLOW lookup. Cross-references project_musical_operational_memory + feedback_session_continuity_protocol + feedback_observe_before_expand + feedback_trust_layer_triage_rule.
+
+3. **MEMORY.md index updated** — 4 standing memories now form the operational frame: musical operational memory + trust-layer triage + observe-before-expand + github project sync.
+
+4. **CLAUDE_HANDOFF.md pinned restart prompt refreshed** — names the 4 memories explicitly, calls out the 3-surface operational model, adds Project sync as part of the canonical resume flow.
+
+5. **This 5-section entry** per Session Continuity Protocol.
+
+### Why governance-only this turn
+
+Drew's direction was clear: formalize the Project sync rule (which I'd recommended in the prior reconciliation report). No code to ship, no specs to author, no architecture to expand. Per `feedback_observe_before_expand`: codify direction + hand back, don't expand surface area without behavioral evidence.
+
+### Files touched this session
+
+- `02_GrooveLinx/00_Governance/AI_WORKFLOW.md` (extended §Session Continuity Protocol with §Required Project sync)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/feedback_github_project_sync_mandate.md` (NEW)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/MEMORY.md` (index)
+- `02_GrooveLinx/CLAUDE_HANDOFF.md` (this entry + pinned restart prompt refresh)
+- `02_GrooveLinx/CURRENT_PHASE.md` (synced)
+
+### What's NOT in this turn
+
+- No code changes to the app
+- No build bump
+- No Vercel deploy
+- No new specs
+- No SYSTEM LOCK touches
+- No NEW governance docs (extended existing AI_WORKFLOW.md only)
+- No Project items created or modified (the prior session already reconciled; this session just formalizes the rule that maintains the sync)
 
 ---
 
