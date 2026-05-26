@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 21:31 UTC · Build under test: `20260526-213143` (commit `1c0180fe` — Bugs #24 + #25 ambient-spatial-recede fix) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **FOUR Tier-2-era ships in one day** (Single-Tap Loop → WTR P1 → Bug #23 → Bugs #24/#25). **Bugs #24 + #25 RESOLVED via ambient-spatial-recede reframe:** ambient shell surfaces (mobile tabbar z-index 8000 + avatar fab z-index 9000) were sitting above the multitrack player (z-index 5000), occluding the conductor surface and accepting stray taps. Same authority violation as Bug #23 in SPACE rather than TIME. Fix: `body.gl-mt-player-open` set by player open, removed by close; two CSS rules hide both ambient surfaces. ~6 LOC delta across 3 files. Embedded concept phrase in code comment: *"Conductor surfaces temporarily suppress ambient shell presence."* Live-build Playwright invariant pass: tabbar/fab `flex → none → flex` across class toggle; both CSS rules confirmed loaded. **Ten canonical memories standing.** Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
+_Last refreshed: 2026-05-26 21:46 UTC · Build under test: `20260526-214652` (commit `c511ba29` — Bugs #18 + #27 duration-backfill fix) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **FIVE Tier-2-era ships in one day** (Single-Tap Loop → WTR P1 → Bug #23 → Bugs #24/#25 → Bugs #18/#27). **Bugs #18 + #27 RESOLVED via opportunistic write-on-read:** multitrack sessions never persisted audio duration; consumers rendered `"0m"` on home Rehearsal page and suppressed Isolate banner. `_mtMaybeUpdateDuration` now writes both `durationSec` + `totalActualMin` to Firebase on first `loadedmetadata` when missing, with an authority guard that preserves future higher-authority sources (REAPER/X-Live/server-render duration). ~25 LOC delta in one file. **End-to-end live-build proof on production data:** the documented 5/18 session `rsess_mt_mpju4yyn_7pko` healed from `null` to `{durationSec: 11274.05, totalActualMin: 188}` in 903ms; home page now reads `"Last rehearsal · Mon, May 18 · 3h 8m"`. Embedded concept phrase: *"Truth persists where truth lives."* **Ten canonical memories standing.** Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -205,6 +205,66 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 21:46 UTC — Bugs #18 + #27 RESOLVED via OPPORTUNISTIC WRITE-ON-READ (truth persists where truth lives)
+
+**Code shipped.** Build `20260526-214652` (commit `c511ba29`). Fifth Tier-2-era ship in one day. ~25 LOC delta in `multitrack-rehearsal.js`. **End-to-end live-build proof on production data** — the documented 5/18 session `rsess_mt_mpju4yyn_7pko` was healed during the verification pass: Firebase moved from `{durationSec: null, totalActualMin: null}` to `{durationSec: 11274.05, totalActualMin: 188}` in 903ms after player open.
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-214652` (Bugs #18 + #27 duration-backfill fix)
+* **Branch:** `main` · **Working tree:** clean
+* **Latest code commit:** `c511ba29` — `Bugs #18 + #27: opportunistic durationSec backfill — truth persists where truth lives`
+* **Prior code commit:** `1c0180fe` (Bugs #24/#25, earlier same day)
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE
+* **Deployed systems:** browser live on `app.groovelinx.com`. Modal/Worker/R2/Firebase unchanged. **One real production session healed during verification** — Drew's 5/18 rehearsal now correctly labeled as 3h 8m across all surfaces.
+* **Open bugs:** Bugs #18 + #27 ✅ RESOLVED. Remaining open: Bug #17 architecture-verified · Bug #19 HIGH→MITIGATED. Five bugs closed today (#11, #23, #24, #25, #18, #27 — wait, six: also #26).
+* **Ten canonical memories standing.**
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew real-iPhone validates the five-ship day. The Bugs #18/#27 fix is invisible-by-design (the user sees the correct duration where they previously saw 0m). Combined with the four prior ships, five surfaces to feel in one session.
+* **NEXT** — Drew picks the next single move. Candidates (per [[feedback_observe_before_expand]]):
+  - **WTR P2 investigation-aware filter** (explicitly deferred per Drew "do NOT begin WTR P2 yet — need behavioral evidence first")
+  - **Transition View** (larger; would benefit from spec pass first)
+  - **Phase 2 Musical Moment System** kickoff (much larger)
+  - **Reverb A/B Drew validation** (Drew's listening work, not Claude's)
+  - **Observe day** — let the five-ship day settle. Five ships is dense; the next move could legitimately be "nothing, let real-world musician usage compound."
+* **LATER** — Listening Modes · Patterns doorway · Phase 3 Recording Ingestion · Phase 4 Homepage Convergence · Phase 5 Real AI Layer.
+* **DEFERRED** — unchanged.
+
+## 3. OPEN PRODUCT DECISIONS
+
+Unchanged from prior handoffs. One addition:
+
+14. **NEW: Self-healing infrastructure as an emergent principle** (Drew + Claude 2026-05-26 21:40 reframe) — the Bug #18/#27 fix attached itself to the natural truth-discovery moment (`loadedmetadata`) instead of being a migration / repair / orchestration system. This is the architectural form of [[project_one_musical_truth]] — truth persists where reality genuinely lives, not where caching is convenient. Pattern now expressed across multiple ships today: loop authority emerges at playback interaction; unresolved cognition emerges at comment interaction; duration truth emerges at `loadedmetadata`; conductor authority emerges at player open. **Self-healing musical infrastructure** may be a meaningful product principle worth promoting from memory into `CLAUDE.md` eventually. Awaiting Drew greenlight per [[feedback_load_bearing_memory_promotion]].
+
+## 4. OPERATIONAL RISKS
+
+* **One production session was written during verification.** The 5/18 session's Firebase record gained `durationSec` + `totalActualMin` fields. Idempotent + additive + value is correct (matches the audio metadata) — but worth surfacing that the verification pass wasn't purely read-only. If Drew prefers all verification passes to be read-only, the alternative would be a dedicated test session with a known-disposable record.
+* **Sessions never opened stay at 0m.** Acceptable per the design (the data genuinely doesn't exist until audio metadata loads). But if Drew has rehearsal sessions in the archive that he never opens, the home page won't show their durations. Could matter for historical scanning.
+* **The authority guard adds one Firebase read per backfill.** A `.once('value')` round-trip before the `.update()` write. For sessions that ALREADY have `durationSec`, the local-cache check at the call site prevents the call entirely — so this read only fires when local cache says "missing." Net: at most one extra read per session per browser session.
+* **No migration was run for sessions that exist but won't be opened soon.** That's intentional — Drew rejected migration scripts in favor of self-healing. But it means the data store has a mix of healed + unhealed sessions until the population stabilizes.
+* **Five-ship density.** Drew is validating compound surface area today. If anything feels wrong, isolation may need iteration.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew's combined ~10-min iPhone validation now covers FIVE ships on the live build (`20260526-214652`):**
+
+1. Force-refresh `app.groovelinx.com` to pick up the new build.
+2. Reach `#rehearsal` → confirm NO overlay on cold open (Bug #23).
+3. **Confirm "Last rehearsal · 3h 8m" on the Rehearsal page** (was 0m — Bug #27 surface).
+4. Tap a multitrack session → player opens → confirm tabbar + avatar fab vanish (Bugs #24/#25).
+5. Tap a segment row → loop sets silently (Tier 2 Single-Tap Loop).
+6. Tap Play → audio enters loop bounds; wrap reads as one phrase + matches the anchor sentence (Tier 2 #3 audio-feel).
+7. Close player → tabbar + fab return (negative-preservation).
+8. On desktop view of a session with existing comments → 🔍 toggle appears top-right of comment card (WTR P1).
+
+**Why one session covers all five ships:** they share the Rehearsal page → multitrack player path. Drew swaps mental load once.
+
+**Blocker if not done:** none — all five ships have passed automated invariants on the live build, and Bug #18/#27 was verified on real production data. Drew's real-device check is emotional validation, not a gate. **Strong recommendation: an observe day before the next ship** — five ships is unusually dense, and the philosophy is now visible enough that behavioral signal becomes the next gate.
 
 ---
 

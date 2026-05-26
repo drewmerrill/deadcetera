@@ -1,6 +1,8 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260526-213143 (Bugs #24 + #25 ambient-spatial-recede fix live, commit `1c0180fe`)
+**Build Under Test:** 20260526-214652 (Bugs #18 + #27 duration-backfill fix live, commit `c511ba29`)
+
+> **2026-05-26 21:46 UTC — Bugs #18 + #27 RESOLVED (opportunistic duration backfill).** ~25 LOC delta in `multitrack-rehearsal.js`. The multitrack session-create path never persisted audio duration (the worker streams the FLAC straight to R2; Firebase had `durationSec: null`, `totalActualMin: null`). Two consumers rendered the gap: Home Rehearsal "Last rehearsal · 0m" (Bug #27) and Isolate Mode §8.1 long-session banner missing (Bug #18). Fix: `_mtMaybeUpdateDuration` writes both fields back to Firebase on first `loadedmetadata` when missing. New helper `_mtPersistDurationBackfill` has an authority guard — re-reads `durationSec` from Firebase before writing, so future higher-authority ingest paths (REAPER / X-Live / server-side render duration) can establish truth without being overwritten by browser. Self-healing: existing sessions backfill on first open; new sessions backfill on first play. No migration script. No worker change. No render.py change. **End-to-end live-build proof on the documented 5/18 session `rsess_mt_mpju4yyn_7pko`:** before = `{durationSec: null, totalActualMin: null}`; after 903ms = local cache `durationSec: 11274.05`; Firebase round-trip confirmed `{durationSec: 11274.05, totalActualMin: 188}`; Home Rehearsal page now reads `"Last rehearsal · Mon, May 18 · 3h 8m"`. **Embedded concept phrase in code comment:** *"Truth persists where truth lives."* Screenshot at `02_GrooveLinx/uat/screenshots/2026-05-26/bugs27-18-duration-backfill/01-home-rehearsal-3h-8m-after-backfill.png`.
 
 > **2026-05-26 21:31 UTC — Bugs #24 + #25 RESOLVED (ambient inviolability in SPACE).** ~6 LOC delta across `multitrack-rehearsal.js` + `gl-left-rail.js` + `gl-avatar-ui.js`. Same authority violation as Bug #23 expressed in space instead of time: the mobile tabbar (`#glBottomTabs` z-index 8000) and avatar fab (`#glAvatarBtn` z-index 9000) sat above the multitrack player overlay (`#mtPlayerOverlay` z-index 5000), occluding the conductor surface and accepting stray taps. Fix: `body.gl-mt-player-open` class set by `_mtOpenReviewMode` + Isolate Mode construction, removed by `_mtClosePlayer`; two CSS rules hide both ambient surfaces under the class. Feature-prefixed class name (not `gl-player-open`) leaves Rehearsal/Live Gig modes as separate decisions. Matches existing `sd-stems-overlay-open` precedent. Live-build invariant pass: rules loaded in `glTabBarCSS` + `glAvatarStyles`; tabbar `flex → none → flex` and fab `flex → none → flex` across class toggle. **Embedded concept phrase in code comment:** *"Conductor surfaces temporarily suppress ambient shell presence."*
 
@@ -270,7 +272,15 @@ See Bug #24 entry for authority framing + the shared `body.gl-mt-player-open` co
 
 ---
 
-### Bug #27 — Bug #18 also surfaces as "Last rehearsal · 0m" on home Rehearsal page (MED — OPEN, extends Bug #18)
+### Bug #27 — Bug #18 also surfaces as "Last rehearsal · 0m" on home Rehearsal page (MED — ✅ RESOLVED 2026-05-26 build `20260526-214652` commit `c511ba29`, OPPORTUNISTIC-DURATION-BACKFILL FIX)
+
+**RESOLUTION:** Shipped jointly with Bug #18 — same `_mtPersistDurationBackfill` mechanism. The home Rehearsal page reads `latest.totalActualMin`, which is now populated by the backfill helper alongside `durationSec` (both fields written so both consumers heal at once without coupling). Live-build proof: `_rhSessionsCache[0].totalActualMin: 188` after backfill; rendered summary text reads `"Last rehearsal Mon, May 18 · 3h 8m"` (formatted by `rehearsal.js:2876` `durMin >= 60 ? Math.floor(durMin/60) + 'h ' + (durMin%60) + 'm' : durMin + 'm'`). Screenshot: `02_GrooveLinx/uat/screenshots/2026-05-26/bugs27-18-duration-backfill/01-home-rehearsal-3h-8m-after-backfill.png`.
+
+See Bug #18 entry for the authority guard + full mechanism. The fields self-heal on first player open per session; sessions that are never opened stay at 0m (which is correct — the data genuinely doesn't exist until the audio metadata loads).
+
+---
+
+### Bug #27 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.1)
@@ -307,7 +317,26 @@ See Bug #24 entry for authority framing + the shared `body.gl-mt-player-open` co
 3. **AC3 (Isolate + §8.1 banner)** — ⚠️ **TOGGLE PASS, BANNER BLOCKED.** 🎚 Isolate switches cleanly into the 17-stream player (Mute/Solo/Reverb/Volume per row visible). §8.1 banner code is in place at `multitrack-rehearsal.js:1206` but gated on `session.durationSec ≥ 30 min`; the session's Firebase record has **no `durationSec` field** (3:07:54 only known from the audio file itself). Tracked as **Bug #18** below.
 4. **AC4 (Export Mix → mp3 → download)** — ❌ **FAILED — silent error.** Front-end fires correctly: `📤 Export` → native prompt for format → POST `/multitrack/render/start` → live `⏳ Rendering (Ns)…` timer counts up. After ~150s the button reverted to `📤 Export` with no download surfaced. Console reveals `/multitrack/render/check` returned **502** with body literal `"modal-http…"` (Modal HTTP-level error string, not JSON). Frontend hit `SyntaxError` trying to `.json()` it and silently abandoned the poll (`multitrack-rehearsal.js:1824`). Pipeline itself works — `custom-1779662941171.mp3` (450 MB) was successfully produced on this same session 17h earlier. Tracked as **Bug #19** below.
 
-### Bug #18 — Multitrack session is missing `durationSec` → §8.1 long-session banner never fires (MED — OPEN)
+### Bug #18 — Multitrack session is missing `durationSec` → §8.1 long-session banner never fires (MED — ✅ RESOLVED 2026-05-26 build `20260526-214652` commit `c511ba29`, OPPORTUNISTIC-DURATION-BACKFILL FIX)
+
+**RESOLUTION:** `_mtMaybeUpdateDuration` (multitrack-rehearsal.js:6847) now writes both `durationSec` and `totalActualMin` to Firebase on first `loadedmetadata` event when missing. New helper `_mtPersistDurationBackfill` includes an authority guard — re-reads `durationSec` from Firebase before writing, so future higher-authority duration sources (REAPER / X-Live ingest metadata, server-side render duration) can establish truth without being overwritten by browser audio metadata.
+
+**Why opportunistic write-on-read instead of upload-time persistence:** the audio file is the authoritative source for multitrack session duration; the worker streams the file straight to R2 and doesn't have duration. The browser already gets duration for free via the `loadedmetadata` event. Truth persists where truth lives ([[project_one_musical_truth]]). No migration script, no worker change, no render.py change.
+
+**End-to-end live-build proof against the documented missing-duration session `rsess_mt_mpju4yyn_7pko`:**
+- Before backfill (Firebase): `{durationSec: null, totalActualMin: null, duration: null}` — matches the legacy entry exactly
+- After 903ms in player (local cache): `_mtState.player.session.durationSec = 11274.05`
+- After Firebase round-trip: `{durationSec: 11274.05, totalActualMin: 188}`
+- Home Rehearsal page now reads `"Last rehearsal · Mon, May 18 · 3h 8m"` (was `· 0m`)
+- The session was healed on production data during the verification pass — Drew's 5/18 rehearsal is now correctly labeled across all surfaces.
+
+**Acceptance (verified):** Open the 5/18 session → §8.1 banner now has a non-zero duration hint and fires per the existing 30-min threshold. Existing sessions self-heal on first open; new sessions self-heal on first play after create.
+
+Screenshot: `02_GrooveLinx/uat/screenshots/2026-05-26/bugs27-18-duration-backfill/01-home-rehearsal-3h-8m-after-backfill.png`.
+
+---
+
+### Bug #18 (LEGACY ENTRY)
 
 **Build first seen:** `20260524-193407` (UAT pass 2026-05-25)
 **Reporter:** Playwright MCP UAT, surfaced as a side-effect of Bug #17 AC3
