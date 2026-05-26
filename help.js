@@ -525,11 +525,16 @@ var _GL_ONBOARD_PREFIX = 'gl_onboarded_';
  * Shows overlay only if page is in registry and not yet dismissed on this device.
  */
 function glCheckOnboarding(pageId) {
-    if (!GL_HELP_REGISTRY[pageId]) return;
-    var key = _GL_ONBOARD_PREFIX + pageId;
-    if (localStorage.getItem(key)) return; // already seen
-    // Small delay so the page render completes first
-    setTimeout(function() { glShowOnboarding(pageId, false); }, 350);
+    // Ambient inviolability — see project_one_musical_truth + bug_queue Bug #23.
+    // This help registry was designed as a first-visit auto-overlay, but it
+    // intercepts intentional navigation: a user tapping REHEARSAL expressed
+    // conductor intent; the overlay overrode it with ambient content.
+    // Ambient surfaces may INFORM intent, but may not INTERRUPT intent.
+    // Auto-show is intentionally disabled. Help remains user-invoked: the ❓
+    // button (glHelpCurrentPage), the inline page trigger
+    // (glInjectPageHelpTrigger), and the /help page. Do NOT re-enable
+    // auto-show; route any new help surface through user-initiated paths.
+    return;
 }
 
 /**
