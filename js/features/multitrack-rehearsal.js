@@ -1754,7 +1754,38 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
     _mtLoadSegments(sessionId).then(function() {
         if (_mtState.player && _mtState.player.sessionId === sessionId) {
             _mtRenderSegmentMarkers();
+            // Tier 2 Single-Tap Loop — restore persisted loop target (and
+            // mobile focus state) before the first render so the room is
+            // already arranged when the musician arrives. Playback is NOT
+            // resumed; loop assignment alone is restored (per-axis: the
+            // system prepares; the musician conducts).
+            var savedLoop = _mtLoadLoopTarget(sessionId);
+            if (savedLoop) {
+                var resolvedIdx = _mtResolveLoopIdx(_mtState.player, savedLoop);
+                if (resolvedIdx >= 0) {
+                    _mtState.player.loopIdx = resolvedIdx;
+                    // On mobile, mirror to the focus state so the visual
+                    // treatment matches: focused row + loop are one concept.
+                    if (typeof _mtIsMobile === 'function' && _mtIsMobile()) {
+                        _mtState.player._mobileFocusedIdx = resolvedIdx;
+                    }
+                    // Re-save in case idx drifted (re-analyze) so we converge
+                    // on the current coordinates.
+                    _mtSaveLoopTarget(_mtState.player, resolvedIdx);
+                } else {
+                    // Segments changed substantially — the persisted target
+                    // no longer matches anything in the current analysis.
+                    // Drop the stale persistence rather than guessing.
+                    _mtClearLoopTargetPersisted(sessionId);
+                }
+            }
             _mtRenderSegmentsPanel();
+            // Trigger anchor-sentence refresh now that loop state is
+            // resolved (so cold-open "tap a song" or restored "🔁 Sugaree
+            // · paused" renders immediately, not on next playback event).
+            if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+                setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+            }
         }
     });
     _mtLoadComments(sessionId).then(function(comments) {
@@ -2838,6 +2869,9 @@ window._mtTogglePlayAll = function() {
         if (btn) btn.textContent = '▶ Play';
         // Tier 1F — clear the active-segment highlight on pause so it
         // doesn't appear to be tracking the analyzer (which it isn't).
+        // Tier 2 Single-Tap Loop — reset _lastActiveSegIdx so the now-
+        // reviewing label re-renders with the new "paused" play state.
+        p._lastActiveSegIdx = undefined;
         if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
             setTimeout(_mtUpdateActiveSegmentHighlight, 0);
         }
@@ -2850,6 +2884,22 @@ window._mtTogglePlayAll = function() {
         // Resume context if it was created suspended (some browsers).
         if (p.audioCtx && p.audioCtx.state === 'suspended') {
             try { p.audioCtx.resume(); } catch (e) {}
+        }
+        // Tier 2 Single-Tap Loop — when starting play with a loop target
+        // set, if the current playhead is outside the loop bounds, seek to
+        // the loop's startSec before play. This makes "tap row → tap Play"
+        // land inside the loop naturally, and "tap a different row while
+        // paused mid-loop, then tap Play" still works.
+        if (p.loopIdx != null) {
+            var loopSeg = (p.segments || [])[p.loopIdx];
+            if (loopSeg && typeof loopSeg.startSec === 'number' && typeof loopSeg.endSec === 'number') {
+                var ct = (p.audios[0] && p.audios[0].currentTime) || 0;
+                if (ct < loopSeg.startSec - 0.05 || ct >= loopSeg.endSec - 0.02) {
+                    p.audios.forEach(function(a) {
+                        try { a.currentTime = loopSeg.startSec; } catch (e) {}
+                    });
+                }
+            }
         }
         // Sync all to first audio's currentTime to compensate for any drift
         var t = (p.audios[0] && p.audios[0].currentTime) || 0;
@@ -2871,6 +2921,12 @@ window._mtTogglePlayAll = function() {
         p.masterPlaying = true;
         _mtStartSyncWatchdog(p);
         if (btn) btn.textContent = '⏸ Pause';
+        // Tier 2 Single-Tap Loop — reset _lastActiveSegIdx so the now-
+        // reviewing label re-renders with the new "playing" play state.
+        p._lastActiveSegIdx = undefined;
+        if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+            setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+        }
     }
 };
 
@@ -4675,6 +4731,20 @@ window._mtMobileFocusRow = function(idx) {
     p._mobileFocusedIdx = idx;
     p._mobileRenameIdx = null;
     p._mobileNoteOpenIdx = null;
+    // Tier 2 Single-Tap Loop — the focused row IS the loop target. Setting
+    // it here is silent (no audio action); when the user taps Play, the
+    // audio will respect these bounds. If audio is already playing and the
+    // user taps a different row, seek to the new segment's startSec so the
+    // loop transition feels immediate.
+    p.loopIdx = idx;
+    _mtSaveLoopTarget(p, idx);
+    var seg = (p.segments || [])[idx];
+    if (seg && p.masterPlaying) {
+        var audio = document.getElementById('mtReviewAudio');
+        if (audio && typeof seg.startSec === 'number') {
+            try { audio.currentTime = seg.startSec; } catch (e) {}
+        }
+    }
     _mtRenderSegmentsPanel();
     // Auto-scroll the focused row into view so the user doesn't lose orientation
     // if the row was bottom-of-list and the focus content pushed it offscreen.
@@ -4695,6 +4765,18 @@ window._mtMobileUnfocusRow = function() {
     p._mobileFocusedIdx = null;
     p._mobileRenameIdx = null;
     p._mobileNoteOpenIdx = null;
+    // Tier 2 Single-Tap Loop — unfocus is the explicit "I'm done with this
+    // row" gesture. It clears the loop target (the room returns to a rest
+    // state). Tapping a different row later re-establishes a new loop.
+    if (p.loopIdx != null) {
+        p.loopIdx = null;
+        _mtClearLoopTargetPersisted(p.sessionId);
+        // Anchor sentence: drop the loop info immediately so the visible
+        // state matches the system state.
+        if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+            setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+        }
+    }
     _mtRenderSegmentsPanel();
 };
 
@@ -4965,6 +5047,71 @@ function _mtFlushPendingDraft() {
     var inp = document.getElementById('mtMobileNoteText_' + idx);
     if (!inp) return;
     _mtSaveDraft(p.sessionId, seg, inp.value || '');
+}
+
+// ── Tier 2 — Single-Tap Loop ───────────────────────────────────────────────
+// "The loop is the unit of musical attention." Tapping a segment row on
+// mobile sets that row as the loop target. When playback is engaged, audio
+// loops within the segment's startSec/endSec bounds. Loop target persists
+// silently across close/reopen/nav-away/reload. Playback never auto-resumes
+// on restore — the room is prepared; the musician conducts.
+//
+// State: p.loopIdx (number | null) lives on _mtState.player and is mirrored
+// to localStorage keyed by sessionId. Idx is the ORIGINAL segments-array
+// index (stable within a session); startSec/endSec are also persisted so
+// re-analyze re-indexing can fall back to coordinate matching if idx drifts.
+
+var _MT_LOOP_KEY_PREFIX = 'gl_mt_loop_target/';
+
+function _mtLoopKey(sessionId) { return _MT_LOOP_KEY_PREFIX + sessionId; }
+
+function _mtSaveLoopTarget(p, idx) {
+    if (!p || !p.sessionId) return;
+    var seg = (p.segments || [])[idx];
+    if (!seg) return;
+    try {
+        localStorage.setItem(_mtLoopKey(p.sessionId), JSON.stringify({
+            idx: idx,
+            startSec: seg.startSec,
+            endSec: seg.endSec
+        }));
+    } catch (e) { /* quota / private mode — non-fatal */ }
+}
+
+function _mtLoadLoopTarget(sessionId) {
+    if (!sessionId) return null;
+    try {
+        var raw = localStorage.getItem(_mtLoopKey(sessionId));
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+}
+
+function _mtClearLoopTargetPersisted(sessionId) {
+    if (!sessionId) return;
+    try { localStorage.removeItem(_mtLoopKey(sessionId)); } catch (e) {}
+}
+
+// Resolve a persisted loop target back to a current segments-array idx.
+// Prefers the saved idx if its segment's bounds still match; falls back to
+// coordinate-matching by startSec/endSec (handles re-analyze re-indexing).
+// Returns -1 if no match (segments changed substantially → loop is stale).
+function _mtResolveLoopIdx(p, saved) {
+    if (!p || !Array.isArray(p.segments) || !saved) return -1;
+    var TOL = 0.05; // 50ms tolerance
+    var savedIdx = (typeof saved.idx === 'number') ? saved.idx : -1;
+    var seg = (savedIdx >= 0 && savedIdx < p.segments.length) ? p.segments[savedIdx] : null;
+    if (seg && Math.abs((seg.startSec || 0) - (saved.startSec || 0)) < TOL
+            && Math.abs((seg.endSec || 0) - (saved.endSec || 0)) < TOL) {
+        return savedIdx;
+    }
+    for (var i = 0; i < p.segments.length; i++) {
+        var s = p.segments[i];
+        if (Math.abs((s.startSec || 0) - (saved.startSec || 0)) < TOL
+                && Math.abs((s.endSec || 0) - (saved.endSec || 0)) < TOL) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 // Phase 4A — filter pill bar HTML. Each pill is an independent toggle.
@@ -5372,23 +5519,37 @@ function _mtUpdateActiveSegmentHighlight() {
     // a gap (silence/chatter between two music segments).
     var t = (typeof _mtCurrentPlayheadSec === 'function') ? _mtCurrentPlayheadSec() : 0;
     var activeOrigIdx = -1;
-    // First pass: segment whose time range CONTAINS the playhead.
-    for (var i = 0; i < p.segments.length; i++) {
-        var s = p.segments[i];
-        var st = (typeof s.startSec === 'number') ? s.startSec : 0;
-        var en = (typeof s.endSec === 'number') ? s.endSec : 0;
-        if (t >= st && t < en) { activeOrigIdx = i; break; }
-    }
-    // Fallback: most recent segment whose start ≤ playhead. Keeps the
-    // box sticky during gaps so the user doesn't "lose" their place.
-    if (activeOrigIdx === -1) {
-        for (var j = p.segments.length - 1; j >= 0; j--) {
-            var sg = p.segments[j];
-            var sst = (typeof sg.startSec === 'number') ? sg.startSec : 0;
-            if (sst <= t) { activeOrigIdx = j; break; }
+    // Tier 2 Single-Tap Loop — when a loop target is set, the loop IS the
+    // authoritative musical state. The highlight goes on the loop row,
+    // not on whatever the playhead happens to be passing through. This
+    // collapses focus/now-reviewing/active into one truth (the loop) and
+    // closes Bug #11 (dual-lit state) + Bug #26 (cold-open false conductor)
+    // simultaneously: no loop = no auto-highlight on paused cold open.
+    if (p.loopIdx != null && p.loopIdx >= 0 && p.loopIdx < p.segments.length) {
+        activeOrigIdx = p.loopIdx;
+    } else if (p.masterPlaying || t > 0.1) {
+        // Cold-open + paused-at-zero suppression. The auto-active fallback
+        // below only fires while audio is actually playing or the playhead
+        // has been moved past the very start. Otherwise the room is at rest
+        // and no row should claim conductor authority.
+        // First pass: segment whose time range CONTAINS the playhead.
+        for (var i = 0; i < p.segments.length; i++) {
+            var s = p.segments[i];
+            var st = (typeof s.startSec === 'number') ? s.startSec : 0;
+            var en = (typeof s.endSec === 'number') ? s.endSec : 0;
+            if (t >= st && t < en) { activeOrigIdx = i; break; }
         }
-        // If even that fails (playhead before the first segment), pick row 0.
-        if (activeOrigIdx === -1 && p.segments.length > 0) activeOrigIdx = 0;
+        // Fallback: most recent segment whose start ≤ playhead. Keeps the
+        // box sticky during gaps so the user doesn't "lose" their place.
+        if (activeOrigIdx === -1) {
+            for (var j = p.segments.length - 1; j >= 0; j--) {
+                var sg = p.segments[j];
+                var sst = (typeof sg.startSec === 'number') ? sg.startSec : 0;
+                if (sst <= t) { activeOrigIdx = j; break; }
+            }
+            // If even that fails (playhead before the first segment), pick row 0.
+            if (activeOrigIdx === -1 && p.segments.length > 0) activeOrigIdx = 0;
+        }
     }
     rows.forEach(function(row) {
         var idx = parseInt(row.getAttribute('data-seg-idx'), 10);
@@ -5418,11 +5579,28 @@ function _mtUpdateActiveSegmentHighlight() {
 // Phase 4B — sticky "Reviewing: X • range • conf%" header label.
 // Pulls from active segment's display name + confidence + time range,
 // formats compactly to fit the transport row's right-hand space.
+//
+// Tier 2 Single-Tap Loop — when a loop target is set, the anchor sentence
+// becomes the canonical resolution of focus / playback / now-reviewing:
+//   "🔁 <title> · <range> · playing"  (loop set, audio playing)
+//   "🔁 <title> · <range> · paused"   (loop set, audio paused)
+//   "🎵 Tap a song to start"          (cold open, no loop, no playback)
+// The grammar makes the relationship between loop state + playback state
+// explicit in one sentence, satisfying the "one authoritative musical
+// truth" principle (project-one-musical-truth memory).
 function _mtUpdateNowReviewingLabel(p, activeOrigIdx) {
     var el = document.getElementById('mtNowReviewing');
     if (!el) return;
+    var isLoop = (p && p.loopIdx != null && p.loopIdx === activeOrigIdx);
     if (activeOrigIdx < 0 || !p || !p.segments || !p.segments[activeOrigIdx]) {
-        el.innerHTML = '';
+        // Cold-open rest state — no loop, no playback. Render an inviting
+        // sentence rather than an empty bar. Mobile only (desktop has
+        // different transport semantics and keeps the legacy empty state).
+        if (typeof _mtIsMobile === 'function' && _mtIsMobile() && p && Array.isArray(p.segments) && p.segments.length > 0) {
+            el.innerHTML = '<span style="opacity:0.55">🎵 Tap a song to start</span>';
+        } else {
+            el.innerHTML = '';
+        }
         return;
     }
     var seg = p.segments[activeOrigIdx];
@@ -5445,13 +5623,25 @@ function _mtUpdateNowReviewingLabel(p, activeOrigIdx) {
     var endSec = (typeof seg.endSec === 'number') ? seg.endSec : 0;
     var range = _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec);
     var conf = _mtSegmentConfidence(seg);
-    var confStr = (conf > 0.05) ? (' · ' + Math.round(conf * 100) + '%') : '';
     var rs = _mtSegmentReviewState(seg);
     var titleColor;
     if (rs === 'confirmed')        titleColor = '#86efac';
     else if (rs === 'needs-review') titleColor = '#fca5a5';
     else if (rs === 'excluded')    titleColor = '#fbbf24';
     else                            titleColor = '#f1f5f9';
+    if (isLoop) {
+        // Loop anchor sentence — resolves loop/playback into one phrase.
+        var playState = p.masterPlaying ? 'playing' : 'paused';
+        var playColor = p.masterPlaying ? '#a5b4fc' : 'var(--text-dim)';
+        el.innerHTML = '<span style="opacity:0.7">🔁 </span>'
+            + '<b style="color:' + titleColor + '">' + escHtml(labelTitle) + '</b>'
+            + '<span style="opacity:0.6;font-family:ui-monospace,monospace;font-size:0.92em"> · ' + range + '</span>'
+            + '<span style="color:' + playColor + ';font-weight:600;margin-left:6px">· ' + playState + '</span>';
+        return;
+    }
+    // Non-loop (legacy behavior preserved for desktop + transient playback):
+    // "🎵 Reviewing: <title> · <range> · <conf%>"
+    var confStr = (conf > 0.05) ? (' · ' + Math.round(conf * 100) + '%') : '';
     el.innerHTML = '<span style="opacity:0.55">' + meta.emoji + ' Reviewing: </span>'
         + '<b style="color:' + titleColor + '">' + escHtml(labelTitle) + '</b>'
         + '<span style="opacity:0.6;font-family:ui-monospace,monospace;font-size:0.92em"> · ' + range + confStr + '</span>';
@@ -6655,6 +6845,22 @@ function _mtMaybeUpdateMasterPosition() {
     var a0 = p.audios[0];
     if (!a0 || !isFinite(a0.duration) || a0.duration <= 0) return;
     var t = _mtCurrentPlayheadSec();
+    // Tier 2 Single-Tap Loop — wrap audio back to loop start when playhead
+    // crosses loop end. Runs inside timeupdate so the wrap is felt as
+    // continuous looping audio (browsers fire timeupdate at 4-25 Hz, well
+    // under the perceptual gap threshold). Tolerance keeps the wrap clean
+    // even if timeupdate fires slightly past endSec.
+    if (p.masterPlaying && p.loopIdx != null) {
+        var loopSeg = (p.segments || [])[p.loopIdx];
+        if (loopSeg && typeof loopSeg.endSec === 'number' && typeof loopSeg.startSec === 'number') {
+            if (t >= loopSeg.endSec - 0.02) {
+                try { a0.currentTime = loopSeg.startSec; } catch (e) {}
+                // Update t for downstream label/highlight calls so the UI
+                // reflects the post-wrap position immediately.
+                t = loopSeg.startSec;
+            }
+        }
+    }
     var pct = (t / a0.duration) * 100;
     var seek = document.getElementById('mtMasterSeek');
     if (seek && document.activeElement !== seek) seek.value = pct;
