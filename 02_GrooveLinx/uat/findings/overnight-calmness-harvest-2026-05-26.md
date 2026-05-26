@@ -9,6 +9,18 @@
 
 ---
 
+## 0a. Methodology Note (revision 2 — 2026-05-26 22:20 UTC)
+
+The first pass of this harvest mis-attributed the Home dashboard `TypeError` (§1.1) to a "Home is currently broken" preparedness failure. Drew showed a working Home dashboard screenshot on his real browser and instructed: hard-reload before screenshots to clear stale state ([[feedback-uat-hard-reload]]).
+
+A second pass with service-worker unregistration + caches.delete + cache-bust URL was run. The exception still reproduces consistently in the Playwright session (mob2-01) AND was confirmed by Drew pasting his own browser console showing the identical exception firing.
+
+The refined understanding: the exception is REAL and CONFIRMED across both sessions. The visible UI impact diverges — Drew's real browser silently omits the Event Risk Card while rendering the rest of the dashboard; the Playwright session shows the full "Could not load dashboard" fallback. The harvest finding stays but is refined into a silent-degradation observation (§1.1).
+
+Other findings (URL conductor override, attention layer count, ambient instructional copy, stat decoration, etc.) were retested on the hard-reloaded session and remain stable. They are not stale-cache artifacts.
+
+---
+
 ## 0. Screenshot Index
 
 ### Mobile (iPhone 14 Pro 390×844)
@@ -49,19 +61,35 @@
 
 Subtle moments where the app demands more cognition than the music itself does. Not bugs, mostly — cognitive friction.
 
-### 1.1 Home dashboard is currently broken — preparedness failure HIGH
-**Severity:** This is the single highest-priority observation in the harvest.
+### 1.1 Home dashboard `_renderEventRiskCard` throws TypeError — confirmed in both sessions, divergent visible impact
+**Severity:** HIGH (the exception IS real); MED-visible (the UI degrades silently for the real user).
 
-`TypeError: Cannot read properties of null (reading 'date')` at `home-dashboard.js:2688:41` inside `_renderEventRiskCard`. Stack trace: `_renderEventRiskCard` → `_renderLockinDashboard` → `_renderDashboard` → `_hdRenderInternal` → `renderHomeDashboard`. The whole dashboard catches and renders the error UI: "Could not load dashboard. Check connection."
+**The JS exception is reproducible and confirmed in both Drew's real browser AND the Playwright session:**
 
-Observed:
-- Reproduces on mobile (mob-02, mob-04, mob-05) AND desktop (desk-02)
-- Retry button is wired but does NOT recover (error persists after click + 5s wait)
-- Bottom tabbar + other pages remain navigable, so the user is not stuck — but **the Home door does not open**
+```
+[Home] Load error: TypeError: Cannot read properties of null (reading 'date')
+    at home-dashboard.js:2688:41
+    at Array.filter (<anonymous>)
+    at _renderEventRiskCard (home-dashboard.js:2688:10)
+    at _renderLockinDashboard (home-dashboard.js:1689:21)
+    at _renderDashboard (home-dashboard.js:574:12)
+    at _hdRenderInternal (home-dashboard.js:110:31)
+    at async renderHomeDashboard (home-dashboard.js:142:9)
+```
 
-**Why this matters for calmness:** Home is the entry. A musician arriving at Home and finding "Could not load dashboard" experiences first-contact preparedness failure. This is a real exception cascading through the dashboard renderer, not a transient network issue (mobile + desktop both fail identically against the same data).
+The `_renderEventRiskCard` filter dereferences a null entry's `.date` property. The `_hdRenderInternal` parent catches it and logs the warning at line 121.
 
-**Trust-layer relevance:** Yes — the error message blames the user's connection (`Check connection`) when the underlying cause is a null `date` field in some event record. **The system blames the user for the system's own bug.** That is a trust violation independent of the cognitive friction.
+**Visible impact divergence:**
+- **Drew's real-browser session:** the rest of the dashboard renders successfully. The Event Risk Card is silently MISSING from the visible UI. The user has no indication that one of their cards didn't render.
+- **Playwright session (this harvest):** the full "Could not load dashboard. Check connection." fallback UI is shown. Reproduces on mobile (mob-02, mob-04, mob-05) AND desktop (desk-02) AND on a hard-reloaded SW-cleared session (mob2-01).
+
+**Refined framing:** the original harvest finding misread the Playwright session as "Home is broken." Drew's screenshot of a working Home corrected that read. But the JS exception IS firing in both sessions — the difference is downstream rendering behavior. The harvest finding is real; the visible impact is data-dependent + render-state-dependent.
+
+**Why this matters for calmness (refined):** the exception fires silently for the real user. The Event Risk Card simply doesn't render. The user doesn't know it's missing. This is the OBSCURES branch of the trust-layer rule ([[feedback_trust_layer_triage_rule]]): the system silently degrades and the user can't tell.
+
+**Why this matters for engineering hygiene:** the Playwright session's "Could not load dashboard" fallback IS reachable — likely when the exception fires earlier in the render cycle. The misattributed-fault problem (the message blames connection) is real for whichever users land in that state.
+
+**Authority observation:** when the system can't render something, it has two failure modes (silent degradation vs. honest-but-misattributed error). Neither is fully truthful. The first hides the system from itself; the second blames the user.
 
 ### 1.2 Cold-open URL intent overridden by restoration
 Typed `https://app.groovelinx.com/#home`. By the time the screenshot fired, URL had silently redirected to `#rehearsal`. The restoration system overrode the explicit URL conductor intent. The user typed a destination; the app went somewhere else.
