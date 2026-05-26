@@ -15,7 +15,13 @@
 
 ## Open
 
-### Bug #20 — Mobile contextual composer Save button below the fold on default open (HIGH — OPEN, Pass 2.5 must-fix)
+### Bug #20 — Mobile contextual composer Save button below the fold on default open (HIGH — ✅ RESOLVED 2026-05-26 build `20260526-102503` commit `fd347556`)
+
+**RESOLUTION:** `_mtMobileToggleNote` now tracks `opening` boolean and scrolls the composer container's bottom into view via `scrollIntoView({behavior:'smooth', block:'end'})` after the 80ms render delay. Fallback to textarea reference + non-smooth `scrollIntoView(false)`. Post-fix verification: Save button rendered at `top=680 / bottom=710` in 844px iPhone viewport = fully visible on first open. Screenshot: `uat/screenshots/2026-05-26/mobile-pass2.5/20260526-102503/02-composer-scrolled-into-view.png`.
+
+---
+
+### Bug #20 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157` (Pass 2 mobile + render visibility live)
 **Reporter:** overnight friction harvest 2026-05-25 (M1.5 singer persona)
@@ -36,7 +42,17 @@
 
 ---
 
-### Bug #21 — SILENT DATA LOSS: switching focus with unsaved composer text destroys text (HIGH — OPEN, Pass 2.5 must-fix)
+### Bug #21 — SILENT DATA LOSS: switching focus with unsaved composer text destroys text (HIGH — ✅ RESOLVED 2026-05-26 build `20260526-102503` commit `fd347556`, TRUST-LAYER FIX)
+
+**RESOLUTION:** Per Drew's 2026-05-26 reframe ("the app forgot my musical thought" = emotionally catastrophic for a product positioning as musical operational memory), implemented per-row localStorage draft persistence. New helpers `_mtDraftKey` / `_mtSaveDraft` / `_mtLoadDraft` / `_mtClearDraft` (keyed by `sessionId + startSec/endSec` so drafts survive re-analyze re-indexing). `_mtMobileDraftDirty` wired to textarea `oninput` with 400ms debounce. `_mtFlushPendingDraft` synchronously fires before any teardown path: `_mtMobileFocusRow`, `_mtMobileUnfocusRow`, `_mtMobileToggleNote` (close path), `_mtClosePlayer`. Composer pre-fills textarea from draft on re-open + shows `📝 unsaved draft` badge in header. `_mtMobileSubmitNote` clears draft only AFTER Firebase ack (if save fails, draft persists for retry).
+
+Post-fix verification: type text → wait 600ms (past 400ms debounce) → focus-switch → textarea destroyed BUT draft persists in localStorage → focus back + re-open composer → textarea pre-filled with full original text + "unsaved draft" badge visible. `restoredMatchesOriginal: true`. Screenshot: `uat/screenshots/2026-05-26/mobile-pass2.5/20260526-102503/03-draft-restored-after-focus-switch.png`.
+
+Also saved memory: `project_musical_operational_memory.md` — trust-layer bug categorization is now canonical for future triage.
+
+---
+
+### Bug #21 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.6 rapid switching persona)
@@ -57,7 +73,22 @@
 
 ---
 
-### Bug #22 — Desktop session composer ALSO rendered on mobile (HIGH — OPEN, double-composer competition)
+### Bug #22 — Desktop session composer ALSO rendered on mobile (HIGH — ✅ RESOLVED 2026-05-26 build `20260526-102503` commit `fd347556`)
+
+**RESOLUTION:** `_mtOpenReviewMode` now gates `#mtCommentPanel` + `#mtComposerArea` rendering on `!_isMobile`. `_mtRefreshCommentPanel` already handled missing DOM elements gracefully (`if (panel)` guards), so no call-site changes needed. On mobile both surfaces no longer render; all mobile note flows route exclusively through the Pass 2 contextual composer inside the focused segment row (design intent restored).
+
+Cascading positive side effects closed:
+- F08 (empty-comments real estate freed)
+- F15 (mobile "hit Enter" copy gone)
+- F20 (composerTags cross-contamination eliminated — only one composer surface exists)
+- F30 (17-track dropdown overflow gone)
+- Partial F07 (keyboard hint context — only the segments-panel footer hint remains, separate item)
+
+Post-fix verification: DOM check confirmed `mtCommentPanel`, `mtComposerArea`, `mtComposerText`, `mtComposerAnchor` all NOT in DOM on mobile (`isMobile: true`). UAT desktop regression PASS 6.0s, 0 findings — desktop paths preserved. Screenshot: `uat/screenshots/2026-05-26/mobile-pass2.5/20260526-102503/01-no-desktop-composer.png`.
+
+---
+
+### Bug #22 (LEGACY ENTRY)
 
 **Build first observed:** `20260525-225157`
 **Reporter:** overnight friction harvest 2026-05-25 (M1.5 singer persona; M3 hierarchy audit)

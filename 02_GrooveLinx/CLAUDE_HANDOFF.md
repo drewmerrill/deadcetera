@@ -6,15 +6,20 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 00:10 UTC · Build under test: `20260525-225157` (unchanged) · Branch: `main` · Mode: **PASS 2.5 SCOPED — OVERNIGHT FRICTION HARVEST COMPLETE.** 30 findings filed (4 HIGH, 11 MED, 7 LOW, 8 INFO/positive). Bugs #20-#27 opened in `uat/bug_queue.md`. Drew deployed `services/multitrack-render/render.py` to Modal (Phase A.5 reverb fix LIVE). **Smallest/highest-leverage next fix:** hide desktop session composer on mobile (Bug #22, ~5-10 LOC) — cascading positive side effects on 5 other findings._
+_Last refreshed: 2026-05-26 10:30 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **PASS 2.5 SHIPPED — Bugs #20 + #21 + #22 all ✅ RESOLVED.** Trust-layer fix live (per-row localStorage draft persistence). Desktop session composer hidden on mobile (cascading closure of 5 harvest findings). Composer scroll-into-view on note-open. New canonical memory `project_musical_operational_memory.md` formalizes trust-layer bug categorization. Modal Phase A.5 reverb fix LIVE (deployed overnight by Drew, A/B verification still pending)._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260525-225157 (commit 9adcb4c3), branch main,
+GrooveLinx is at build 20260526-102503 (commit fd347556), branch main,
 live on app.groovelinx.com via Vercel. Modal services/multitrack-render/
-render.py was DEPLOYED by Drew during overnight harvest — Phase A.5
-reverb wet-branch ratio boost is now LIVE in production.
+render.py is DEPLOYED — Phase A.5 reverb wet-branch ratio boost LIVE
+(A/B verification still pending Drew).
+
+PASS 2.5 MUST-FIX PACKAGE SHIPPED 2026-05-26 morning. Bugs #20 + #21 +
+#22 all RESOLVED. New strategic frame canonicalized:
+"musical operational memory" (memory project_musical_operational_memory).
+Trust-layer bug categorization is now canonical for future triage.
 
 OVERNIGHT FRICTION HARVEST (2026-05-25 23:28 - 2026-05-26 00:10 UTC)
 SHIPPED FINDINGS ONLY (no code). Full evidence in:
@@ -77,19 +82,21 @@ MUST NEVER DRIFT:
   - Session Continuity Protocol (this file's pinned prompt is part of it)
 
 NEXT RECOMMENDED ACTION:
-  Ship Bug #22 fix (hide desktop session composer on mobile) — ~5-10 LOC,
-  smallest/highest-leverage move from the overnight harvest. Closes Bug #22
-  directly + closes F08 (empty-comments panel real-estate) + F15 (mobile
-  keyboard copy) + F20 (composerTags cross-contamination) + F30 (17-track
-  dropdown overflow) as cascading side effects. After landing, next ship
-  is Bug #20 (composer Save below the fold) + Bug #21 (silent data loss
-  autosave on focus-switch). Those 3 together = Pass 2.5 must-fix package
-  per the friction harvest.
+  Drew validates Pass 2.5 in real-world iPhone Safari + does the reverb
+  A/B (wet=0/0.5/1.0 on Custom Mix) to verify Phase A.5 ratio boost is
+  perceptually dominant. Specifically test trust-layer fix: type a note,
+  switch focus, return — does the "📝 unsaved draft" badge appear with
+  text restored? Also verify Save button is visible on first composer
+  open without scrolling.
 
-  Drew should also A/B Custom Mix reverb wet=0/0.5/1.0 on the live build
-  to verify the now-deployed Phase A.5 ratio boost is perceptually
-  dominant. Ingestion Architecture v1 spec review still open for
-  Drew + ChatGPT in parallel.
+  After Drew's behavioral observation: pick next ship from
+  - Bug #26 (auto-active-segment highlight cold-open) — visual coherence
+  - Bug #24 (tabbar over player) / Bug #25 (chatbot over player) —
+    global-shell focus polish
+  - Bug #27 / Bug #18 (durationSec on home page) — data backfill
+  - STABILIZATION_QUEUE Pass 2.5 candidates (8 entries)
+  - Pass 3 mobile tabs (~200 LOC, larger restructure)
+  - Recording Ingestion Architecture v1 Phase 1 (still in design review)
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Formalize Stab #15 + GLPriority numbering
@@ -120,6 +127,99 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 10:30 UTC — Pass 2.5 MUST-FIX PACKAGE SHIPPED (trust-layer fix live)
+
+**Build live:** `20260526-102503` (commit `fd347556`) — pushed to `main`, Vercel auto-deploying. Bugs #20 + #21 + #22 all RESOLVED. New strategic frame `project_musical_operational_memory.md` canonicalized.
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-102503` (commit `fd347556` code)
+* **Branch:** `main`
+* **Mode:** **PASS 2.5 SHIPPED** — trust-layer fix live, awaiting Drew real-world validation
+* **Deployed systems:** browser live (build `20260526-102503`), Modal Phase A.5 LIVE (Drew deployed overnight), worker unchanged, R2 unchanged, Firebase unchanged
+* **Active convergence work:** none currently in flight. Pass 2.5 closed; Pass 3 mobile tabs deferred pending Pass 2.5 validation; Recording Ingestion Architecture v1 spec still in design review.
+* **Open bugs:** 6 remaining (down from 9): #17 architecture-verified · #18 MED (`durationSec` missing — same root as #27) · #19 HIGH→MITIGATED · #23 HIGH (rehearsal-plan onboarding card blocks Rehearsal page — global-shell orthogonal) · #24 MED (tabbar over player) · #25 MED (chatbot over player) · #26 MED (auto-active-segment highlight cold-open). **Bugs #20 + #21 + #22 = ✅ RESOLVED this session.**
+* **Stabilization items in flight:** 8 STABILIZATION_QUEUE Pass 2.5 candidates from overnight harvest (now-reviewing label collapse, focus dim vs auto-highlight, comments empty state — closed by Bug #22, keyboard hint footer, overflow tag visibility, player state survival, composerTags sharing — closed by Bug #22, "Possible:" placeholder confidence duplication). **Closed 2 by Bug #22 ship**, 6 still candidate.
+* **Active initiatives:** Pass 2.5 validation pending Drew real-world iPhone test; reverb A/B verification (Drew); Ingestion spec review (Drew + ChatGPT).
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — Drew validates Pass 2.5 fixes on actual iPhone Safari. Critical trust-layer test: type a note, switch focus, return — does the "📝 unsaved draft" badge appear with text restored? Also: Save button visible on first composer open without scrolling? Also: Custom Mix reverb A/B (wet=0/0.5/1.0) to verify Phase A.5 ratio boost.
+* **NEXT** — Pick from: Bug #26 (auto-active-segment highlight cold-open, visual coherence, ~10-20 LOC) OR Bugs #24/#25 (global-shell focus polish — tabbar + chatbot hide while player open, ~20-30 LOC combined) OR Bug #27/#18 (durationSec backfill + home-page display fix, ~30-50 LOC) OR STABILIZATION_QUEUE Pass 2.5 candidates OR Pass 3 mobile tabs OR Ingestion Phase 1.
+* **LATER** — Pass 3 mobile tabs (~200 LOC); Pass 4 6-category tag grouping (~100 LOC); Ingestion Phases 1-4 (each Drew-approved); STABILIZATION_QUEUE remaining 6 candidates; non-mobile follow-ups (C7 Phase 2, UAT calendar contract, EXDATE bug).
+* **DEFERRED** — Progressive disclosure inside focus mode (Drew explicitly: "Do NOT implement immediately. Observe real user behavior first." Pass 2.5 validation might produce evidence one way or the other); Firebase-backed cross-device render persistence; aecho→afir convolution swap (only if Phase A.5 ratio boost insufficient); Stab #N formalization.
+
+## 3. OPEN PRODUCT DECISIONS
+
+| # | Decision | Owner | Status |
+|---|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Drew + ChatGPT | Still open |
+| 2 | Calendar Model B (soft-cancel) | Drew + ChatGPT | Still open |
+| 3 | Operational Prioritization Phase 2 scope | Drew + ChatGPT | Still open |
+| 4 | Firebase-backed cross-device render sync | Drew | Still open |
+| 5 | Next-ship sequencing post-Pass-2.5 | Drew | Pending Drew real-world validation |
+| 6 | Adoption-metric instrumentation for Pass 2 surfaces | Drew | Still open |
+| 7 | Recording Ingestion Architecture v1 scope + Phase 1 vs Phase 2 | Drew + ChatGPT | Spec landed; review pending |
+| 8 | Bug #23 ownership (global-shell, not multitrack-rehearsal) | Drew | Still needs assignment |
+
+## 4. OPERATIONAL RISKS
+
+* **Pass 2.5 validation hasn't happened in the real world yet.** Playwright UAT proves DOM/state behavior; only Drew on actual iPhone Safari proves the EMOTIONAL UX claim that "draft restored" reads as trust-positive. Risk: if the "📝 unsaved draft" badge reads as "the system is confused / nagging me," that's a different failure mode than the original silent-loss bug. Drew should look for emotional response to the badge during validation.
+* **Reverb A/B still pending Drew.** Modal Phase A.5 has been live since overnight deploy. Each session without A/B verification = unknown whether the ratio boost actually solves perceptual flatness.
+* **Trust-layer framing now canonical.** `project_musical_operational_memory.md` memory established. Future sessions WILL inherit this categorization. Risk if mis-applied: classifying genuine quality bugs as trust-layer would inflate priorities. Categorization is specifically: bugs that LOSE or OBSCURE captured data = trust-layer. Bugs that add friction without losing data = quality, standard severity.
+* **6 open bugs remain after Pass 2.5.** None are HIGH-severity within multitrack-rehearsal scope (Bug #23 is HIGH but orthogonal global-shell). Pass 2.5 cleared the trust-layer cliff; remaining are coherence polish.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew validates Pass 2.5 on actual iPhone Safari** + does Custom Mix reverb A/B. Specifically:
+1. Open Review Mode on rehearsal session → confirm desktop composer NOT visible (Bug #22)
+2. Focus any segment → tap "+ Add note" → confirm Save button visible on first open without scrolling (Bug #20)
+3. Type a real note ("test note for trust validation") → tap a different segment → tap back to original → confirm "📝 unsaved draft" badge + text restored intact (Bug #21 trust-layer)
+4. Save the note → confirm draft badge clears + note lands in session comments
+5. Custom Mix reverb A/B: render at wet=0, wet=0.5, wet=1.0 — perceptually distinct?
+
+Report any in-the-wild friction the Playwright UAT couldn't catch (real keyboard behavior, real touch latency, real audio playback during composer interaction). After report, Claude picks next ship from the remaining 6 open bugs OR STABILIZATION_QUEUE OR Pass 3.
+
+---
+
+## Session Narrative (trace, supplementary to §1–§5)
+
+### Arc — 3 ships in one session (governance + 3 code fixes)
+
+1. **Saved `project_musical_operational_memory.md` memory.** Drew's 2026-05-26 reception of the overnight harvest formalized the strategic frame: GrooveLinx is converging toward "musical operational memory" — unifies annotations / segments / playback / rehearsal review / ingestion / comments / focus mode / render persistence / moment capture / tasks / continuity. The memory establishes **trust-layer bug categorization** as canonical for future triage: any bug that LOSES or OBSCURES captured data = HIGH priority regardless of surface area, because the moat is operational memory not feature density.
+
+2. **Shipped Bug #22** (~8 LOC) — Hide desktop session composer on mobile. `_mtOpenReviewMode` gates `#mtCommentPanel` + `#mtComposerArea` rendering on `!_isMobile`. `_mtRefreshCommentPanel` already handled missing DOM gracefully. Cascading positive closures: F08 + F15 + F20 + F30 + partial F07. DOM-verified: all 4 desktop-composer IDs absent on mobile.
+
+3. **Shipped Bug #20** (~25 LOC) — Scroll composer into view on note-open. `_mtMobileToggleNote` tracks `opening` boolean; on open, scrolls composer container's bottom into view via `scrollIntoView({behavior:'smooth', block:'end'})`. Fallback to textarea + non-smooth `scrollIntoView(false)`. DOM-verified post-fix: Save button at top=680/bottom=710 in 844px viewport = fully visible.
+
+4. **Shipped Bug #21** (~70 LOC) — TRUST-LAYER per-row localStorage draft persistence. New helpers: `_mtDraftKey` / `_mtSaveDraft` / `_mtLoadDraft` / `_mtClearDraft` (keyed by sessionId + startSec/endSec). `_mtMobileDraftDirty` wired to textarea oninput with 400ms debounce. `_mtFlushPendingDraft` synchronous-flush before any teardown path (focus-switch, unfocus, note-close, player-close). Composer pre-fills textarea from saved draft + shows "📝 unsaved draft" badge. Submit clears draft only AFTER Firebase ack (preserves on save failure). End-to-end verified: type → switch focus → return → text restored intact, `restoredMatchesOriginal: true`.
+
+5. **Atomic build bump + UAT + visual evidence:** `20260525-225157` → `20260526-102503` across version.json + index.html + index-dev.html (regen) + service-worker.js. UAT desktop regression PASS 6.0s, 0 findings. 3 iPhone-viewport verification screenshots in `02_GrooveLinx/uat/screenshots/2026-05-26/mobile-pass2.5/20260526-102503/`. Bug queue entries marked ✅ RESOLVED with resolution notes pointing to commit + screenshots.
+
+### Files touched this session
+
+- `js/features/multitrack-rehearsal.js` (+103 LOC delta: ~70 Bug #21 + ~25 Bug #20 + ~8 Bug #22)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/project_musical_operational_memory.md` (NEW)
+- `/Users/drewmerrill/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/MEMORY.md` (index)
+- `version.json` / `index.html` / `index-dev.html` / `service-worker.js` (atomic bump)
+- `02_GrooveLinx/uat/bug_queue.md` (Bugs #20/#21/#22 marked RESOLVED with resolution notes)
+- `02_GrooveLinx/CLAUDE_HANDOFF.md` (this entry + pinned restart prompt refresh)
+- `02_GrooveLinx/CURRENT_PHASE.md` (synced)
+- 3 iPhone Pass 2.5 verification screenshots + 4 desktop UAT artifacts
+
+### What's NOT in this turn
+
+- No Pass 3 mobile tabs work
+- No Pass 4 tag categorization
+- No Bug #24/#25/#26/#27 fixes
+- No new spec
+- No Modal / worker / Firebase schema changes
+- No SYSTEM LOCK touches
 
 ---
 
