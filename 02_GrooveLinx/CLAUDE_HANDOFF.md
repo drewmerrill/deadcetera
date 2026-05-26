@@ -6,12 +6,13 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 13:00 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **GitHub Project sync now formalized as mandatory operational hygiene** per `00_Governance/AI_WORKFLOW.md §Required Project sync`. Four canonical memories standing: `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`. **3-surface operational model:** Product Surface (app) · Operational Visibility Surface (GitHub Project + 📍 Phase Marker #67) · System Memory Surface (repo governance/docs/handoffs)._
+_Last refreshed: 2026-05-26 12:57 UTC · Build under test: `20260526-102503` (last code-shipping commit `fd347556`; tooling commit `9ae08630`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Tier 1 operational discipline tooling INSTALLED** — `CLAUDE.md §OPERATIONAL DISCIPLINE` (6 load-bearing rules promoted) + `.claude/commands/glx-{deploy,handoff,uat,bug-triage}.md` + `.claude/hooks/check-build-bump.py` (PreToolUse, blocks `git push` on 4-source drift) + `.claude/hooks/check-session-stop.sh` (Stop, nags `/glx-handoff` after ≥3 commits). **GitHub Project sync mandatory** per `00_Governance/AI_WORKFLOW.md §Required Project sync`. Six canonical memories standing: `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`. **3-surface operational model:** Product Surface (app) · Operational Visibility Surface (GitHub Project + 📍 Phase Marker #67) · System Memory Surface (repo governance/docs/handoffs)._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260526-102503 (commit fd347556), branch main,
+GrooveLinx is at build 20260526-102503 (last code-shipping commit
+fd347556; most recent commit 9ae08630 is tooling-only), branch main,
 live on app.groovelinx.com via Vercel. Modal services/multitrack-render/
 render.py is DEPLOYED — Phase A.5 reverb wet-branch ratio boost LIVE
 (A/B verification still pending Drew).
@@ -26,7 +27,28 @@ PASS 2.5 MUST-FIX PACKAGE SHIPPED 2026-05-26 morning. Bugs #20 + #21 +
 📍 Phase Marker (#67) for Pierce's 3-min orientation. Project sync now
 MANDATORY operational hygiene per AI_WORKFLOW.md §Required Project sync.
 
-Four canonical memories formalize the operational stance:
+TIER 1 OPERATIONAL DISCIPLINE TOOLING INSTALLED 2026-05-26 12:57 UTC
+(commit 9ae08630, no functional code change):
+* CLAUDE.md §OPERATIONAL DISCIPLINE — 6 load-bearing rules in repo
+  canon (trust-layer, continuity, deploy, atomic build-bump, observe-
+  before-expand, tooling tier discipline). Plus §GITHUB PROJECT SYNC
+  and §INDEPENDENT REVIEW (/ultrareview usage policy).
+* .claude/commands/ — /glx-deploy, /glx-handoff, /glx-uat,
+  /glx-bug-triage (visible at session start).
+* .claude/hooks/check-build-bump.py — PreToolUse hook, blocks `git push`
+  when version.json / meta tags / ?v= params / CACHE_NAME are not in
+  lockstep. Smoke-tested: passes clean, blocks synthetic mismatch.
+* .claude/hooks/check-session-stop.sh — Stop hook, nags /glx-handoff
+  when ≥3 commits have landed since CLAUDE_HANDOFF.md was refreshed.
+* .claude/settings.local.json now gitignored (user permissions only).
+
+DO NOT propose Tier 2 (overnight UAT agents, screenshot harvesting,
+regression diffing, deploy verification loops) or Tier 3 (Anthropic API
+inside GrooveLinx, cross-session pattern analysis) unprompted. Drew
+must greenlight. Every automation proposal must name the repeated
+proven friction it removes.
+
+Six canonical memories formalize the operational stance:
 * project_musical_operational_memory — strategic frame, trust-layer
   bug categorization, 5-item roadmap, moat = continuity not features
 * feedback_trust_layer_triage_rule — bugs that LOSE/OBSCURE/STALE =
@@ -36,6 +58,10 @@ Four canonical memories formalize the operational stance:
 * feedback_github_project_sync_mandate — every code-shipping session
   must sync Project at initiative/bug level only (NEVER per-commit);
   helper at scripts/gh-project-item.sh
+* feedback_tooling_tier_discipline — Tier 1 only; Tier 2/3 require
+  explicit Drew greenlight; every automation must name the friction
+* feedback_load_bearing_memory_promotion — six rules eligible for
+  CLAUDE.md promotion; do NOT promote more unprompted; resist sprawl
 
 3-SURFACE OPERATIONAL MODEL:
 * Product Surface → GrooveLinx app
@@ -102,13 +128,16 @@ MUST NEVER DRIFT:
   - feedback_ground_truth_over_theater: never decorative simulation of state
   - Session Continuity Protocol (this file's pinned prompt is part of it)
 
-NEXT RECOMMENDED ACTION:
+NEXT RECOMMENDED ACTION (single move, not a menu):
   Drew validates Pass 2.5 in real-world iPhone Safari + does the reverb
-  A/B (wet=0/0.5/1.0 on Custom Mix) to verify Phase A.5 ratio boost is
-  perceptually dominant. Specifically test trust-layer fix: type a note,
-  switch focus, return — does the "📝 unsaved draft" badge appear with
-  text restored? Also verify Save button is visible on first composer
-  open without scrolling.
+  A/B (wet=0/0.5/1.0 on Custom Mix) — ideally in a single short field
+  session (~30 min) since both are blocking observations for the same
+  next-fix sequencing decision. Specifically test trust-layer fix: type
+  a note, switch focus, return — does the "📝 unsaved draft" badge
+  appear with text restored? Also verify Save button is visible on
+  first composer open without scrolling. Note emotional response (trust-
+  positive vs. nagging) — DOM tests prove function; Drew's ear and feel
+  prove musicianship-fit.
 
   After Drew's real-world validation: roadmap is Phase 1 Trust Hardening
   (see 00_Governance/CURRENT_PRIORITIES.md). Candidate next moves
@@ -162,6 +191,71 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 12:57 UTC — Tier 1 operational discipline tooling INSTALLED (CLAUDE.md promotion + slash commands + hooks)
+
+**No code change.** Build still `20260526-102503`. Tooling/governance turn — load-bearing rules promoted into `CLAUDE.md`, 4 project slash commands shipped, 2 enforcement hooks installed with smoke tests, `.claude/settings.local.json` excluded from repo. Commit `9ae08630`. Working tree clean. Push self-validated through the new build-bump hook.
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`. Generated via newly-installed `/glx-handoff` ritual._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-102503` (unchanged — no code shipped)
+* **Branch:** `main` · **Working tree:** clean
+* **Latest commit:** `9ae08630` — `tooling(tier1): install operational discipline (rules, commands, hooks)`
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE · **Tier 1 tooling now active** · GitHub Project sync mandatory
+* **Deployed systems:** browser live on `app.groovelinx.com` (Vercel auto-deploys docs/tooling commits as well; no functional change). Modal Phase A.5 LIVE. Worker / R2 / Firebase unchanged.
+* **Active convergence work:** none in flight. Pass 2.5 real-world validation + reverb A/B remain the gating observations.
+* **Open bugs:** 6 (unchanged) — #17 architecture-verified · #18 MED · #19 HIGH→MITIGATED · #23 HIGH global-shell · #24/#25 MED player overlap · #26 MED auto-active-segment cold-open · #27 extends #18.
+* **Active gates:** (a) Drew Pass 2.5 iPhone Safari validation, (b) Drew reverb A/B (wet=0/0.5/1.0 on Custom Mix), (c) Recording Ingestion v1 spec review (Drew + ChatGPT, parallel).
+* **New tooling assets in repo:**
+  * `CLAUDE.md` §OPERATIONAL DISCIPLINE — 6 load-bearing rules promoted (trust-layer triage · session continuity · 12-step deploy · atomic 4-source build-bump · observe-before-expand · tooling tier discipline). Plus §GITHUB PROJECT SYNC and §INDEPENDENT REVIEW (/ultrareview usage policy).
+  * `.claude/commands/glx-{deploy,handoff,uat,bug-triage}.md` — project slash commands.
+  * `.claude/hooks/check-build-bump.py` — PreToolUse hook; blocks `git push` if the 4 build sources drift. Smoke-tested: passes on consistent build, blocks on synthetic mismatch.
+  * `.claude/hooks/check-session-stop.sh` — Stop hook; nags to run `/glx-handoff` when ≥3 commits have landed since `CLAUDE_HANDOFF.md` was last refreshed.
+  * `.claude/settings.json` — wires both hooks at project level.
+  * `.gitignore` — `.claude/settings.local.json` excluded (per-user permissions, not project config).
+  * Two new memory files: `feedback_tooling_tier_discipline.md` and `feedback_load_bearing_memory_promotion.md`. Memory index now lists 6 canonical-standing rules eligible for future CLAUDE.md promotion (no auto-promotion — Drew greenlights individually).
+
+## 2. CURRENT PRIORITIES
+
+* **NOW**
+  * Drew: real-world Pass 2.5 validation on iPhone Safari (trust-layer fix: type a note, switch focus, return → "📝 unsaved draft" badge appears with text restored; Save button visible on first composer open without scrolling).
+  * Drew: reverb perceptual A/B (wet=0/0.5/1.0 on Custom Mix) to verify Phase A.5 ratio boost is perceptually dominant.
+  * Drew/Pierce: Pierce reviews GitHub Project LIVE for orientation-clarity / prioritization / sequencing / momentum / transparency / anxiety-reduction feedback.
+* **NEXT** — Phase 1 Trust Hardening, candidates ranked by behavioral-evidence weight: Bug #26 (auto-active-segment highlight cold-open, ~10–20 LOC) · Bugs #24+#25 (tabbar + chatbot overlapping player on mobile, ~20–30 LOC combined) · Bugs #27+#18 (durationSec backfill — eliminates "0m" stale-state, ~30–50 LOC) · 6 STABILIZATION_QUEUE Pass 2.5 candidates.
+* **LATER** — Phase 2 Musical Moment System · Phase 3 Recording Ingestion Reliability · Phase 4 Homepage Convergence · Phase 5 Real AI Layer. Phases work top-to-bottom; do not jump ahead.
+* **DEFERRED** — Pass 3 mobile tabs (~200 LOC) · Pass 4 tag categories (~100 LOC) · Firebase-backed cross-device render sync · Stab #N / GLPriority formalization · C7 Phase 2 (~80 LOC) · UAT Lab calendar.stale-panel.desktop contract · Recurrence EXDATE bug at `gl-calendar-sync.js:1591` (~150 LOC) · all Tier 2 tooling (overnight UAT, screenshot harvesting, regression diffing, deploy verification loops) · all Tier 3 tooling (Anthropic API inside GrooveLinx, cross-session pattern analysis).
+
+## 3. OPEN PRODUCT DECISIONS
+
+1. **Reverb A/B verification** — owner: Drew. Phase A.5 ratio boost is LIVE on production; perceptual A/B (wet=0/0.5/1.0 on Custom Mix) gates whether further reverb work is warranted. Tracked in GitHub Project as `[ACTION]` not `[DECISION]` because the path forward depends entirely on Drew's ear.
+2. **Pass 2.5 iPhone Safari emotional validation** — owner: Drew. DOM-level tests prove Bug #21 functions (`restoredMatchesOriginal: true`); only Drew can verify the "📝 unsaved draft" badge reads as trust-positive vs. nagging. This validation gates the rest of Phase 1 Trust Hardening ordering.
+3. **Calendar Model B (soft-cancel with `status:'cancelled'`)** — owners: Drew + ChatGPT. Tracked as GitHub Project `[DECISION]` item (#62 equivalent). No new info this session.
+4. **Recording Ingestion sequencing — Phase 1 (REAPER bundle adapter) vs. Phase 2 (direct X-Live)** — owners: Drew + ChatGPT. Spec at `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` §13 has 8 open questions queued. Phase 3 of the post-Pass-2.5 roadmap; observation discipline says wait for Pass 2.5 validation before greenlighting.
+5. **GitHub Project sync formalization status** — formalized this session (commit `2c123e7b` + canonical memory `feedback_github_project_sync_mandate`). Live and binding. Open sub-question: should this session's tooling-install ship get a Project item, or does "no functional code change" make it a tooling-only commit that lives only in the repo? **Recommended:** one `[SHIPPED] Tier 1 operational discipline tooling` Project item at initiative level — visible to Pierce, body links to commit `9ae08630` and to `CLAUDE.md §OPERATIONAL DISCIPLINE`. Drew confirms before Claude creates.
+6. **Claude Web usage limits** — owners: Drew (informed by this session's assessment). Web surface is supplementary, not primary, because operational memory lives in `~/.claude/projects/.../memory/` and is invisible to web sandboxes. Approved use cases (mobile bug intake, parallel low-risk PRs, isolated fixes). Disallowed by limitation, not policy: anything requiring Playwright UAT, dev-prod sync, the deploy protocol, or load-bearing memory context. **Open sub-decision:** whether to promote additional memories into `CLAUDE.md` to expand what's safe to do on Claude Web — currently 6 promoted (this session). Recommended: don't expand until web is actually used; promote based on observed gaps.
+
+## 4. OPERATIONAL RISKS
+
+* **Over-automation / operational theater risk** — the Tier 2/3 ladder is now codified as off-limits without greenlight, mirrored in `feedback_tooling_tier_discipline` memory + `CLAUDE.md` §OPERATIONAL DISCIPLINE rule 6. Risk: a future session over-eagerly proposes overnight UAT agents or API integration without naming the friction it removes. The rule's "name the repeated proven friction" gate is the safeguard; review any tooling proposal against it before accepting.
+* **Governance sprawl risk** — `CLAUDE.md` grew today (6 rules + 2 sub-sections). The `feedback_load_bearing_memory_promotion` memory caps the eligible set at 6 and explicitly forbids auto-promotion. Risk: gradual creep adding "just one more" rule until `CLAUDE.md` becomes the new bug queue. The bar for a 7th promotion is: "would a fresh agent get this wrong without it, and is it stable enough to live in the repo?" Resist the urge.
+* **Mobile trust-layer risk** — Pass 2.5 closed the trust-layer cliff (Bugs #20/#21/#22 RESOLVED), but real-world iPhone Safari emotional response is unverified. The "unsaved draft" badge could read as either musical trust or annoying nag. Risk: shipping Phase 1 Trust Hardening follow-ups before Drew validates Pass 2.5's emotional landing — observation discipline prevents this, but the gating must be honored.
+* **Context loss risk** — operational memory (50+ files) is now structurally divided: 6 load-bearing rules in `CLAUDE.md` (durable canon, travel everywhere), 50+ files in `~/.claude/projects/.../memory/` (local-only). Risk: a new agent surface (Claude Web, fresh install, teammate) arrives without the 50+ memory files and behaves out of character. Mitigation: the 6 promoted rules cover the most-violated frictions; further promotion only when an actual loss is observed.
+* **Tool drift risk** — the build-bump hook trusts `version.json` as authoritative and infers consistency against meta tags + `?v=` params + `CACHE_NAME`. Risk: if a future change introduces a 5th build source (e.g., a CDN manifest), the hook silently fails to enforce it. Mitigation: any new build-stamped surface must update both the deploy script and `check-build-bump.py` in lockstep. Add as a checklist item in `/glx-deploy` if it ever happens.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew: complete Pass 2.5 iPhone Safari real-world validation + reverb A/B in a single short field session** (target: ≤30 minutes). Both are blocking observations for Phase 1 Trust Hardening sequencing. Specifically:
+
+1. Open app on iPhone Safari → multitrack session → mobile Review Mode → focus a row → type a note → switch focus → return → verify "📝 unsaved draft" badge appears + textarea pre-fills with original text. Note emotional response (trust-positive / neutral / nagging).
+2. Open a Custom Mix render with reverb wet=0, then 0.5, then 1.0. Confirm Phase A.5 ratio boost makes wet=1.0 perceptually dominant vs wet=0.5 (currently feels equivalent per pre-Phase-A.5 observations).
+
+After both observations land in the bug log / handoff, Claude scopes the smallest highest-leverage Phase 1 Trust Hardening fix based on what Drew actually felt — not what the queue predicts.
+
+**Blocker if not done:** sequencing Phase 1 follow-ups without this validation = speculation, violating `feedback_observe_before_expand` discipline.
 
 ---
 
