@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 12:57 UTC · Build under test: `20260526-102503` (last code-shipping commit `fd347556`; tooling commit `9ae08630`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **Tier 1 operational discipline tooling INSTALLED** — `CLAUDE.md §OPERATIONAL DISCIPLINE` (6 load-bearing rules promoted) + `.claude/commands/glx-{deploy,handoff,uat,bug-triage}.md` + `.claude/hooks/check-build-bump.py` (PreToolUse, blocks `git push` on 4-source drift) + `.claude/hooks/check-session-stop.sh` (Stop, nags `/glx-handoff` after ≥3 commits). **GitHub Project sync mandatory** per `00_Governance/AI_WORKFLOW.md §Required Project sync`. Six canonical memories standing: `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`. **3-surface operational model:** Product Surface (app) · Operational Visibility Surface (GitHub Project + 📍 Phase Marker #67) · System Memory Surface (repo governance/docs/handoffs)._
+_Last refreshed: 2026-05-26 15:42 UTC · Build under test: `20260526-102503` (last code-shipping commit `fd347556`; latest commits are tooling/UAT/governance only — `9ae08630` Tier 1 tooling · `9b419e7d` iPhone Safari emotional-trust harvest) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · Phase 1 Trust Hardening active. **ChatGPT triaged the harvest 2026-05-26 15:30 UTC** — surfaced **One Musical Truth** principle + **Session Intent Persistence** pattern; revised Phase 1 priority order; confirmed Bug #23 as HIGH trust-layer candidate. **Tier 1 operational discipline tooling INSTALLED** (`CLAUDE.md §OPERATIONAL DISCIPLINE` + `.claude/commands/glx-*` + `.claude/hooks/check-build-bump.py` + `check-session-stop.sh`). **GitHub Project sync mandatory** per `AI_WORKFLOW.md §Required Project sync`. **Eight canonical memories standing:** `project_musical_operational_memory`, `feedback_trust_layer_triage_rule`, `feedback_observe_before_expand`, `feedback_github_project_sync_mandate`, `feedback_tooling_tier_discipline`, `feedback_load_bearing_memory_promotion`, `project_one_musical_truth` ✨NEW✨, `project_session_intent_persistence` ✨NEW✨. **3-surface operational model:** Product (app) · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory (repo governance/docs/handoffs)._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -129,15 +129,29 @@ MUST NEVER DRIFT:
   - Session Continuity Protocol (this file's pinned prompt is part of it)
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Drew validates Pass 2.5 in real-world iPhone Safari + does the reverb
-  A/B (wet=0/0.5/1.0 on Custom Mix) — ideally in a single short field
-  session (~30 min) since both are blocking observations for the same
-  next-fix sequencing decision. Specifically test trust-layer fix: type
-  a note, switch focus, return — does the "📝 unsaved draft" badge
-  appear with text restored? Also verify Save button is visible on
-  first composer open without scrolling. Note emotional response (trust-
-  positive vs. nagging) — DOM tests prove function; Drew's ear and feel
-  prove musicianship-fit.
+  Drew greenlights the Bug #23 fix as the next ship. Bug #23 (Songs
+  onboarding overlay intercepts unrelated flows) was caught LIVE during
+  the iPhone Safari harvest mid-Mix flow and ChatGPT confirmed it as
+  a HIGH trust-layer candidate ("invisible interaction interception —
+  the app ignored my tap"). Small contained fix (5-30 LOC). It is the
+  cleanest test of whether the trust-layer triage rule + One Musical
+  Truth principle actually change behavior or sit as rhetoric.
+
+  Reverb A/B + Pass 2.5 iPhone Safari emotional validation continue in
+  parallel — those are Drew's ear-on-output / real-device work, not
+  Claude's. The harvest already advanced the DOM-level proof; what
+  remains is the *emotional* + *audible* validation only Drew can do.
+
+  After Bug #23 ships, revised Phase 1 Trust Hardening order is:
+    2. One Musical Truth convergence (collapse focus≠now-reviewing≠
+       playback three-way decoupling)
+    3. Clarify Custom Mix persistence semantics via Session Intent
+       Persistence pattern (NOT a bug fix — explicit product decision
+       between temporary scratch (A) vs persistent authored preference
+       (B); ChatGPT's recommended resolution: persist within session,
+       not globally forever)
+    4. Bug #11 + Bug #26 coherent pair (single auto-highlight gating
+       fix closes both)
 
   After Drew's real-world validation: roadmap is Phase 1 Trust Hardening
   (see 00_Governance/CURRENT_PRIORITIES.md). Candidate next moves
@@ -191,6 +205,70 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 15:42 UTC — ChatGPT triage of iPhone Safari emotional-trust harvest → "One Musical Truth" + "Session Intent Persistence" + revised Phase 1 priority order
+
+**No code change.** Build still `20260526-102503`. Strategic refinement turn — ChatGPT triaged the iPhone Safari emotional-trust harvest (commit `9b419e7d`, 31 screenshots + findings doc at `02_GrooveLinx/uat/findings/emotional-trust-harvest-iphone-safari-2026-05-26.md`). Two new canonical UX concepts formalized into memory. Phase 1 Trust Hardening priority order revised.
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`. ChatGPT's full triage response is the authoritative source; this handoff condenses for cross-session continuity._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260526-102503` (unchanged — no code)
+* **Branch:** `main` · **Working tree:** clean (after this commit)
+* **Latest commit before this:** `9b419e7d` — `uat: emotional-trust evidence harvest — iPhone Safari Review Mode (Chromium emulation)`
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE · Phase 1 Trust Hardening · Tier 1 tooling active · GitHub Project sync mandatory
+* **Deployed systems:** unchanged (browser live · Modal Phase A.5 LIVE · worker/R2/Firebase unchanged)
+* **Active convergence work:** none in flight. Revised priority order below is the next-fix queue, awaiting Drew greenlight on which fix is the next ship.
+* **Open bugs:** 6 (unchanged in count, but Bug #23 retriaged from MED to HIGH trust-layer candidate per ChatGPT)
+* **Canonical memories now standing — 8:** the prior 6 (musical-operational-memory, trust-layer-triage, observe-before-expand, github-project-sync-mandate, tooling-tier-discipline, load-bearing-memory-promotion) + 2 new (**one-musical-truth**, **session-intent-persistence**)
+* **New UAT artifact in repo:** `02_GrooveLinx/uat/findings/emotional-trust-harvest-iphone-safari-2026-05-26.md` + 31 screenshots organized into 5 flow subfolders
+
+## 2. CURRENT PRIORITIES (REVISED per ChatGPT 2026-05-26)
+
+* **NOW (revised Phase 1 Trust Hardening order — work top-to-bottom):**
+  1. **Trust-layer fix for Bug #23** (Songs onboarding overlay intercepts unrelated flows). Per ChatGPT: "invisible interaction interception" — "the app ignored my tap." HIGH trust-layer candidate. Caught LIVE during the harvest mid-Mix flow.
+  2. **One Musical Truth convergence** — collapse the focused-row ≠ Now-Reviewing ≠ playback three-way decoupling. The diagnostic question is *"what is the app currently focused on?"* — that answer must always feel obvious.
+  3. **Clarify Custom Mix persistence semantics** via the new Session Intent Persistence pattern. NOT just a bug fix — explicit product decision on whether Custom Mix is a temporary scratch workspace (A) or persistent authored preference (B). ChatGPT's recommended resolution: persist within session, not globally forever.
+  4. **Bug #11** dual-lit-state conflict (dimmed neighbor still indigo-tinted)
+  5. **Bug #26** cold-open active-row confusion (auto-active highlight on first segment with no playback)
+  * **Bug #11 + Bug #26 form a coherent pair** — a single auto-highlight gating fix (`audio.currentTime > 0 || _mobileFocusedIdx === idx`) closes both.
+* **NEXT** — Drew Pass 2.5 real-world iPhone Safari validation + reverb perceptual A/B remain the OUTSTANDING gating observations. Some of those slots may collapse now that the harvest produced evidence — but the *emotional* + *audible* validation is still on Drew's ear / real device.
+* **LATER** — Phase 2 Musical Moment System · Phase 3 Recording Ingestion · Phase 4 Homepage Convergence · Phase 5 Real AI Layer. Phases work top-to-bottom; do not jump ahead. One Musical Truth principle will apply across all of these.
+* **DEFERRED** — Pass 3 mobile tabs · Pass 4 tag categories · Firebase render sync · Stab #N formalization · C7 Phase 2 · UAT Lab calendar contract · recurrence EXDATE bug · all Tier 2/3 tooling.
+
+## 3. OPEN PRODUCT DECISIONS
+
+1. **Reverb A/B verification** (owner: Drew) — still gating. Phase A.5 ratio boost is LIVE; perceptual A/B (wet=0/0.5/1.0 on Custom Mix) requires real ear-on-output. Playwright cannot validate.
+2. **Pass 2.5 iPhone Safari emotional validation** (owner: Drew) — partially advanced by this session's harvest (DOM-level proven; emotional landing of "📝 unsaved draft" badge still on Drew's real-iPhone experience).
+3. **Custom Mix persistence semantics — A (temporary scratch) vs B (persistent authored preference)** (owner: Drew + ChatGPT) — **NEW this session.** ChatGPT's recommended resolution: Session Intent Persistence (persist within session, not globally forever). Drew confirms before Claude scopes the fix.
+4. **Calendar Model B** (owner: Drew + ChatGPT) — unchanged.
+5. **Recording Ingestion sequencing — Phase 1 vs Phase 2** (owner: Drew + ChatGPT) — unchanged.
+6. **GitHub Project sync formalization** — formalized + mandated. Project sync executed this session.
+7. **Claude Web usage limits** — unchanged. Recommended use cases captured in prior handoff.
+8. **One Musical Truth as canonical principle status** (owner: Drew) — **NEW.** Captured to memory as `project_one_musical_truth.md`. NOT promoted to CLAUDE.md yet per `feedback_load_bearing_memory_promotion`. If it holds across 2-3 shipping cycles, consider promotion.
+
+## 4. OPERATIONAL RISKS
+
+* **One Musical Truth as a diagnostic lens vs as an active fix mandate** — easy to misread as "every visual state must collapse to one indicator." That's not the principle. The principle is "the three system concepts (focus / now-reviewing / playback) must always be reconcilable to a single coherent answer from any viewing position." Risk: future sessions over-zealously delete useful state distinction in pursuit of literal "one indicator" interpretation. Mitigation: the memory file is explicit about what the principle rules in / rules out.
+* **Session Intent Persistence as quick fix vs canonical pattern** — easy to apply the pattern to Custom Mix reverb as a one-off and miss that it should also apply to filter selections, segment-list scroll, focus position, composer tags. Risk: piecemeal application creates inconsistent persistence across surfaces. Mitigation: when shipping any Session Intent fix, audit the surface for OTHER user-investment-state that should also persist.
+* **Bug #23 trust-layer retriage propagation** — the harvest's MED→HIGH retriage needs to land in `uat/bug_queue.md` + GitHub Project + the standing triage rule's examples list. Risk: the retriage exists in memory + this handoff but doesn't propagate into the canonical bug queue, so future agents miss it. Mitigation: bug_queue.md update committed in this session OR next.
+* **Strategic-refinement-without-code drift** — three consecutive sessions now have shipped zero code (Tier 1 tooling install + handoff + this triage). Risk: Phase 1 Trust Hardening could stall in "strategic clarification" instead of converting to ship. Mitigation: the next session should either ship Bug #23 fix OR have explicit Drew direction to keep refining. The observe-before-expand discipline is correct; the failure mode is observe-without-ever-shipping.
+* **CLAUDE.md sprawl pressure** — two new principles named this turn. The 6-item promotion cap stays; do NOT promote `project_one_musical_truth` or `project_session_intent_persistence` to CLAUDE.md without explicit Drew greenlight. Memory is the right tier for now.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew greenlights the Bug #23 fix as the next ship** (5-30 LOC depending on root cause — likely: gate `glDismissOnboarding` triggers OR make the onboarding overlay non-blocking on hits outside its target surface).
+
+Why this single move:
+- It's the only HIGH trust-layer candidate from the harvest with a small, contained fix shape.
+- It's a real-world block (caught LIVE during the harvest mid-Mix flow) — so the friction is *proven*, not speculative.
+- It's a clean test of whether the trust-layer triage rule + One Musical Truth principle actually change behavior, or whether they sit as rhetoric.
+- Reverb A/B + iPhone Safari emotional validation can run in parallel — they're Drew's, not Claude's.
+
+**Blocker if not done:** continuing strategic refinement without a Trust Hardening ship would violate the "observe-without-ever-shipping" risk above. The harvest produced evidence; the next move is conversion, not more diagnosis.
 
 ---
 
