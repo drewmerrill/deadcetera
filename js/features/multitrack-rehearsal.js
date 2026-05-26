@@ -936,6 +936,33 @@ async function _mtMaybeFinalizeSession() {
     setTimeout(function() { window._mtOpenPlayer(sId); }, 200);
 }
 
+// Bugs #18 + #27 fix — writes durationSec + totalActualMin to a multitrack
+// session record if either field is missing. Called from _mtMaybeUpdateDuration
+// on the first loadedmetadata event. Two fields written so both consumers
+// (home Rehearsal page reads totalActualMin; Isolate Mode banner reads
+// durationSec) heal at once without coupling to each other.
+//
+// Authority guard: re-reads durationSec from Firebase before writing. If
+// a higher-authority duration source has populated the field between session
+// load and this call (another tab, future REAPER/X-Live ingest metadata,
+// server-side render duration), the helper yields. Browser audio.duration
+// is the current authoritative source; future ingest paths may establish
+// earlier/higher-authority truth. The helper preserves that hierarchy.
+async function _mtPersistDurationBackfill(sessionId, durSec) {
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function' || !sessionId || !(durSec > 0)) return;
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/durationSec')).once('value');
+        if (snap.exists() && snap.val() > 0) return;
+        await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({
+            durationSec: Math.round(durSec * 100) / 100,
+            totalActualMin: Math.round(durSec / 60)
+        });
+    } catch (e) {
+        // Silent — backfill is opportunistic. Next player open retries.
+    }
+}
+
 // Upload a single FLAC to the worker. Mutates track._uploadStatus and
 // track.stemUrl in place so the rest of the module can read state from
 // the track object. Always re-renders the progress UI on status change.
@@ -6855,6 +6882,20 @@ function _mtMaybeUpdateDuration() {
     if (label) {
         var t = (p.audios[0] && p.audios[0].currentTime) || 0;
         label.textContent = _mtFmtTime(t) + ' / ' + _mtFmtTime(dur);
+    }
+    // Bugs #18 + #27 fix — opportunistic durationSec backfill.
+    // The audio file is the authoritative source for multitrack session
+    // duration; Firebase doesn't capture it at session-create time (the upload
+    // path doesn't have it — the worker streams the file straight to R2). On
+    // first loadedmetadata, persist back to Firebase so all consumers (home
+    // page "Last rehearsal" line via totalActualMin, Isolate Mode §8.1 banner
+    // via durationSec, any future surface) read a real value instead of 0.
+    // Self-healing: existing sessions backfill on first open; new sessions
+    // backfill on first play after create. Truth persists where truth lives —
+    // [[project_one_musical_truth]].
+    if (dur > 0 && p.session && !p.session.durationSec) {
+        p.session.durationSec = Math.round(dur * 100) / 100; // local cache so we don't re-fire
+        _mtPersistDurationBackfill(p.sessionId, dur);
     }
 }
 
