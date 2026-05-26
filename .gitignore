@@ -2,6 +2,10 @@
 NEXT_SESSION.md
 SESSION_CLOSEOUT_*.md
 
+# --- Claude Code local config (per-user permissions, etc) ---
+# Project-level .claude/settings.json, commands/, hooks/ ARE tracked.
+.claude/settings.local.json
+
 # --- Claude patch tooling ---
 apply_patches.py
 patch.py

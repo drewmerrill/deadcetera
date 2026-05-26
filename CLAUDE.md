@@ -89,6 +89,53 @@ Claude must follow these rules when modifying the project.
 
 ---
 
+OPERATIONAL DISCIPLINE
+
+GrooveLinx is in the **Workflow Refinement + Operational Intelligence** phase. The moat is *persistent operational musical continuity*, not feature density. These six rules are load-bearing across every session — they outrank convenience, they outrank cleverness, and they apply equally to every agent.
+
+1. **Trust-Layer Triage.** A bug that LOSES captured user data, OBSCURES system state, or DISPLAYS a stale value is **HIGH priority regardless of LOC**. Tag `(TRUST-LAYER)` in the bug title and jump it ahead of larger same-severity quality bugs. Quality bugs erode polish; trust-layer bugs erode trust. Canonical home: top of `02_GrooveLinx/uat/bug_queue.md`. Full reasoning: `~/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/feedback_trust_layer_triage_rule.md`.
+
+2. **Session Continuity Protocol.** Every code-shipping or major-strategic session end MUST produce a 5-section Operational Handoff Package in `02_GrooveLinx/CLAUDE_HANDOFF.md` (Current Runtime State → Current Priorities → Open Product Decisions → Operational Risks → Recommended Next Action — exactly ONE move, not a menu), and MUST refresh the pinned restart prompt at the top of that file. Link to canonical state files (`CURRENT_STATE.md`, `CURRENT_PRIORITIES.md`, `STABILIZATION_QUEUE.md`) rather than duplicating their content. Chats are temporary; the repo is the source of truth.
+
+3. **Deploy Sequencing.** 12 steps, in order, every time: (1) `git fetch origin` → (2) `git pull --rebase` → (3) verify no rebase in progress → (4) verify clean working tree → (5) read current version from `version.json` (parse JSON, never hardcode-date grep) → (6) stop with explicit error if unreadable → (7) atomic build-bump (see rule 4) → (8) commit once → (9) push once → (10) on push failure DO NOT auto-strip conflict markers with sed → (11) stop and resolve intentionally → (12) never commit temp / duplicate-index / editor-artifact files. After deploy: emit Release Summary block + GROOVELINX RUNTIME STATE block (sub-30-line state snapshot for external collaborators). Dev and prod move in lockstep — band is doing live UAT.
+
+4. **Atomic Build-Bump (4 sources, ALL or NONE).** Every deploy updates: (a) `<meta name="build-version">` in `index.html` **and** `index-dev.html`; (b) all `?v=YYYYMMDD-HHMMSS` script params in both HTML files via `Edit replace_all: true` (~149 occurrences each); (c) `version.json` (`version` + `deployed` ISO); (d) `CACHE_NAME` in `service-worker.js`. **The `?v=` params are the load-bearing cache-buster — meta tag alone changes only the printed build label, not the actual served JS.** Mandatory self-check: grep that NEW build count is ~149 in each HTML and OLD build count is 0 in each HTML. `index-dev.html` is generated from `index.html` via `scripts/generate-dev-html.js` — never edit directly.
+
+5. **Observe Before Expand.** When the choice is "ship new architecture" vs "observe how musicians use what shipped" — choose observe, unless explicit greenlight on the new ship. Before proposing a feature, ask: what real-world friction harvest supports this need? If none, defer + propose a harvest instead. Default response to "what should we build next?" without behavioral evidence = "let's harvest first / let Drew validate the last ship," NOT "here's a plan." Canonical roadmap order is `00_Governance/CURRENT_PRIORITIES.md` — do not jump ahead.
+
+6. **Tooling Tier Discipline.** Operational discipline > new tooling. **Tier 1 only right now** (hooks, custom slash commands, `/ultrareview`, GitHub Project sync). **Never propose Tier 2 (overnight UAT agents, screenshot harvesting, regression diffing, deploy verification loops) or Tier 3 (Anthropic API inside GrooveLinx, rehearsal intelligence, cross-session pattern analysis) unprompted.** Every automation proposal must name the *repeated proven friction* it removes; if you can't, don't propose it. Avoid over-automation, over-governance, over-agentization, operational theater.
+
+---
+
+GITHUB PROJECT SYNC (mandatory operational hygiene)
+
+Every code-shipping or major-strategic session MUST reconcile `https://github.com/users/drewmerrill/projects/1` before close. Discipline:
+
+- Items at **initiative/bug level only** — never per-commit. A 4-commit ship = ONE item.
+- Body is **Pierce-facing summary** (what changed / why it matters / current state / next action), not engineering depth. Specs / bug_queue / handoff hold the detail; Project items LINK back.
+- Update the 📍 Phase Marker item if phase or active gates changed.
+- Comment on superseded items linking to replacement — DO NOT close items unilaterally; Drew owns closure.
+- Maintenance ceiling: ~5–10 minutes per session. Beyond that = you're tracking at commit-level, re-scope.
+- Helper: `scripts/gh-project-item.sh` (encapsulates field IDs + workflow).
+
+The 3-surface model: **Product** = the app · **Operational Visibility** = GitHub Project + 📍 Phase Marker (executive view for Pierce / ChatGPT) · **System Memory** = repo governance. The three deliberately do not duplicate each other.
+
+---
+
+INDEPENDENT REVIEW (`/ultrareview`)
+
+`/ultrareview` (cloud multi-agent branch review) is in active rotation for the trust-hardening phase. Invoke it before merging:
+
+- Trust-layer fixes
+- Session continuity changes
+- Mobile / responsive convergence passes
+- Operational UX passes
+- Regression-sensitive merges (anything touching the store, navigation lifecycle, service worker, or deploy path)
+
+Skip it for: pure docs, isolated UI tweaks with no shared-state contact, hotfixes you've manually verified end-to-end. It is billed and user-triggered — Claude cannot self-invoke it; surface the recommendation in the session-end handoff.
+
+---
+
 UI MODEL
 
 GrooveLinx is transitioning toward a **Band Command Center layout**:
