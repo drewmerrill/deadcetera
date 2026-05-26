@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-26 11:00 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** (Drew's post-Pass-2.5 strategic direction). 5-item roadmap canonicalized in `00_Governance/CURRENT_PRIORITIES.md`: (1) Trust Hardening NOW → (2) Musical Moment System → (3) Recording Ingestion Reliability (REAPER-first) → (4) Homepage Convergence → (5) Real AI Layer. Two new canonical memories: `project_musical_operational_memory` (strategic frame + roadmap + moat) and `feedback_observe_before_expand` (default-to-observation discipline). **NOT a feature-expansion phase.** Trust hardening + observation outranks new feature surfaces._
+_Last refreshed: 2026-05-26 12:30 UTC · Build under test: `20260526-102503` (commit `fd347556`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** + **GitHub Project reconciled for Pierce visibility**. 20 Project items (#48-#67) created including a pinned 📍 Phase Marker (#67) so any band member can open the Project and orient in 3 minutes without reading Claude transcripts. Helper script at `scripts/gh-project-item.sh`. Recurring-process recommendation: extend Session Continuity Protocol with mandatory Project sync after every code-shipping session — see `02_GrooveLinx/operations/github_project_reconciliation_2026-05-26.md`. Three canonical memories now standing: `project_musical_operational_memory` (strategic frame + roadmap + moat), `feedback_observe_before_expand` (default-to-observation), `feedback_trust_layer_triage_rule` (bugs that LOSE/OBSCURE/STALE = HIGH regardless of LOC)._
 
 **Paste this verbatim into a new chat to resume safely:**
 
