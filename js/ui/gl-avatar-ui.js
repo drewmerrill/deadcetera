@@ -41,7 +41,9 @@ window.GLAvatarUI = (function() {
             // Panel
             + '#glAvatarPanel{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:85vw;z-index:9100;background:#0f172a;border-left:1px solid rgba(99,102,241,0.2);display:flex;flex-direction:column;animation:glAvSlideIn 0.25s ease;box-shadow:-4px 0 24px rgba(0,0,0,0.4);padding-top:env(safe-area-inset-top,0);padding-right:env(safe-area-inset-right,0);padding-bottom:env(safe-area-inset-bottom,0);box-sizing:border-box}'
             + '#glAvatarPanel.closing{animation:glAvSlideOut 0.2s ease forwards}'
-            + '.gl-av-dot{position:absolute;top:0;right:0;width:10px;height:10px;border-radius:50%;background:#6366f1;border:2px solid #0f172a}';
+            + '.gl-av-dot{position:absolute;top:0;right:0;width:10px;height:10px;border-radius:50%;background:#6366f1;border:2px solid #0f172a}'
+            // Bug #25: ambient shell recedes during conductor-state experiences (multitrack player open)
+            + 'body.gl-mt-player-open #glAvatarBtn,body.gl-mt-player-open #glAvatarPanel{display:none!important}';
         document.head.appendChild(s);
     }
 

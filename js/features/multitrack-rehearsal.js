@@ -1182,6 +1182,14 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
     var ov = document.createElement('div');
     ov.id = 'mtPlayerOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px)';
+    // gl-mt-player-open: conductor surfaces temporarily suppress ambient shell
+    // presence. While the multitrack player is open it owns musical attention;
+    // ambient shell surfaces (tabbar, avatar fab/panel) recede via CSS rules
+    // gated on this body class. New ambient shell surfaces should opt into
+    // this class via CSS, not via a registry. Bugs #24/#25 fix; same authority
+    // principle as Bug #23 expressed spatially instead of temporally. See
+    // [[project_one_musical_truth]] + bug_queue.
+    document.body.classList.add('gl-mt-player-open');
 
     var dateLabel = session.date ? new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     var bandMembersMap = (typeof bandMembers !== 'undefined') ? bandMembers : {};
@@ -1577,6 +1585,7 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
     var ov = document.createElement('div');
     ov.id = 'mtPlayerOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px)';
+    document.body.classList.add('gl-mt-player-open'); // see contract at Isolate Mode construction
 
     var dateLabel = session.date ? new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     var renderUrl = renderInfo && renderInfo.url ? renderInfo.url : '';
@@ -2744,6 +2753,8 @@ window._mtClosePlayer = function() {
     // the user's last keystrokes; drafts persist in localStorage and re-appear
     // on next player open.
     if (typeof _mtFlushPendingDraft === 'function') _mtFlushPendingDraft();
+    // Restore ambient shell surfaces — conductor state is ending.
+    document.body.classList.remove('gl-mt-player-open');
     var ov = document.getElementById('mtPlayerOverlay');
     if (ov) ov.remove();
     // Phase 2D: detach keyboard shortcuts when leaving the player.

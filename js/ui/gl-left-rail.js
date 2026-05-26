@@ -340,7 +340,9 @@
         + 'width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.12);z-index:-1}'
         + '.gl-tab[data-page].gl-tab--active span:first-child{transform:scale(1.1)}'
         // Tap feedback
-        + '.gl-tab:active{opacity:0.6}';
+        + '.gl-tab:active{opacity:0.6}'
+        // Bug #24: ambient shell recedes during conductor-state experiences (multitrack player open)
+        + 'body.gl-mt-player-open #glBottomTabs{display:none!important}';
       document.head.appendChild(s);
     }
     // Update active tab
