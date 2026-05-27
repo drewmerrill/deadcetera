@@ -447,6 +447,13 @@ async function renderRehearsalPage(el) {
     var _pageTitle = _rhPlanningMode
         ? '\uD83D\uDCCB Planning Next Rehearsal'
         : '\uD83C\uDFB8 Rehearsal';
+    // Ingest Cockpit — live visibility surface for the operator-side
+    // ingest pipeline. Wires to bands/{slug}/ingest_jobs via Firebase
+    // RTDB listener. Auto-hides when no active job. See
+    // js/features/ingest-cockpit.js for the implementation, and
+    // services/glx-ingest/ingest_full_rehearsal.py for the writer.
+    var ingestCockpitTile = '<div id="rhIngestCockpit" style="display:none"></div>';
+
     // Prominent multitrack ingest tiles — Drew 2026-05-10 (REAPER) +
     // 2026-05-27 (ingest-first reframe). Two paths: ingest-first (new
     // canonical) and REAPER bundle (legacy convenience). Per
@@ -463,7 +470,7 @@ async function renderRehearsalPage(el) {
             '</div>'+
             '<div style="font-size:0.74em;font-weight:700;color:#86efac;background:rgba(34,197,94,0.16);border:1px solid rgba(34,197,94,0.35);padding:6px 12px;border-radius:7px;flex-shrink:0">Upload →</div>'+
         '</div>';
-    var ingestTile = ingestFirstTile + ''+
+    var ingestTile = ingestCockpitTile + ingestFirstTile + ''+
         '<div onclick="_mtOpenImportModal()" style="cursor:pointer;margin:0 0 14px;padding:14px 18px;border-radius:12px;border:1px solid rgba(99,102,241,0.30);background:linear-gradient(135deg,rgba(99,102,241,0.10),rgba(168,85,247,0.06));display:flex;align-items:center;gap:14px;transition:transform 0.08s,box-shadow 0.15s" '+
         'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 8px 24px rgba(99,102,241,0.20)\'" '+
         'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+
@@ -482,6 +489,17 @@ async function renderRehearsalPage(el) {
         + '<div class="gl-page-context" id="rhContextRail"></div>'
         + '</div></div>';
     _rhRenderCommandFlow(el);
+    // Mount the Ingest Cockpit listener — auto-hides when no active job
+    // and unmounts itself on the next renderRehearsalPage call via the
+    // _glIngestCockpitUnmount path the module exposes.
+    try {
+      var _cockpitEl = el.querySelector('#rhIngestCockpit');
+      if (_cockpitEl && typeof window._glIngestCockpitMount === 'function') {
+        window._glIngestCockpitMount(_cockpitEl);
+      }
+    } catch (_e) {
+      console.warn('[rehearsal] ingest cockpit mount failed', _e);
+    }
   } catch (_glRenderE) {
     if (typeof _glRenderError === 'function') _glRenderError(el, 'renderRehearsalPage', _glRenderE);
   }

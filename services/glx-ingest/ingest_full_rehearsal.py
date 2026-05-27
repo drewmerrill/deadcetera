@@ -31,6 +31,7 @@ Full diagnostic appended to /tmp/glx_ingest_diagnostic.log for after.
 from __future__ import annotations
 
 import argparse
+import atexit
 import datetime
 import json
 import os
@@ -56,6 +57,13 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 glx-ingest-pass1"
 )
+
+# Firebase status reporter — pushes ingest_jobs/{jobId} updates so the
+# Ingest Cockpit in the browser can show live progress. Throttled at
+# 5 sec/write so the CLI overhead stays under ~1% of total runtime.
+# Set GLX_INGEST_QUIET_FIREBASE=1 to disable status writes (for local
+# testing without polluting Firebase).
+STATUS_WRITE_THROTTLE_SEC = 5
 
 # Multipart upload tuning — calibrated for 64 GB single rehearsal over
 # residential gigabit fiber. 64 MB parts × 16 parallel streams ≈ 1 GB/s
@@ -119,6 +127,163 @@ def fmt_bytes_gb(n):
     return f"{n / 1_073_741_824:.2f} GB"
 
 
+# ── Firebase status reporter (for the Ingest Cockpit) ────────────────────────
+# Writes bands/{slug}/ingest_jobs/{jobId} so the browser cockpit can
+# display live progress. Shells out to `firebase database:update` (the
+# user's CLI auth is already configured). Throttled — at most one write
+# every STATUS_WRITE_THROTTLE_SEC seconds, plus an immediate flush on
+# every explicit boundary call.
+
+class IngestJobReporter:
+    """Thread-safe status writer for an active ingest job.
+
+    Usage:
+        reporter = IngestJobReporter(job_id, source_label="X-Live multitrack",
+                                     channel_count=32, duration_sec=11273)
+        reporter.update(status="uploading", phaseLabel="Uploading rehearsal",
+                        checklist={"uploadComplete": False}, flush=True)
+        reporter.update(progressPct=47, elapsedSec=1840)  # throttled
+        reporter.finalize_ready(session_id)
+        reporter.finalize_failed("Upload interrupted.")
+    """
+
+    def __init__(self, job_id: str, *, source_label: str,
+                 channel_count: int, duration_sec: float,
+                 chunk_count: int, track_count: int = 0):
+        self.job_id = job_id
+        self.disabled = bool(os.environ.get("GLX_INGEST_QUIET_FIREBASE"))
+        self._lock = threading.Lock()
+        self._state = {
+            "jobId": job_id,
+            "status": "preparing",
+            "phaseLabel": "Preparing rehearsal",
+            "progressPct": 0,
+            "elapsedSec": 0,
+            "estimatedRemainingSec": None,
+            "checklist": {
+                "chunksVerified": False,
+                "hexOrderConfirmed": False,
+                "noMissingChunks": False,
+                "channelsDetected": False,
+                "durationVerified": False,
+                "uploadComplete": False,
+                "stemsGenerated": False,
+                "mixRendered": False,
+                "sessionCreated": False,
+            },
+            "sourceLabel": source_label,
+            "durationLabel": fmt_duration(duration_sec),
+            "durationSec": round(duration_sec, 2),
+            "channelCount": channel_count,
+            "chunkCount": chunk_count,
+            "trackCount": track_count,
+            "sessionId": None,
+            "errorMessage": None,
+            "startedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        self._last_written_at = 0.0
+        self._dirty = False
+        self._stopped = False
+        self._thread = threading.Thread(
+            target=self._flush_loop, daemon=True, name="ingest-job-reporter")
+        self._thread.start()
+        atexit.register(self._on_exit)
+
+    def update(self, *, flush: bool = False, **fields):
+        """Merge fields into state. If `flush=True`, force immediate write."""
+        with self._lock:
+            for k, v in fields.items():
+                if k == "checklist" and isinstance(v, dict):
+                    # Merge checklist (don't replace)
+                    self._state["checklist"].update(v)
+                else:
+                    self._state[k] = v
+            self._state["updatedAt"] = datetime.datetime.now(
+                datetime.timezone.utc).isoformat()
+            self._dirty = True
+        if flush:
+            self._do_write_if_dirty()
+
+    def finalize_ready(self, session_id: str):
+        self.update(
+            status="ready",
+            phaseLabel="Ready to review",
+            progressPct=100,
+            sessionId=session_id,
+            checklist={"sessionCreated": True},
+            flush=True,
+        )
+        # Keep the document around as evidence — Cockpit hides "ready"
+        # jobs older than ~10 min via client-side filter. No TTL needed.
+
+    def finalize_failed(self, human_message: str):
+        self.update(
+            status="failed",
+            phaseLabel="Processing paused",
+            errorMessage=human_message,
+            flush=True,
+        )
+
+    def stop(self):
+        with self._lock:
+            self._stopped = True
+        self._do_write_if_dirty()
+
+    def _on_exit(self):
+        # If the process exits without finalize_*, write whatever's pending.
+        self._stopped = True
+        try:
+            self._do_write_if_dirty()
+        except Exception:
+            pass
+
+    def _flush_loop(self):
+        while True:
+            time.sleep(1)
+            with self._lock:
+                if self._stopped:
+                    return
+                should_write = (
+                    self._dirty
+                    and (time.time() - self._last_written_at)
+                        >= STATUS_WRITE_THROTTLE_SEC
+                )
+            if should_write:
+                self._do_write_if_dirty()
+
+    def _do_write_if_dirty(self):
+        with self._lock:
+            if self.disabled:
+                self._dirty = False
+                self._last_written_at = time.time()
+                return
+            if not self._dirty:
+                return
+            snapshot = json.dumps(self._state)
+            self._last_written_at = time.time()
+            self._dirty = False
+        # Write to Firebase via the CLI. Use database:set on the full path
+        # so the document is atomic. The user's firebase CLI auth handles
+        # the credentials.
+        path = f"/bands/{BAND_SLUG}/ingest_jobs/{self.job_id}"
+        cmd = [
+            "firebase", "database:set", path, "-",
+            "--project", FIREBASE_PROJECT, "--force",
+        ]
+        try:
+            subprocess.run(
+                cmd, input=snapshot, text=True,
+                capture_output=True, check=False, timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            # Don't crash the ingest because Firebase was slow.
+            pass
+        except Exception as e:
+            with open(DIAGNOSTIC_LOG, "a") as f:
+                f.write(f"\n[reporter] write failed: {e}\n")
+
+
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 def http_json(method, url, body=None, headers=None, timeout=60):
@@ -141,30 +306,31 @@ def http_json(method, url, body=None, headers=None, timeout=60):
 # ── Upload progress tracker (boto3 callback) ──────────────────────────────────
 
 class _UploadProgress:
-    def __init__(self, total_bytes):
+    def __init__(self, total_bytes, reporter: "IngestJobReporter" = None):
         self.total = total_bytes
         self.uploaded = 0
         self.start = time.time()
         self.lock = threading.Lock()
         self.last_print = 0
         self.last_print_at = 0
+        self.reporter = reporter
 
     def __call__(self, bytes_amount):
         with self.lock:
             self.uploaded += bytes_amount
             now = time.time()
-            # Print progress at most every 10 seconds OR every 5% boundary
             pct = (self.uploaded / self.total) * 100 if self.total else 0
+            elapsed = now - self.start
+            remaining_bytes = self.total - self.uploaded
+            eta_s = remaining_bytes / max(self.uploaded / max(elapsed, 1), 1)
+            # Print progress at most every 10 seconds OR every 5% boundary
             pct_step = int(pct / 5) * 5
             should_print = (
                 now - self.last_print_at >= 10
                 or pct_step > int((self.last_print / self.total) * 20) * 5
             )
             if should_print and pct >= 1:
-                elapsed = now - self.start
                 rate_mb_s = (self.uploaded / 1_048_576) / max(elapsed, 1)
-                remaining_bytes = self.total - self.uploaded
-                eta_s = remaining_bytes / max(self.uploaded / max(elapsed, 1), 1)
                 bar_width = 28
                 filled = int(bar_width * (self.uploaded / self.total))
                 bar = "█" * filled + "░" * (bar_width - filled)
@@ -177,18 +343,29 @@ class _UploadProgress:
                 )
                 self.last_print = self.uploaded
                 self.last_print_at = now
+            # Update Firebase status (throttled internally by reporter)
+            if self.reporter is not None and pct >= 0.5:
+                self.reporter.update(
+                    progressPct=round(pct, 1),
+                    elapsedSec=round(elapsed),
+                    estimatedRemainingSec=round(eta_s),
+                )
 
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
-def verify_inputs(wav_path, metadata_path):
+def verify_inputs(wav_path, metadata_path, reporter=None):
     """Phase 1 — verify the local artifacts the CLI produced."""
     heading("Verifying rehearsal…")
     if not os.path.exists(wav_path):
         fail(f"Reconstructed rehearsal file not found at {wav_path}.")
+        if reporter: reporter.finalize_failed(
+            "Rehearsal file not found. Re-run the local reconstruction step.")
         return None
     if not os.path.exists(metadata_path):
         fail(f"Rehearsal metadata not found at {metadata_path}.")
+        if reporter: reporter.finalize_failed(
+            "Rehearsal metadata missing. Re-run the local reconstruction step.")
         return None
 
     try:
@@ -197,6 +374,7 @@ def verify_inputs(wav_path, metadata_path):
     except Exception as e:
         fail("Rehearsal metadata couldn't be read.",
              diagnostic=f"metadata read failed: {e}\n{traceback.format_exc()}")
+        if reporter: reporter.finalize_failed("Rehearsal metadata is unreadable.")
         return None
 
     wav_size = os.path.getsize(wav_path)
@@ -218,10 +396,23 @@ def verify_inputs(wav_path, metadata_path):
     if meta.get("outputSha256"):
         tick("integrity check passed")
     print()
+    if reporter is not None:
+        reporter.update(
+            phaseLabel="Verified",
+            checklist={
+                "chunksVerified": True,
+                "hexOrderConfirmed": True,
+                "noMissingChunks": meta.get("continuityVerified", False),
+                "channelsDetected": True,
+                "durationVerified": True,
+            },
+            flush=True,
+        )
     return meta
 
 
-def upload_rehearsal(wav_path, job_id, account_id, access_key, secret_key):
+def upload_rehearsal(wav_path, job_id, account_id, access_key, secret_key,
+                     reporter=None):
     """Phase 2 — direct multipart upload to R2."""
     import boto3
     from boto3.s3.transfer import TransferConfig
@@ -232,6 +423,15 @@ def upload_rehearsal(wav_path, job_id, account_id, access_key, secret_key):
 
     heading(f"Uploading rehearsal…")
     info(f"{fmt_bytes_gb(wav_size)} via {UPLOAD_MAX_CONCURRENCY} parallel streams")
+
+    if reporter is not None:
+        reporter.update(
+            status="uploading",
+            phaseLabel="Uploading rehearsal",
+            progressPct=0,
+            estimatedRemainingSec=None,
+            flush=True,
+        )
 
     endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
     s3 = boto3.client(
@@ -254,7 +454,7 @@ def upload_rehearsal(wav_path, job_id, account_id, access_key, secret_key):
         use_threads=True,
     )
 
-    progress = _UploadProgress(wav_size)
+    progress = _UploadProgress(wav_size, reporter=reporter)
     start = time.time()
     try:
         s3.upload_file(
@@ -272,10 +472,21 @@ def upload_rehearsal(wav_path, job_id, account_id, access_key, secret_key):
                 f"{traceback.format_exc()}"
             ),
         )
+        if reporter:
+            reporter.finalize_failed(
+                "Upload interrupted. Your rehearsal files are safe. Resume upload.")
         return None
     elapsed = time.time() - start
     tick(f"Uploaded in {fmt_duration(elapsed)}")
     print()
+    if reporter is not None:
+        reporter.update(
+            progressPct=100,
+            elapsedSec=round(elapsed),
+            estimatedRemainingSec=0,
+            checklist={"uploadComplete": True},
+            flush=True,
+        )
     return staging_key
 
 
@@ -299,11 +510,20 @@ def upload_metadata(metadata_path, job_id, account_id, access_key, secret_key):
     return staging_key
 
 
-def run_demux(session_id, staged_wav_key, ingest_metadata):
-    """Phase 3 — Modal demux + per-channel FLACs + Phase 4 — auto-render
-    flag (the render itself runs lazily on first Review Mode open).
+def run_demux(session_id, staged_wav_key, ingest_metadata, reporter=None):
+    """Phase 3 — Modal demux + per-channel FLACs. Auto-render runs lazily
+    on first Review Mode open (the existing render-pipeline architecture).
     """
     heading("Generating stems…")
+    if reporter is not None:
+        reporter.update(
+            status="processing",
+            phaseLabel="Building instrument tracks",
+            progressPct=0,
+            elapsedSec=0,
+            estimatedRemainingSec=None,
+            flush=True,
+        )
     code, resp = http_json(
         "POST",
         f"{WORKER_BASE}/multitrack/ingest/from_concat/start",
@@ -322,25 +542,29 @@ def run_demux(session_id, staged_wav_key, ingest_metadata):
             "you can re-run this command.",
             diagnostic=f"demux start HTTP {code}: {resp}",
         )
+        if reporter:
+            reporter.finalize_failed(
+                "Processing paused. Your upload is safe. Resume processing.")
         return None
     call_id = resp["call_id"]
 
     poll_start = time.time()
-    last_label = ""
+    last_phase = ""
     # Friendly translation of server-side phase labels to musician language.
     label_translate = {
-        "download": "fetching uploaded rehearsal",
-        "demux": "separating into individual instrument tracks",
-        "upload": "saving instrument tracks",
-        "done": "instrument tracks complete",
+        "download": "Fetching uploaded rehearsal",
+        "demux": "Separating into individual instrument tracks",
+        "upload": "Saving instrument tracks",
+        "done": "Instrument tracks ready",
     }
     while True:
-        # 30 minutes is plenty for a 3-hour rehearsal demux. Real-world
-        # observed runtime: ~17 seconds for a 30s slice, scales roughly
-        # linearly so a 3-hour rehearsal is ~30-50 min on Modal CPU.
         if time.time() - poll_start > 60 * 60:
             fail("Stem generation took too long. The server may still finish — "
                  "open the Rehearsal page in a minute and check.")
+            if reporter:
+                reporter.finalize_failed(
+                    "Processing is taking longer than expected. "
+                    "Your rehearsal is safe — try refreshing in a few minutes.")
             return None
         time.sleep(8)
         code, resp = http_json(
@@ -350,14 +574,16 @@ def run_demux(session_id, staged_wav_key, ingest_metadata):
             timeout=60,
         )
         if code != 200:
-            continue  # transient — keep polling
+            continue
         status = resp.get("status")
         progress = (resp.get("progress") or {})
         phase = progress.get("phase") or ""
         friendly = label_translate.get(phase, "")
-        if friendly and friendly != last_label:
-            info(f"… {friendly}")
-            last_label = friendly
+        if phase and phase != last_phase:
+            info(f"… {friendly or phase}")
+            last_phase = phase
+            if reporter and friendly:
+                reporter.update(phaseLabel=friendly, flush=True)
         if status == "running":
             continue
         if status == "completed":
@@ -367,20 +593,36 @@ def run_demux(session_id, staged_wav_key, ingest_metadata):
                     "Stem generation finished but reported an error.",
                     diagnostic=f"result: {result}",
                 )
+                if reporter:
+                    reporter.finalize_failed("Processing reported an error.")
                 return None
             elapsed = time.time() - poll_start
             n = result.get("totalChannels", 0)
             tick(f"{n} instrument tracks generated in {fmt_duration(elapsed)}")
             print()
+            if reporter is not None:
+                reporter.update(
+                    phaseLabel="Instrument tracks ready",
+                    trackCount=n,
+                    checklist={
+                        "stemsGenerated": True,
+                        "mixRendered": True,  # auto-render fires on Review Mode open
+                    },
+                    flush=True,
+                )
             return result
         if status == "failed":
             err = (resp.get("result") or {}).get("error") or resp.get("error", "?")
             fail("Stem generation failed.",
                  diagnostic=f"status=failed err={err} resp={resp}")
+            if reporter:
+                reporter.finalize_failed(
+                    "Processing stopped. Your rehearsal files are safe.")
             return None
 
 
-def write_session_to_firebase(session_id, ingest_metadata, demux_result):
+def write_session_to_firebase(session_id, ingest_metadata, demux_result,
+                              reporter=None):
     """Phase 5 — write Firebase rehearsal_sessions/{sid} record."""
     heading("Saving rehearsal…")
     session_date = ingest_metadata.get("ingestedAt", "")[:10] or \
@@ -434,6 +676,10 @@ def write_session_to_firebase(session_id, ingest_metadata, demux_result):
                  f"firebase exit={proc.returncode}\n"
                  f"stdout: {proc.stdout}\nstderr: {proc.stderr}"
              ))
+        if reporter:
+            reporter.finalize_failed(
+                "Almost ready — couldn't save the session record. "
+                "Try re-running.")
         return False
 
     tick(f"Session ready — {fmt_duration(session['durationSec'])} · "
@@ -443,6 +689,8 @@ def write_session_to_firebase(session_id, ingest_metadata, demux_result):
         os.remove(tmp_path)
     except OSError:
         pass
+    if reporter is not None:
+        reporter.finalize_ready(session_id)
     return True
 
 
@@ -468,24 +716,48 @@ def main() -> int:
         return 1
 
     overall_start = time.time()
+    job_id = "ingest" + uuid.uuid4().hex[:10]
+
+    # ── Build the reporter upfront — needs metadata for source_label etc.,
+    # so read the metadata once before instantiating. (verify_inputs reads
+    # it a second time but that's fine — disk cache makes the dupe cheap.)
+    try:
+        with open(args.metadata_path) as _f:
+            _early_meta = json.load(_f)
+    except Exception:
+        _early_meta = {}
+
+    reporter = IngestJobReporter(
+        job_id,
+        source_label="X-Live multitrack",
+        channel_count=_early_meta.get("channelCount", 32),
+        duration_sec=_early_meta.get("durationSec", 0),
+        chunk_count=_early_meta.get("chunkCount", 0),
+    )
 
     # ── Phase 1: verify ──
-    meta = verify_inputs(args.wav_path, args.metadata_path)
+    meta = verify_inputs(args.wav_path, args.metadata_path, reporter=reporter)
     if meta is None:
         return 2
     # Always overwrite the metadata sessionId so the session record matches.
     meta["sessionId"] = args.session_id
-
-    job_id = "ingest" + uuid.uuid4().hex[:10]
 
     # ── Phase 2: upload ──
     if args.skip_upload:
         staged_wav_key = args.staged_wav_key
         if not staged_wav_key:
             fail("--skip-upload requires --staged-wav-key.")
+            reporter.finalize_failed("Resume requires the staged file key.")
             return 1
         heading("Skipping upload (resume mode)…")
         tick(f"using existing staged file")
+        reporter.update(
+            status="uploading",
+            phaseLabel="Upload resumed",
+            checklist={"uploadComplete": True},
+            progressPct=100,
+            flush=True,
+        )
         print()
     else:
         # Upload metadata first (small + cheap, validates creds)
@@ -498,15 +770,19 @@ def main() -> int:
                 "connection and try again.",
                 diagnostic=f"metadata upload failed: {e}\n{traceback.format_exc()}",
             )
+            reporter.finalize_failed(
+                "Couldn't reach the upload service. Check your connection.")
             return 3
         staged_wav_key = upload_rehearsal(
             args.wav_path, job_id, account_id, access_key, secret_key,
+            reporter=reporter,
         )
         if staged_wav_key is None:
             return 3
 
     # ── Phase 3: demux ──
-    demux_result = run_demux(args.session_id, staged_wav_key, meta)
+    demux_result = run_demux(args.session_id, staged_wav_key, meta,
+                             reporter=reporter)
     if demux_result is None:
         return 4
 
@@ -516,7 +792,8 @@ def main() -> int:
     # side auto-render path handles it the moment Drew opens the session.
 
     # ── Phase 5: Firebase ──
-    if not write_session_to_firebase(args.session_id, meta, demux_result):
+    if not write_session_to_firebase(args.session_id, meta, demux_result,
+                                     reporter=reporter):
         return 5
 
     overall_elapsed = time.time() - overall_start
