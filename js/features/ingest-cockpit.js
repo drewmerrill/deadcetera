@@ -179,12 +179,48 @@
     var ctaLine = '';
     if (job.status === 'ready' && job.sessionId) {
       var sidSafe = _esc(job.sessionId);
+      // Ready CTA + "prepare next card" walkthrough (per Drew 2026-05-27).
+      // Closes the operational loop: rehearsal is in the cloud → here's
+      // what to do RIGHT NOW so next week's card is ready. Three small
+      // copy-buttons handle the diskutil command sequence.
+      var nextCardSteps =
+          '<div style="margin-top:14px;padding:12px;border-radius:10px;'
+        + 'background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.20)">'
+        + '<div style="font-size:0.78em;font-weight:800;color:#a5b4fc;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Next: prepare next week\'s card</div>'
+        + '<div style="font-size:0.82em;color:var(--text,#cbd5e1);line-height:1.5;margin-bottom:10px">'
+        + 'This week\'s rehearsal is in the cloud + verified. Now wipe the <strong>OTHER</strong> card '
+        + '(the one from two weeks ago) so it\'s ready for next rehearsal. Leave the just-used card in the bag <em>unwiped</em>.'
+        + '</div>'
+        + '<ol style="margin:0 0 8px 0;padding:0 0 0 18px;font-size:0.8em;color:var(--text,#cbd5e1);line-height:1.6">'
+        +   '<li>Get the OTHER card from the bag (the one with the 2-weeks-ago rehearsal)</li>'
+        +   '<li>Insert it via USB 3.0 reader</li>'
+        +   '<li>In Terminal, find the disk identifier:'
+        +     '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;padding:6px 8px;background:rgba(15,23,42,0.6);border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:0.92em">'
+        +     '<code style="flex:1;color:#cbd5e1">diskutil list</code>'
+        +     '<button onclick="_glIngestCopyText(\'diskutil list\', this)" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.40);color:#a5b4fc;border-radius:4px;padding:2px 8px;font-size:0.78em;font-weight:700;cursor:pointer;font-family:inherit">📋 Copy</button>'
+        +     '</div>'
+        +     '<div style="font-size:0.86em;color:var(--text-dim,#94a3b8);margin-top:3px">Look for the 256 GB SANDISK — note its <code>/dev/diskN</code> identifier</div>'
+        +   '</li>'
+        +   '<li>Format it (replace <code>diskN</code> with the identifier you found):'
+        +     '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;padding:6px 8px;background:rgba(15,23,42,0.6);border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:0.92em">'
+        +     '<code style="flex:1;color:#cbd5e1">diskutil eraseDisk MS-DOS SANDISK MBR /dev/diskN</code>'
+        +     '<button onclick="_glIngestCopyText(\'diskutil eraseDisk MS-DOS SANDISK MBR /dev/diskN\', this)" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.40);color:#a5b4fc;border-radius:4px;padding:2px 8px;font-size:0.78em;font-weight:700;cursor:pointer;font-family:inherit">📋 Copy</button>'
+        +     '</div>'
+        +   '</li>'
+        +   '<li>Put the now-clean card in your X32 for next rehearsal. Done.</li>'
+        + '</ol>'
+        + '<div style="font-size:0.72em;color:var(--text-dim,#94a3b8);margin-top:8px">'
+        + '⚠ Double-check the disk identifier before running <code>eraseDisk</code> — it erases unconditionally.'
+        + '</div>'
+        + '</div>';
+
       ctaLine = '<div style="margin-top:12px">'
               + '<button onclick="window._mtOpenPlayer && window._mtOpenPlayer(\'' + sidSafe + '\')" '
               +  'style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.45);'
               +  'color:#86efac;padding:8px 14px;border-radius:8px;font-weight:700;'
               +  'font-size:0.86em;font-family:inherit;cursor:pointer">'
-              + '🎧 Open Review Mode →</button></div>';
+              + '🎧 Open Review Mode →</button></div>'
+              + nextCardSteps;
     } else if (job.status === 'failed') {
       var emsg = _esc(job.errorMessage || 'Processing paused. Your rehearsal files are safe.');
       ctaLine = '<div style="margin-top:10px;font-size:0.84em;color:#fecaca">'
@@ -280,6 +316,27 @@
     if (prev && typeof prev.detach === 'function') prev.detach();
     _mounts.delete(containerEl);
   }
+
+  // Helper for the cockpit Ready-state copy buttons. Uses navigator
+  // clipboard with a toast fallback. Flashes the button label briefly
+  // so the user knows the copy happened.
+  window._glIngestCopyText = function(text, btn) {
+    var done = function() {
+      if (btn) {
+        var orig = btn.innerHTML;
+        btn.innerHTML = '✓ Copied';
+        setTimeout(function() { btn.innerHTML = orig; }, 1400);
+      }
+      if (typeof showToast === 'function') showToast('Copied to clipboard');
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function() {});
+        return;
+      }
+    } catch (e) {}
+    done();
+  };
 
   // ── Public API ─────────────────────────────────────────────────────────
   window._glIngestCockpitMount = _mount;

@@ -402,6 +402,42 @@ function _mtSessionIdHint() {
     return 'rsess_mt_' + _mtWizGetDateUS() + '_pass1';
 }
 
+// Visual flow diagram — shows the journey of the rehearsal data through
+// 5 transformations. Per Drew 2026-05-27: "would be cool to have a
+// pictorial view of the process." Lives ABOVE the stepper as a "big
+// picture" mental model; the stepper stays for navigation.
+//
+// Each node represents what the rehearsal physically becomes at that
+// stage. Current stage highlights green; completed stages get a check.
+var _MT_WIZ_FLOW_NODES = [
+    { icon: '📼', label: 'SD chunks',     sub: '17 × 4 GB WAV' },
+    { icon: '📁', label: 'Single WAV',    sub: 'reconstructed' },
+    { icon: '☁',  label: 'Cloud',         sub: 'staged for processing' },
+    { icon: '🎵', label: '17 stems',      sub: '+ rendered mix' },
+    { icon: '🎧', label: 'Review Mode',   sub: 'navigable session' }
+];
+
+function _mtRenderWizardFlow() {
+    var cur = _mtState.wizardStep || 1;
+    var html = '<div class="mt-wiz-flow">';
+    _MT_WIZ_FLOW_NODES.forEach(function(node, i) {
+        var stepNum = i + 1;
+        var state = stepNum < cur ? 'done' : (stepNum === cur ? 'current' : 'todo');
+        var dotIcon = state === 'done' ? '<span class="mt-wiz-flow-check">✓</span>' : node.icon;
+        html += '<div class="mt-wiz-flow-node mt-wiz-flow-node--' + state + '">';
+        html += '  <div class="mt-wiz-flow-dot">' + dotIcon + '</div>';
+        html += '  <div class="mt-wiz-flow-label">' + node.label + '</div>';
+        html += '  <div class="mt-wiz-flow-sub">' + node.sub + '</div>';
+        html += '</div>';
+        if (i < _MT_WIZ_FLOW_NODES.length - 1) {
+            html += '<div class="mt-wiz-flow-arrow mt-wiz-flow-arrow--' +
+                    (stepNum < cur ? 'done' : 'todo') + '">→</div>';
+        }
+    });
+    html += '</div>';
+    return html;
+}
+
 function _mtRenderWizardStepper() {
     var cur = _mtState.wizardStep || 1;
     var html = '<div class="mt-wiz-stepper">';
@@ -572,8 +608,10 @@ window._mtCopyPath = function(path) {
 function _mtRenderWizardStep() {
     var body = document.getElementById('mtWizBody');
     var stepper = document.getElementById('mtWizStepper');
+    var flow = document.getElementById('mtWizFlowDiagram');
     var footer = document.getElementById('mtWizFooter');
     if (!body || !footer) return;
+    if (flow) flow.outerHTML = '<div id="mtWizFlowDiagram">' + _mtRenderWizardFlow() + '</div>';
     if (stepper) stepper.outerHTML = _mtRenderWizardStepper();
     var step = _mtState.wizardStep || 1;
     if (step === 1) body.innerHTML = _mtRenderStep1();
@@ -710,6 +748,7 @@ window._mtOpenImportModal = function() {
                     '</span>' +
                 '</label>' +
             '</div>' +
+            '<div id="mtWizFlowDiagram">' + _mtRenderWizardFlow() + '</div>' +
             '<div id="mtWizStepper">' + _mtRenderWizardStepper() + '</div>' +
             '<div class="mt-wiz-body" id="mtWizBody"></div>' +
             '<div class="mt-wiz-footer" id="mtWizFooter"></div>' +
@@ -747,6 +786,21 @@ function _mtInjectWizardStyles() {
         '.mt-wiz-pickbtn:hover { background: rgba(99,102,241,0.30); }',
         '.mt-wiz-finder-link { color: var(--text-dim,#94a3b8); text-decoration: underline; text-decoration-color: rgba(148,163,184,0.35); }',
         '.mt-wiz-finder-link:hover { color: #a5b4fc; text-decoration-color: rgba(165,180,252,0.6); }',
+        // Visual flow diagram — "what your rehearsal becomes" pictorial.
+        // Shows the data journey as 5 horizontal nodes connected by arrows.
+        '.mt-wiz-flow { display: flex; align-items: center; gap: 6px; padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); overflow-x: auto; flex-wrap: nowrap; background: rgba(15,23,42,0.4); flex-shrink: 0; }',
+        '.mt-wiz-flow-node { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 78px; transition: opacity 0.15s; }',
+        '.mt-wiz-flow-node--todo { opacity: 0.42; }',
+        '.mt-wiz-flow-node--done { opacity: 0.85; }',
+        '.mt-wiz-flow-node--current .mt-wiz-flow-dot { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.55); color: #86efac; box-shadow: 0 0 0 3px rgba(34,197,94,0.10); }',
+        '.mt-wiz-flow-dot { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(99,102,241,0.10); border: 1px solid rgba(99,102,241,0.30); font-size: 1.1em; transition: all 0.2s; }',
+        '.mt-wiz-flow-check { color: #86efac; font-weight: 800; font-size: 1em; }',
+        '.mt-wiz-flow-node--done .mt-wiz-flow-dot { background: rgba(34,197,94,0.10); border-color: rgba(34,197,94,0.30); }',
+        '.mt-wiz-flow-label { font-size: 0.72em; font-weight: 700; color: var(--text,#e2e8f0); white-space: nowrap; }',
+        '.mt-wiz-flow-node--current .mt-wiz-flow-label { color: #86efac; }',
+        '.mt-wiz-flow-sub { font-size: 0.62em; color: var(--text-dim,#94a3b8); white-space: nowrap; }',
+        '.mt-wiz-flow-arrow { color: rgba(148,163,184,0.35); font-size: 1em; padding-top: 22px; font-weight: 400; flex-shrink: 0; }',
+        '.mt-wiz-flow-arrow--done { color: rgba(34,197,94,0.45); }',
         '.mt-wiz-stepper { display: flex; align-items: center; gap: 4px; padding: 10px 16px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.04); overflow-x: auto; flex-shrink: 0; }',
         '.mt-wiz-pill { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 0.74em; white-space: nowrap; }',
         '.mt-wiz-pill:hover { background: rgba(255,255,255,0.05); color: var(--text); }',
