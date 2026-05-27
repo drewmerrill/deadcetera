@@ -1,6 +1,6 @@
 # Recording Ingestion Architecture v1 — Implementation Spec
 
-_Created: 2026-05-25 23:15 UTC · Status: SPEC ONLY (no code). Awaiting Drew + ChatGPT review before any phase enters implementation._
+_Created: 2026-05-25 23:15 UTC · Status: **VALIDATED OPERATIONAL NECESSITY** as of 2026-05-27 13:00 UTC (Drew confirmation after real-world SD-card reconstruction experience). Implementation sequencing decision still open with Drew — see [[project_ingestion_first_architecture]] memory + the 2026-05-27 13:00 UTC entry in `02_GrooveLinx/CLAUDE_HANDOFF.md` for current framing. Key 2026-05-27 reframes: X-Live WAV chunks ARE multitrack stem containers (REAPER was chunk-concat convenience, not stem-extraction necessity); `ffmpeg concat -c copy` is safe (no re-encode / degrade / flatten / resample); NEVER reconstruct on the SD card — copy locally to MacBook Pro SSD first, then reconstruct + verify + upload. The spec body below pre-dates these reframes; some phases may simplify in light of them._
 _Anchored in: [[project_x32_reaper_ingest_empirical]] (empirical REAPER 7.73 walkthrough), [[project_deadcetera_x32_channel_map]] (Deadcetera's actual mic plot), [[project_multitrack_rehearsal]] (multitrack north star), `specs/multitrack_reaper_export_checklist.md` (current Reaper checklist), `js/features/multitrack-rehearsal.js:133` `_mtInferFromFilename` (current strict filename parser)._
 
 ---

@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-27 12:05 UTC (Feed hotfix shipped · CO-Truth framing locked) · Build under test: `20260527-113347` (commit `e65dbcc5` — F-016 stabilized) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — CO-Truth Audit is CARTOGRAPHY, NOT DESIGN**. The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-27 13:00 UTC (CO-Truth Map first pass shipped · Ingestion-First reframe captured) · Build under test: `20260527-113347` (commit `e65dbcc5` — F-016 stabilized) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS** (1) Shell Integrity / CO-Truth Audit (cartography only) + (2) Ingestion-First Architecture (validated necessity — sequencing decision open with Drew). The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -162,21 +162,31 @@ THREE ENCODED PHILOSOPHY LINES still live in code:
   - multitrack-rehearsal.js:_mtMaybeUpdateDuration — "Truth persists
     where truth lives."
 
-ELEVEN CANONICAL MEMORIES + TWO NEW TODAY:
+ELEVEN CANONICAL MEMORIES + FOUR NEW TODAY:
   Standing: project_musical_operational_memory, project_one_musical_truth,
   project_session_intent_persistence, project_accompaniment_axis,
   project_prepared_for, feedback_trust_layer_triage_rule,
   feedback_observe_before_expand, feedback_tooling_tier_discipline,
   feedback_github_project_sync_mandate, feedback_load_bearing_memory_promotion,
   feedback_uat_hard_reload
-  NEW 2026-05-27: project_shell_integrity_phase — post-audit phase frame.
-  Music-cognition core = validated moat (protect). Shell orchestration
-  = next architectural frontier. Authority fragmentation = architectural
-  P0. iPhone nav P0 RETRACTED. CO-Truth Audit precedes bug-by-bug.
-  NEW 2026-05-27: feedback_audit_instrumentation_discipline — visibility
-  via bounding-rect + viewport intersection (NOT offsetParent);
-  selector discipline by ID/class/tag/role; trust screenshot over DOM
+  NEW 2026-05-27: project_shell_integrity_phase — post-audit phase
+  frame. Music-cognition core = validated moat (protect). Shell
+  orchestration = next architectural frontier. CO-Truth Audit
+  precedes bug-by-bug.
+  NEW 2026-05-27: feedback_audit_instrumentation_discipline —
+  visibility via bounding-rect + viewport intersection (NOT
+  offsetParent); selector discipline; trust screenshot over DOM
   probe; pre-merge re-verification for "unreachable" claims.
+  NEW 2026-05-27: feedback_coherence_stewardship_phase — coherence
+  stewardship ≠ feature invention; CO-Truth Audit is cartography
+  NOT design; core question is musician trust not technical
+  correctness; some divergence is intentional contextual truth.
+  NEW 2026-05-27: project_ingestion_first_architecture — Drew's
+  SD-card reconstruction confirmed ingestion-first reframe.
+  X-Live WAV chunks ARE multitrack stem containers; REAPER was
+  chunk-concat convenience, not stem-extraction necessity. ffmpeg
+  `-c copy` safe. Recording Ingestion Architecture promoted from
+  SPEC ONLY → validated necessity.
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Reverb A/B verification (Drew, gating)
@@ -201,6 +211,10 @@ OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
      ownership, route/breadcrumb coherence, dashboard authority,
      cross-surface synchronization), NOT bounded null-guards.
 
+  12. NEW: Sequencing Track A (Shell Integrity remediation) vs
+     Track B (Ingestion-First build). Both validated. Both open
+     for Drew greenlight. See NEXT RECOMMENDED ACTION below.
+
 MUST NEVER DRIFT (load-bearing):
   - SYSTEM LOCKs (CLAUDE.md §7)
   - Vanilla JS only (no React/Vue/Angular/build systems)
@@ -222,16 +236,42 @@ MUST NEVER DRIFT (load-bearing):
     should look like a MAP, not a redesign proposal.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Begin the Canonical Operational Truth Audit AS CARTOGRAPHY.
-  Drew greenlighted 09:15 UTC; framing locked 12:05 UTC. Output
-  target: a single MAP doc — descriptive inventory of authority
-  ownership across recommendation, urgency, readiness, breadcrumb,
-  route, restoration, shell-state, dashboard, player-context
-  surfaces. For each surface pair that may disagree, capture BOTH
-  the technical source AND the lived musician trust position.
-  NO fixes. NO consolidation proposals. NO redesign sketches.
-  A map. The reader of the map will know what to do; the map's
-  job is to make the choices visible.
+  Drew sequences the two live tracks. Both are validated; both are
+  not-yet-greenlit-for-build:
+
+  Track A — Shell Integrity remediation (after CO-Truth Map review):
+    The CO-Truth Map landed 2026-05-27 13:00 UTC at
+    02_GrooveLinx/00_Governance/CANONICAL_OPERATIONAL_TRUTH_MAP.md
+    (commit a797cce4, 440 lines). It classifies 9 authority
+    domains into three categories: (A) intentional contextual
+    truth — do NOT consolidate without harvesting trust; (B)
+    authority drift — single canonical owner exists, some
+    consumers bypass it; (C) stub / partial implementation.
+    Open question: which Category-B / Category-C items should
+    Drew greenlight for narrow surgical remediation (using the
+    same discipline as the Feed null-guard hotfix), and which
+    Category-A items should be tabled until trust harvesting
+    can happen?
+
+  Track B — Ingestion-First Architecture (validated necessity):
+    Drew's 2026-05-27 SD-card reconstruction experience confirmed
+    that GrooveLinx should be ingestion-first, not DAW-first. The
+    X-Live WAV chunks ARE multitrack stem containers; REAPER has
+    been chunk-concat convenience, not stem-extraction necessity.
+    The spec at 02_GrooveLinx/specs/recording_ingestion_architecture_v1.md
+    (created 2026-05-25, status "SPEC ONLY") is now elevated to
+    validated operational necessity. Captured in new memory
+    project_ingestion_first_architecture.
+    Open question: when does Drew want to start ingestion-pipeline
+    build work? Parallel with Track A? After Track A's first
+    remediation pass? Or in sequence — block until Track A is
+    complete?
+
+  Note on tension: Drew's stated discipline is coherence stewardship,
+  NOT feature invention. Track B is feature work (new pipeline
+  surfaces, new services). Drew explicitly said "After the CO-Truth
+  Audit begins: strongly consider accelerating" — elevation, not
+  command. Sequencing is Drew's call.
 
 OUTSTANDING DEPLOY (operator action — Drew, not Claude):
   - `modal deploy services/multitrack-render/render.py` for the
@@ -248,6 +288,31 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 STRATEGIC ELEVATION — 2026-05-27 13:00 UTC — CO-Truth Map Shipped · Ingestion-First Architecture Validated
+
+Two events between the framing lock and now:
+
+**1. CO-Truth Map first pass shipped** at `02_GrooveLinx/00_Governance/CANONICAL_OPERATIONAL_TRUTH_MAP.md` (commit `a797cce4`, 440 lines). Nine authority domains mapped. Cross-domain synthesis classifies divergences into three categories:
+- **A — Intentional contextual truth** (do NOT consolidate without harvesting trust): Domain 1 (Recommendation — two genuinely different engines doing two genuinely different jobs that share UI), Domain 8 (Player context — three "current song" concepts intentionally separated per documented design), possibly Domain 2 (Urgency)
+- **B — Authority drift** (single canonical owner exists; some consumers bypass it): Domain 3 (setlist-card uses inline `≥3` threshold instead of canonical `gigReady ≥4`), Domain 4 (routing convention drift camelCase / kebab / lowercase)
+- **C — Stub / partial implementation**: Domain 9 (Home `rsvpCount=0` with TODO at `home-dashboard.js:2705`), Domain 5 (drawer state not URL-persisted)
+
+The map deliberately does NOT propose consolidation. Every domain ends with "open question" rather than "recommended fix."
+
+**2. Ingestion-First Architecture validated by Drew's real-world SD-card reconstruction experience.** Reframe captured: GrooveLinx should be ingestion-first, not DAW-first. X-Live WAV chunks ARE multitrack stem containers; REAPER has been chunk-concat convenience, not stem-extraction necessity. `ffmpeg concat -c copy` is safe (no re-encode / degrade / flatten / resample). NEVER reconstruct on SD card — copy locally first.
+
+The existing spec `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` (created 2026-05-25, status "SPEC ONLY") is now promoted from speculative to validated operational necessity. Drew's framing: *"this is no longer speculative architecture. It is validated operational necessity."* It is strategically MORE important than emotional UX refinement, warmth experiments, dashboard polish, or AI interaction nuance — *because ingestion quality determines whether rehearsal intelligence becomes effortless or operationally exhausting.*
+
+**New memory:** `project_ingestion_first_architecture.md` captures the reframe + the technical specifics + the operational rules.
+
+**Two live tracks now:**
+- Track A — Shell Integrity (CO-Truth Map → remediation candidate selection)
+- Track B — Ingestion-First (spec exists; sequencing decision open)
+
+Drew's exact words: *"After the Canonical Operational Truth Audit begins: strongly consider accelerating Recording Ingestion Architecture implementation."* — elevation, not commandment. Sequencing belongs to Drew.
 
 ---
 
