@@ -38,22 +38,35 @@ rm ~/Rehearsals/<date>/FULL_REHEARSAL.wav   # frees ~64 GB
 - `~/Rehearsals/<date>/source/` (the chunks) — re-upload safety net for the next ~30 days
 - `~/Rehearsals/<date>/ingest_metadata.json` + `~/Rehearsals/<date>/ingest.log` — permanent provenance, ~3 KB
 
-### 3. Wipe the SD card that was just used
+### 3. Do NOT wipe the just-used card
 
-Reformat in the X32 (so it's ready for next rehearsal at the right format / partition).
+The card you just recorded onto is the only physical copy of an unverified rehearsal (until you do step 1 above — even then it's the most recent physical backup). Don't wipe it tonight. Put it back in the bag as-is.
 
-**Hard rule: never wipe both cards back-to-back.** The just-used card always holds your most-recent unverified rehearsal as physical backup until next week's verification.
+## Weekly rotation (the two-card system) — corrected
 
-## Weekly rotation (the two-card system)
+The wipe is associated with **re-insertion**, not with the just-completed recording. You wipe the OLDER card (which has been verified-in-cloud for a week+) just before putting it into the X32 for the next rehearsal.
 
 ```
-Week N  : Card A in X32 → record → ingest → verify → wipe Card A → store in bag
-Week N+1: Card B in X32 → record → ingest → verify → wipe Card B → store in bag
-Week N+2: Card A in X32 → record → ingest → verify → wipe Card A → store in bag
-…
+Pre-rehearsal week N:  X32 holds Card_recording (clean — was wiped just before being inserted)
+                       Bag holds Card_backup    (with rehearsal_W-1, verified > 7 days ago in cloud)
+
+Rehearsal W:           Card_recording records rehearsal_W
+Post-rehearsal W:      Card_recording → reader → copy → upload → verify in Review Mode
+                       Card_recording goes into bag NOT WIPED (fresh physical backup of rehearsal_W)
+                       Card_backup stays in bag (still holds rehearsal_W-1, also verified)
+                       → Bag now has 2 physical backups: rehearsal_W (fresh) + rehearsal_W-1 (older)
+
+Pre-rehearsal week N+1: Wipe Card_backup (rehearsal_W-1 is verified-in-cloud + redundant with rehearsal_W on the other card)
+                       Insert the now-clean card into X32
+                       The card holding rehearsal_W stays in the bag as physical backup
+                       → Roles swap: the "Card_backup" name now refers to the rehearsal_W card
 ```
 
-At any moment, the card NOT in the X32 holds the last unwiped rehearsal as a physical fallback. The card IN the X32 has either a fresh wipe (start of rehearsal) or this week's recording (end of rehearsal, pre-wipe).
+At all times you have **at least one un-wiped physical card** holding the most recent rehearsal. The card you wipe is always the one with the OLDER, multi-week-verified rehearsal — wiping it costs nothing because that rehearsal has been redundantly safe in R2 + Firebase for a week.
+
+**The brief window of risk:** during the wipe itself (~30 seconds in the X32 format), there's no physical backup of rehearsal_W-1. But rehearsal_W-1 has been in cloud + verified for a week, so that risk is acceptable. And you still have rehearsal_W on the other card.
+
+**Hard rule:** never wipe both cards back-to-back. The "in bag" card always holds the most recent rehearsal unwiped, until it eventually rotates to become the "in X32" card and gets wiped just before recording onto it again.
 
 ## Monthly (~30 days after each rehearsal)
 
@@ -101,10 +114,15 @@ The protocol above is designed so this last row is **operationally impossible** 
 
 ```
 After verification:           rm FULL_REHEARSAL.wav        (~64 GB)
-After verification:           reformat the used SD card    (~67 GB on card)
+                              (just-used card stays in bag UNWIPED)
+Just before next rehearsal:   reformat the OTHER card in the X32
+                              (the one with the older, multi-week-verified rehearsal)
+                              Then insert into X32 for the new recording.
 30 days after ingest:         rm -rf source/               (~67 GB)
 NEVER delete:                 ingest_metadata.json, ingest.log
 NEVER wipe both cards:        always keep at least one as physical backup
+NEVER wipe a just-used card:  it's the most-recent physical copy of an
+                              unverified-for-long rehearsal
 ```
 
 ## Future enhancement candidates (NOT for tonight)
