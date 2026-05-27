@@ -78,6 +78,9 @@ class WaveHeader:
     data_size_bytes: int    # from RIFF; may underreport for >4 GB files
     file_size_bytes: int    # actual file size on disk
     estimated_duration_sec: float
+    data_chunk_offset: int = 0  # byte offset where audio data starts; reveals
+                                # the alignment/padding the recorder uses
+                                # (X-Live aligns data to 32 KB for SD I/O)
     error: str = ""
 
 
@@ -85,10 +88,20 @@ def parse_wave_header(path: Path) -> WaveHeader:
     """Read just enough of a WAVE file to extract format info + estimate
     duration. Tolerant of >4 GB files where the RIFF size fields underreport.
 
+    Uses seek-and-read-headers walking rather than a pre-read buffer.
+    Real-world X-Live chunks (Drew's 5/18 session) include a JUNK chunk
+    of ~32 KB between fmt and data (alignment padding for fast SD I/O),
+    plus may include BWF chunks (bext, iXML) for timecode/metadata. A
+    fixed pre-read window can't accommodate these without bloating
+    memory. Seeking skips past them in O(1).
+
     We compute estimated_duration_sec from FILE SIZE - HEADER OFFSET rather
     than the RIFF data-chunk size, because X-Live writes the RIFF size as
     uint32 and a 4 GB chunk overflows that field. The actual byte stream
     is fine; only the size declarations are unreliable.
+
+    Cap on chunk walking: 64 chunks max. Any well-formed WAVE finds
+    data in <10; the cap catches malformed files without hanging.
     """
     file_size = path.stat().st_size
     if file_size < 44:
@@ -96,38 +109,42 @@ def parse_wave_header(path: Path) -> WaveHeader:
                           error="file_too_small")
     try:
         with path.open("rb") as f:
-            header = f.read(4096)  # plenty for RIFF + WAVE + fmt chunk
+            magic = f.read(12)
+            if magic[0:4] != b"RIFF" or magic[8:12] != b"WAVE":
+                return WaveHeader(False, 0, 0, 0, 0, 0, file_size, 0.0,
+                                  error="not_a_riff_wave")
+
+            fmt_chunk: Optional[bytes] = None
+            data_chunk_pos: Optional[int] = None
+            data_chunk_declared_size = 0
+            pos = 12
+            for _ in range(64):
+                f.seek(pos)
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    break
+                cid = hdr[0:4]
+                csize = struct.unpack("<I", hdr[4:8])[0]
+                if cid == b"fmt ":
+                    fmt_chunk = f.read(min(csize, 64))
+                elif cid == b"data":
+                    data_chunk_pos = pos + 8
+                    data_chunk_declared_size = csize
+                    break
+                # Subchunks are word-aligned; bump pos by csize + pad byte.
+                pos += 8 + csize + (csize % 2)
+                if pos >= file_size:
+                    break
     except OSError as e:
         return WaveHeader(False, 0, 0, 0, 0, 0, file_size, 0.0,
                           error=f"read_failed: {e}")
-
-    if header[0:4] != b"RIFF" or header[8:12] != b"WAVE":
-        return WaveHeader(False, 0, 0, 0, 0, 0, file_size, 0.0,
-                          error="not_a_riff_wave")
-
-    # Walk subchunks. We need 'fmt ' and 'data'.
-    pos = 12
-    fmt_chunk = None
-    data_chunk_pos = None
-    data_chunk_declared_size = 0
-    while pos + 8 <= len(header):
-        cid = header[pos:pos + 4]
-        csize = struct.unpack("<I", header[pos + 4:pos + 8])[0]
-        if cid == b"fmt ":
-            fmt_chunk = header[pos + 8:pos + 8 + csize]
-        elif cid == b"data":
-            data_chunk_pos = pos + 8
-            data_chunk_declared_size = csize
-            break
-        # Subchunks are word-aligned; bump pos accordingly.
-        pos += 8 + csize + (csize % 2)
 
     if fmt_chunk is None or len(fmt_chunk) < 16:
         return WaveHeader(False, 0, 0, 0, 0, 0, file_size, 0.0,
                           error="missing_fmt_chunk")
     if data_chunk_pos is None:
         return WaveHeader(False, 0, 0, 0, 0, 0, file_size, 0.0,
-                          error="missing_data_chunk_in_header_window")
+                          error="missing_data_chunk_after_walk")
 
     audio_format = struct.unpack("<H", fmt_chunk[0:2])[0]
     channels = struct.unpack("<H", fmt_chunk[2:4])[0]
@@ -157,6 +174,7 @@ def parse_wave_header(path: Path) -> WaveHeader:
         data_size_bytes=data_chunk_declared_size,
         file_size_bytes=file_size,
         estimated_duration_sec=estimated_duration_sec,
+        data_chunk_offset=data_chunk_pos,
     )
 
 
@@ -336,6 +354,47 @@ def sha256_of_file(path: Path, chunk_bytes: int = 4 * 1024 * 1024) -> str:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+def _build_recorder_profile(chunks: list[ChunkInfo]) -> dict:
+    """Empirical recorder profile derived from observed chunk shape.
+
+    Captured per Drew 2026-05-27: "ingest provenance becomes operational
+    truth later." Lives in the metadata so repair / migration / debugging /
+    corruption recovery / future recorder support all have a consistent
+    record of what the recorder actually produced — not what the docs claim.
+
+    Fields are STRICTLY descriptive of what was observed; we do NOT claim
+    effective_audio_bits without verifying (X-Live reports 32-bit PCM
+    container; whether those carry 24-bit-packed-in-32 or true 32-bit
+    integer audio needs actual sample inspection, which the CLI doesn't
+    do today).
+    """
+    if not chunks or not chunks[0].header.is_valid:
+        return {"device": "unknown", "observed": False}
+    first = chunks[0].header
+    last = chunks[-1].header if chunks else first
+    # The data-chunk offset reveals the alignment the recorder uses.
+    # X-Live pads with a JUNK chunk so the data starts on a 32 KB
+    # boundary (fast SD writes).
+    alignment_bytes = first.data_chunk_offset
+    final_partial = (
+        len(chunks) > 1
+        and last.file_size_bytes < chunks[0].header.file_size_bytes * 0.95
+    )
+    return {
+        "device": "behringer-x32-xlive",
+        "observed": True,
+        "chunkAlignmentBytes": alignment_bytes,
+        "containerBitsPerSample": first.bits_per_sample,
+        "audioFormat": first.audio_format,  # 1 = PCM integer; 3 = IEEE float
+        "channelCount": first.channels,
+        "sampleRate": first.sample_rate,
+        "chunkOrdering": "hex-decimal-ascending",
+        "chunkSizeCap": chunks[0].header.file_size_bytes if len(chunks) > 1 else None,
+        "finalChunkPartial": final_partial,
+        "finalChunkBytes": last.file_size_bytes,
+    }
+
+
 def make_metadata(
     session_id: str,
     input_dir: Path,
@@ -351,7 +410,8 @@ def make_metadata(
         session_id, chunk_count, duration_sec, channel_count,
         sample_rate, continuity_verified, missing_chunks,
         source, concat_method
-    Plus provenance fields useful for repair / debugging / resumability.
+    Plus recorder_profile (provenance, 2026-05-27 addition) and
+    provenance fields useful for repair / debugging / resumability.
     """
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -374,12 +434,14 @@ def make_metadata(
             output_path and output_path.exists()
         ) else None,
         "outputSha256": output_sha256,
+        "recorderProfile": _build_recorder_profile(chunks),
         "chunkManifest": [
             {
                 "sourceName": c.source_name,
                 "chunkIndex": c.chunk_index,
                 "fileSizeBytes": c.header.file_size_bytes,
                 "estimatedDurationSec": round(c.header.estimated_duration_sec, 3),
+                "dataChunkOffset": c.header.data_chunk_offset,
             }
             for c in chunks
         ],

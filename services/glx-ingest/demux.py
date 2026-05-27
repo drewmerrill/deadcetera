@@ -320,8 +320,16 @@ def demux_session(
         upload_start = time.time()
         track_records = []
         for idx, local_flac, ch in track_outputs:
+            # Flat layout per the existing convention (see worker.js
+            # /multitrack/upload-url at line ~1908 and the render pipeline
+            # stem-discovery regex at services/multitrack-render/render.py
+            # :284 — basename must match ^[0-9]+_[a-zA-Z0-9_-]+\.flac at
+            # the session root, no subdir). Initially I'd grouped these
+            # under tracks/ for tidiness; the render pipeline doesn't
+            # recurse and skipped them with "no_stems". 2026-05-27 fix
+            # caught during the Pass 1 slice test against real 5/18 data.
             r2_key = (
-                f"multitrack/{band}/{sid}/tracks/"
+                f"multitrack/{band}/{sid}/"
                 f"{ch['filenameStem']}.flac"
             )
             with open(local_flac, "rb") as fp:
