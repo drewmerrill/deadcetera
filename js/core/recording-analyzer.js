@@ -1290,8 +1290,9 @@ window.RecordingAnalyzer = (function() {
         + '</select>'
         // Row 1 actions: confirm + merge + remove
         + '<button onclick="RecordingAnalyzer._confirmSeg(' + i + ')" id="raConfBtn' + i + '" style="background:none;border:1px solid ' + (seg.confirmed ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)') + ';color:' + (seg.confirmed ? '#10b981' : '#475569') + ';cursor:pointer;font-size:0.6em;flex-shrink:0;padding:1px 5px;border-radius:4px" title="Confirm">' + (seg.confirmed ? '\u2713' : '\u2713') + '</button>'
-        + '<button onclick="RecordingAnalyzer._mergeWithPrev(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.6em;flex-shrink:0;padding:2px" title="Merge with previous"' + (i === 0 ? ' disabled style="opacity:0.3"' : '') + '>\u2B06\uFE0F</button>'
-        + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Remove">\u2715</button>'
+        + '<button onclick="RecordingAnalyzer._mergeWithPrev(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.6em;flex-shrink:0;padding:2px" title="Merge with previous segment"' + (i === 0 ? ' disabled style="opacity:0.3"' : '') + '>\u2B06\uFE0F</button>'
+        + '<button onclick="RecordingAnalyzer._splitAtPlayhead(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Split this segment at the current playback position. Use this when the analyzer merged two songs / song+jam / song+segue into one. Both halves will be marked human-edited.">\u2702</button>'
+        + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Remove this segment (it\'s not a song / it\'s a duplicate / it\'s noise)">\u2715</button>'
         + '</div>';
 
       // Row 2: playback controls (collapsed to keep rows compact)
@@ -1820,6 +1821,88 @@ window.RecordingAnalyzer = (function() {
     if (!prev.songTitle && curr.songTitle) prev.songTitle = curr.songTitle;
     _currentSegments.splice(idx, 1);
     _markHumanEdited(idx - 1);  // mark the merged-INTO segment as human-edited
+    showUI(_currentSessionId, _currentSegments);
+  }
+
+  // Split at playhead — surgical correction primitive for the "false
+  // merge" failure mode (jam-band rehearsals where the analyzer fused
+  // two songs, or song+jam, or song+segue+next-song into one segment).
+  // Per Drew 2026-05-27: "jam-band rehearsal errors are often false
+  // merges, not false splits." Boundary nudging can't reach the
+  // middle of an erroneously-merged segment — split-at-playhead can.
+  //
+  // Reads the live playhead from the editor's <audio>. Splits the
+  // current segment in two at that time. First half keeps original
+  // metadata; second half inherits song title but clears
+  // analysis-derived fields (groove fingerprint, qualityScore,
+  // songMatch) that were computed on the un-split audio and no
+  // longer apply. Both halves get humanEdited stamps.
+  function _splitAtPlayhead(idx) {
+    if (!_currentSegments || !_currentSegments[idx]) return;
+    var seg = _currentSegments[idx];
+    var audio = document.getElementById('raPlaybackAudio');
+    if (!audio || !_currentAudioUrl) {
+      if (typeof showToast === 'function') {
+        showToast('Load the recording first — Split uses the current playback position.');
+      }
+      return;
+    }
+    var t = audio.currentTime;
+    // Require at least 1s on each side to avoid useless slivers
+    var MIN_HALF = 1.0;
+    if (t < seg.startSec + MIN_HALF || t > seg.endSec - MIN_HALF) {
+      if (typeof showToast === 'function') {
+        showToast('Move the playhead INSIDE this segment first (at least 1s from each edge), then click Split.');
+      }
+      return;
+    }
+
+    // Build the second half — shallow copy + override timing + clear
+    // analysis fields tied to the original timing window.
+    var second = {};
+    Object.keys(seg).forEach(function(k) { second[k] = seg[k]; });
+    second.startSec = t;
+    second.endSec = seg.endSec;
+    second.duration = second.endSec - second.startSec;
+    // Clear analysis-derived fields — they were computed on the
+    // unsplit audio and no longer describe the new boundaries. Next
+    // Generate Report run regenerates them.
+    second.groove = null;
+    second.qualityScore = undefined;
+    second.qualityLabel = undefined;
+    second.qualityWhy = undefined;
+    second.songMatch = null;
+    second.confidence = 0.5;
+    second.chordHints = null;
+    second.audioEmbedding = null;
+    second.confirmed = false;  // user should confirm the new half explicitly
+    // displayTitle stays — the second half is still presumed to be
+    // the same song until the user says otherwise. The user can
+    // rename it via the title input on the new row.
+    second.id = undefined;  // GLTakes will assign a new takeId
+
+    // Shrink the first half
+    seg.endSec = t;
+    seg.duration = seg.endSec - seg.startSec;
+    // First half also loses analysis specifics that assumed the full
+    // pre-split window. The original title + confirmed status stay.
+    seg.groove = null;
+    seg.qualityScore = undefined;
+    seg.qualityLabel = undefined;
+    seg.qualityWhy = undefined;
+    seg.chordHints = null;
+
+    // Insert second half right after first
+    _currentSegments.splice(idx + 1, 0, second);
+
+    // Mark BOTH halves as human-edited — this is canonical rehearsal
+    // authorship, not AI guess
+    _markHumanEdited(idx);
+    _markHumanEdited(idx + 1);
+
+    if (typeof showToast === 'function') {
+      showToast('Split at ' + _formatTime(t) + ' — rename the second half if it\'s a different song.');
+    }
     showUI(_currentSessionId, _currentSegments);
   }
 
@@ -3157,6 +3240,7 @@ window.RecordingAnalyzer = (function() {
     _seekSeg: _seekSeg,
     _nudgeBoundary: _nudgeBoundary,
     _confirmSeg: _confirmSeg,
+    _splitAtPlayhead: _splitAtPlayhead,
     saveSegmentsOnly: saveSegmentsOnly,
     _toggleTalkTag: _toggleTalkTag,
     _filterAddSong: _filterAddSong,
