@@ -72,6 +72,70 @@ At all times you have **at least one un-wiped physical card** holding the most r
 
 **Hard rule:** never wipe both cards back-to-back. The "in bag" card always holds the most recent rehearsal unwiped, until it eventually rotates to become the "in X32" card and gets wiped just before recording onto it again.
 
+## Where to do the wipe — Mac or X32
+
+**Recommended: Mac, via Disk Utility or `diskutil`.** Faster, more convenient, you're already there. The X32 doesn't care whether the format came from a Mac or itself, as long as the filesystem is FAT32 with MBR partition scheme.
+
+### Disk Utility (GUI, ~10 sec)
+
+1. Open Disk Utility
+2. Pick the SD card in the left sidebar — click the PARENT device (e.g. "SanDisk SD Card Reader Media"), NOT just the SANDISK volume below it
+3. Erase
+4. Format: **MS-DOS (FAT)** — this IS FAT32; macOS uses the legacy name
+5. Scheme: **Master Boot Record**
+6. Name: **SANDISK** (or anything; X32 doesn't care about the volume label)
+7. Erase
+
+### Terminal (faster, scriptable)
+
+```bash
+# Find the disk identifier (look for the 256 GB one named SANDISK)
+diskutil list
+
+# Format it — REPLACE diskN with your actual identifier (e.g. disk4)
+diskutil eraseDisk MS-DOS SANDISK MBR /dev/diskN
+```
+
+`MS-DOS` = FAT32 filesystem, `MBR` = Master Boot Record partition scheme. Takes ~5 seconds.
+
+**Warning:** double-check the disk identifier before running `eraseDisk` — it erases unconditionally with no confirmation prompt. Your internal SSD is typically `disk0` or `disk1`. SD cards usually mount as `disk3` or higher.
+
+### When to fall back to X32-native format
+
+If you ever hit a "card not ready" or "format card" error on the X32 after a Mac format, do that round's wipe in the X32 itself (X32 menu → Setup → SD card → Format). Then resume Mac formats from there on. In practice this should be rare-to-never — your current SANDISK card has been macOS-touched the whole time (we saw `.Spotlight-V100` and `.fseventsd` on it) and recording worked fine.
+
+## What if I record multiple rehearsals on one card?
+
+If you skip the wipe step (e.g., recorded twice between formats, or you're using one card for several rehearsals before rotating), the SD card holds multiple sessions:
+
+```
+/Volumes/SANDISK/
+  X_LIVE/                    (empty marker)
+  5CB2934C/                  Session 1 — earliest
+    00000001.WAV
+    ...
+  5CB29350/                  Session 2
+    00000001.WAV
+    ...
+  5CB293EC/                  Session 3 — latest
+    00000001.WAV
+    ...
+```
+
+**How to tell which is newest:**
+- The 8-char hex name is the X-Live's internal session counter — higher hex = newer. `5CB293EC` > `5CB29350` > `5CB2934C`. (NOT date-based — just a monotonic counter.)
+- Easier: Finder → sort by Date Modified. Most recent date = newest rehearsal.
+
+**The wizard's 📂 Pick button handles this automatically:**
+- Point it at the SANDISK volume (or any specific session folder)
+- If it finds multiple sessions, it picks the NEWEST by file modification time
+- It toasts the picked folder + lists the others, e.g. *"Multiple sessions on card. Picked NEWEST: 5CB293EC (May 27, 17 chunks). Others: 5CB29350 (May 20, 14 chunks) · 5CB2934C (May 13, 22 chunks). Edit the folder name above to override."*
+- You can override manually by typing the hex name you want
+
+**Recommendation: stick to one-per-card.** The two-card rotation keeps it simple: one card = one rehearsal, no ambiguity. Multi-session cards still work but require careful picking and become all-or-nothing when wiped (you can't selectively delete a session — the wipe takes the whole card).
+
+If you do go multi-session deliberately (e.g., card sat for 3 weeks of rehearsals before rotation): the picker disambiguates, but verify the date in the toast before continuing to Step 2.
+
 ## Monthly (~30 days after each rehearsal)
 
 ```bash
@@ -119,8 +183,9 @@ The protocol above is designed so this last row is **operationally impossible** 
 ```
 After verification:           rm FULL_REHEARSAL.wav        (~64 GB)
                               (just-used card stays in bag UNWIPED)
-Just before next rehearsal:   reformat the OTHER card in the X32
-                              (the one with the older, multi-week-verified rehearsal)
+Just before next rehearsal:   reformat the OTHER card on the Mac:
+                                diskutil eraseDisk MS-DOS SANDISK MBR /dev/diskN
+                              (the card with the older, multi-week-verified rehearsal)
                               Then insert into X32 for the new recording.
 30 days after ingest:         rm -rf source/               (~67 GB)
 NEVER delete:                 ingest_metadata.json, ingest.log

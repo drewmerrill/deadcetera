@@ -310,18 +310,18 @@ window._mtWizPickFolderFromSDCard = function(input) {
     if (!files.length) return;
     var hexRe = /(^|\/)([0-9A-Fa-f]{8})\.wav$/i;
     var matched = [];
-    var sessionFolder = '';
     files.forEach(function(f) {
         var rel = f.webkitRelativePath || f.name || '';
         var m = rel.match(hexRe);
         if (!m) return;
-        // Parent dir of the WAV is the session folder
         var parts = rel.split('/');
         var folder = parts.length >= 2 ? parts[parts.length - 2] : '';
-        // Sanity: parent folder should be hex too
         if (!/^[0-9A-Fa-f]{8}$/.test(folder)) return;
-        matched.push({ folder: folder, sizeBytes: f.size || 0 });
-        sessionFolder = folder;  // last write wins; multiple sessions warned below
+        matched.push({
+            folder: folder,
+            sizeBytes: f.size || 0,
+            lastModified: f.lastModified || 0,  // ms epoch
+        });
     });
     if (!matched.length) {
         if (typeof showToast === 'function') {
@@ -333,30 +333,50 @@ window._mtWizPickFolderFromSDCard = function(input) {
         input.value = '';
         return;
     }
-    // Group by folder to detect multi-session selection (rare but possible
-    // if user picked SANDISK and the card holds multiple sessions)
-    var folderSet = {};
-    var totalBytes = 0;
+    // Group by folder. Track chunk count, total size, AND newest mtime
+    // (we'll pick the NEWEST session if the card has multiple — a long
+    // old rehearsal can have more chunks than a short new one, so chunk
+    // count is the wrong tiebreaker. Newest mtime aligns with the
+    // operator's intent: "I just recorded, give me the latest.")
+    var folders = {};
     matched.forEach(function(m) {
-        folderSet[m.folder] = (folderSet[m.folder] || 0) + 1;
-        totalBytes += m.sizeBytes;
+        var s = folders[m.folder] || { count: 0, bytes: 0, mtime: 0 };
+        s.count++;
+        s.bytes += m.sizeBytes;
+        if (m.lastModified > s.mtime) s.mtime = m.lastModified;
+        folders[m.folder] = s;
     });
-    var folderNames = Object.keys(folderSet);
+    var folderNames = Object.keys(folders);
+    var sessionFolder;
     if (folderNames.length > 1) {
-        // Multiple sessions detected. Pick the largest (most chunks) for
-        // safety; the user can correct manually.
-        sessionFolder = folderNames.sort(function(a, b) {
-            return folderSet[b] - folderSet[a];
-        })[0];
+        // Sort by mtime descending — newest session wins
+        folderNames.sort(function(a, b) {
+            return folders[b].mtime - folders[a].mtime;
+        });
+        sessionFolder = folderNames[0];
+        var pickedStats = folders[sessionFolder];
+        var pickedDate = pickedStats.mtime ?
+            new Date(pickedStats.mtime).toLocaleDateString(undefined,
+                { month: 'short', day: 'numeric', year: 'numeric' }) :
+            'unknown date';
+        var others = folderNames.slice(1).map(function(n) {
+            var s = folders[n];
+            var d = s.mtime ? new Date(s.mtime).toLocaleDateString(
+                undefined, { month: 'short', day: 'numeric' }) : '?';
+            return n + ' (' + d + ', ' + s.count + ' chunks)';
+        }).join(' · ');
         if (typeof showToast === 'function') {
-            showToast('Multiple X-Live sessions on the card — picked ' +
-                      sessionFolder + ' (' + folderSet[sessionFolder] +
-                      ' chunks). Edit the folder name above if wrong.');
+            showToast('Multiple sessions on card. Picked NEWEST: ' +
+                      sessionFolder + ' (' + pickedDate + ', ' +
+                      pickedStats.count + ' chunks). Others: ' + others +
+                      '. Edit the folder name above to override.');
         }
     } else {
-        var gb = (totalBytes / 1073741824).toFixed(1);
+        sessionFolder = folderNames[0];
+        var s = folders[sessionFolder];
+        var gb = (s.bytes / 1073741824).toFixed(1);
         if (typeof showToast === 'function') {
-            showToast('✓ Found ' + matched.length + ' chunks in ' +
+            showToast('✓ Found ' + s.count + ' chunks in ' +
                       sessionFolder + ' (~' + gb + ' GB)');
         }
     }
