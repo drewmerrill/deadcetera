@@ -1272,6 +1272,9 @@ window.RecordingAnalyzer = (function() {
         + (seg.groove ? '<br><span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '" title="Stability: ' + seg.groove.stability + '% \u00B7 Pocket: ' + seg.groove.pctInPocket + '%">' + seg.groove.label + '</span>' : '')
         + (seg.improvementNote ? '<br><span style="color:#818cf8;font-style:italic">' + seg.improvementNote + '</span>' : '')
         + '</div>'
+        + (seg.humanEdited
+            ? '<span title="Human-edited: ' + _escAttr(seg.editedBy || 'someone') + ' on ' + _escAttr((seg.editedAt || '').slice(0, 10)) + '. Future AI re-analysis won\'t overwrite this." style="display:inline-flex;align-items:center;gap:3px;font-size:0.58em;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.10);color:#86efac;border:1px solid rgba(34,197,94,0.30);flex-shrink:0">✏ ' + _escAttr((seg.editedBy || 'edited').slice(0, 12)) + '</span>'
+            : '')
         + '<input type="text" value="' + _escAttr(seg.displayTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 6px;color:var(--text,#f1f5f9);font-size:0.78em;font-family:inherit;min-width:0" placeholder="Song name...">'
         // Candidate dropdown + confidence indicator (from SongMatchingEngine)
         + (seg.songMatch && seg.songMatch.candidates && seg.songMatch.candidates.length > 1
@@ -1425,10 +1428,15 @@ window.RecordingAnalyzer = (function() {
     });
     html += '</div>';
 
-    // Actions
+    // Actions \u2014 3 buttons: Cancel \u00b7 \ud83d\udcbe Save edits (segments only) \u00b7 Generate Report (full re-run)
+    // The Save-edits path lets musicians quickly lock in a few corrections
+    // without waiting for the full analysis re-run. Per Drew 2026-05-27:
+    // "rehearsal authorship" framing \u2014 the band edits canonical truth,
+    // not "re-runs AI." Save is the primary muscle motion now.
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg-card,#1e293b);padding:8px 0 0">'
       + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted,#94a3b8);cursor:pointer;font-size:0.82em;font-weight:600">Cancel</button>'
-      + '<button onclick="RecordingAnalyzer.confirmAndGenerate()" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-size:0.82em;font-weight:700;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + (_allConfirmed ? 'Review complete \u2713 \u2014 Generate Report' : 'Generate Report') + '</button>'
+      + '<button id="raSaveBtn" onclick="RecordingAnalyzer.saveSegmentsOnly()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;font-size:0.82em;font-weight:700">\ud83d\udcbe Save edits</button>'
+      + '<button onclick="RecordingAnalyzer.confirmAndGenerate()" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-size:0.82em;font-weight:700;box-shadow:0 2px 8px rgba(34,197,94,0.2)" title="Save + regenerate the full rehearsal report (story, recommendations, etc.) \u2014 takes longer than just Save edits.">' + (_allConfirmed ? 'Review complete \u2713 \u2014 Generate Report' : 'Generate Report') + '</button>'
       + '</div>';
 
     modal.innerHTML = html;
@@ -1454,10 +1462,68 @@ window.RecordingAnalyzer = (function() {
 
   // ── UI Helpers ──────────────────────────────────────────────────────────────
 
+  // Human-authority marker — set on every segment whenever the user
+  // touches it via the editor. Persists to Firebase as part of the
+  // segment record. Per Drew 2026-05-27: "When a segment is edited or
+  // confirmed, visibly mark human-confirmed truth. Future AI re-analysis
+  // must NOT casually overwrite explicit human musical decisions."
+  function _markHumanEdited(idx) {
+    if (!_currentSegments || !_currentSegments[idx]) return;
+    var seg = _currentSegments[idx];
+    seg.humanEdited = true;
+    seg.editedAt = new Date().toISOString();
+    if (typeof currentUserName !== 'undefined' && currentUserName) {
+      seg.editedBy = currentUserName;
+    } else if (typeof currentUserEmail !== 'undefined' && currentUserEmail) {
+      seg.editedBy = currentUserEmail.split('@')[0];
+    }
+  }
+
+  // Save-only path — persists edited segments to Firebase WITHOUT
+  // re-running the analysis pipeline. Use this when the user just
+  // tweaks boundaries / titles and wants to lock in the edit quickly.
+  // The heavier "Generate Report" path (confirmAndGenerate) still
+  // exists for the full re-run.
+  async function saveSegmentsOnly() {
+    if (!_currentSessionId || !_currentSegments) {
+      if (typeof showToast === 'function') showToast('Nothing to save');
+      return;
+    }
+    var saveBtn = document.getElementById('raSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+    }
+    try {
+      var activeSegs = _currentSegments.filter(function(s) { return s.segType !== 'ignore'; });
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.update) {
+        await GLStore.RehearsalSession.update(_currentSessionId, { audio_segments: activeSegs });
+      } else if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+        var sessPath = bandPath('rehearsal_sessions/' + _currentSessionId);
+        await firebaseDB.ref(sessPath + '/audio_segments').set(activeSegs);
+      }
+      // Keep canonical Takes in sync (no-op if GLTakes absent)
+      if (typeof window.GLTakes !== 'undefined' && window.GLTakes.normalizeRehearsalSegments) {
+        window.GLTakes.normalizeRehearsalSegments(_currentSessionId, activeSegs)
+          .catch(function(err) { console.warn('[GLTakes] normalize after save failed:', err && err.message); });
+      }
+      if (saveBtn) { saveBtn.textContent = '✓ Saved'; }
+      if (typeof showToast === 'function') showToast('Saved');
+      setTimeout(function() {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save edits'; }
+      }, 1800);
+    } catch (e) {
+      console.error('[RecordingAnalyzer] saveSegmentsOnly failed:', e);
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save edits'; }
+      if (typeof showToast === 'function') showToast('Save failed — check console');
+    }
+  }
+
   function _confirmSeg(idx) {
     if (!_currentSegments || !_currentSegments[idx]) return;
     var seg = _currentSegments[idx];
     seg.confirmed = true;
+    _markHumanEdited(idx);
     var btn = document.getElementById('raConfBtn' + idx);
     if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
 
@@ -1565,6 +1631,7 @@ window.RecordingAnalyzer = (function() {
       seg.confidence = value ? 0.9 : 0.1;
       seg.confirmed = true;
       if (value) _stampHumanCorrection(seg);
+      _markHumanEdited(idx);
       var btn = document.getElementById('raConfBtn' + idx);
       if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
 
@@ -1724,6 +1791,7 @@ window.RecordingAnalyzer = (function() {
   function _updateSegType(idx, type) {
     if (_currentSegments && _currentSegments[idx]) {
       _currentSegments[idx].segType = type;
+      _markHumanEdited(idx);
       // Re-render to show/hide notes field for talking
       showUI(_currentSessionId, _currentSegments);
     }
@@ -1732,6 +1800,7 @@ window.RecordingAnalyzer = (function() {
   function _updateSegNotes(idx, notes) {
     if (_currentSegments && _currentSegments[idx]) {
       _currentSegments[idx].notes = notes;
+      _markHumanEdited(idx);
     }
   }
 
@@ -1750,6 +1819,7 @@ window.RecordingAnalyzer = (function() {
     prev.duration = prev.endSec - prev.startSec;
     if (!prev.songTitle && curr.songTitle) prev.songTitle = curr.songTitle;
     _currentSegments.splice(idx, 1);
+    _markHumanEdited(idx - 1);  // mark the merged-INTO segment as human-edited
     showUI(_currentSessionId, _currentSegments);
   }
 
@@ -1818,6 +1888,7 @@ window.RecordingAnalyzer = (function() {
       seg.endSec = Math.max(seg.startSec + 1, seg.endSec + deltaSec);
     }
     seg.duration = seg.endSec - seg.startSec;
+    _markHumanEdited(idx);
     // Re-render just the time display (avoid full re-render)
     var el = document.getElementById('raSeg' + idx);
     if (el) {
@@ -3086,6 +3157,7 @@ window.RecordingAnalyzer = (function() {
     _seekSeg: _seekSeg,
     _nudgeBoundary: _nudgeBoundary,
     _confirmSeg: _confirmSeg,
+    saveSegmentsOnly: saveSegmentsOnly,
     _toggleTalkTag: _toggleTalkTag,
     _filterAddSong: _filterAddSong,
     _transcribeSeg: _transcribeSeg,

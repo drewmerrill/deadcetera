@@ -2880,6 +2880,47 @@ window._rhRerunAnalysis = function(sessionId) {
     });
 };
 
+// Opens the full segment editor (RecordingAnalyzer.showUI) against the
+// existing analyzed session — no re-analysis kicked off. Loads the
+// freshest segments from Firebase so the editor reflects any recent
+// edits (e.g., made from another tab) rather than the rendered
+// snapshot. Per Drew 2026-05-27: "rehearsal authorship" — the band
+// edits canonical truth; not "re-run AI."
+window._rhOpenTimelineEditor = async function(sessionId, durationSec) {
+    if (typeof RecordingAnalyzer === 'undefined' || !RecordingAnalyzer.showUI) {
+        if (typeof showToast === 'function') showToast('Timeline editor not loaded');
+        return;
+    }
+    var segments = null;
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.get) {
+            var sess = await GLStore.RehearsalSession.get(sessionId);
+            if (sess && sess.audio_segments) {
+                segments = Array.isArray(sess.audio_segments)
+                    ? sess.audio_segments
+                    : Object.values(sess.audio_segments);
+            }
+            if (!durationSec && sess) {
+                durationSec = sess.totalActualSec || sess.durationSec || 0;
+            }
+        } else if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+            var snap = await firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
+            var v = snap.val();
+            if (v && v.audio_segments) {
+                segments = Array.isArray(v.audio_segments)
+                    ? v.audio_segments
+                    : Object.values(v.audio_segments);
+            }
+        }
+    } catch (e) {
+        console.warn('[_rhOpenTimelineEditor] segment fetch failed; opening editor with whatever is current:', e);
+    }
+    // showUI accepts null segments and falls back to its in-memory copy
+    // from the prior analysis. Either path opens the editor without
+    // re-running RehearsalAnalysis.
+    RecordingAnalyzer.showUI(sessionId, segments, durationSec || 0);
+};
+
 // ── Last Rehearsal Snapshot + Auto-loaded Timeline ───────────────────────────
 async function _rhRenderLastRehearsalTimeline() {
     var snapEl = document.getElementById('rhLastRehearsalSnapshot');
@@ -3029,6 +3070,27 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             + '</div>';
     }
 
+    // ✏ Edit timeline — entry to the full segment editor against the
+    // already-analyzed session. Per Drew 2026-05-27: this is rehearsal
+    // authorship, NOT "re-run AI." The band collaboratively shapes the
+    // canonical memory of the rehearsal. Opens RecordingAnalyzer.showUI
+    // with existing segments — no re-analysis kicked off.
+    var _editTimelineSession = sessionId;
+    var _editTimelineDuration = (session && (session.totalActualSec || session.durationSec)) ||
+        (segments[segments.length - 1] ? segments[segments.length - 1].endSec : 0);
+    var _humanEditedCount = segments.filter(function(s) { return s.humanEdited || s.confirmed; }).length;
+    var _editStatusLine = _humanEditedCount > 0
+        ? '<span style="font-size:0.66em;color:var(--text-dim);margin-left:8px">' + _humanEditedCount + ' of ' + segments.length + ' edited or confirmed</span>'
+        : '<span style="font-size:0.66em;color:var(--text-dim);margin-left:8px">All segments are AI-detected; click to refine</span>';
+    html += '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.18)">'
+        + '<span style="font-size:0.72em;color:#a5b4fc;font-weight:700">Refine this rehearsal</span>'
+        + _editStatusLine
+        + '<span style="flex:1"></span>'
+        + '<button onclick="window._rhOpenTimelineEditor(\'' + escHtml(sessionId) + '\',' + Number(_editTimelineDuration || 0) + ')" '
+        + 'style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:6px;border:1px solid rgba(99,102,241,0.45);background:rgba(99,102,241,0.18);color:#a5b4fc;cursor:pointer;font-family:inherit" '
+        + 'title="Open the timeline editor — adjust boundaries, rename songs, merge takes. Your edits become canonical truth; future re-analysis won\'t overwrite them.">✏ Edit timeline →</button>'
+        + '</div>';
+
     // Visual strip (clickable mini-map)
     var totalDur = segments[segments.length - 1] ? (segments[segments.length - 1].endSec || 1) : 1;
     html += '<div id="rhTimelineStrip" style="display:flex;height:10px;border-radius:4px;overflow:hidden;margin-bottom:10px;background:rgba(255,255,255,0.03);cursor:pointer">';
@@ -3071,7 +3133,16 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<div onclick="window._rhToggleSeg(' + si + ')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();window._rhToggleSeg(' + si + ');}" aria-expanded="false" aria-controls="rhSegBody_' + si + '" style="flex:1;min-width:0;cursor:pointer">';
             var _titleConf = seg.songMatch ? seg.songMatch.confidence : null;
             var _confDot = _titleConf === 'low' ? '<span style="color:#64748b;font-size:0.7em" title="Uncertain match"> ?</span>' : (_titleConf === 'medium' ? '<span style="color:#f59e0b;font-size:0.7em" title="Likely match"> \u00B7</span>' : '');
-            html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + _confDot + '</div>';
+            // Human-authority badge: shows when this row's been touched
+            // via the timeline editor. Future AI re-analysis won't
+            // casually overwrite it. Per Drew 2026-05-27.
+            var _humanBadge = '';
+            if (seg.humanEdited || seg.confirmed) {
+                var _editorName = seg.editedBy ? (' by ' + seg.editedBy) : '';
+                var _badgeLabel = seg.confirmed && !seg.humanEdited ? '✓ confirmed' : '✏ edited';
+                _humanBadge = ' <span style="font-size:0.62em;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(34,197,94,0.10);color:#86efac;border:1px solid rgba(34,197,94,0.25);vertical-align:middle" title="Human-touched' + escHtml(_editorName) + '. Future re-analysis preserves this.">' + _badgeLabel + '</span>';
+            }
+            html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + _confDot + _humanBadge + '</div>';
             html += '<div style="font-size:0.58em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2;
             if (seg.qualityLabel && (seg.qualityScore >= 3 || seg.groove)) html += ' \u00B7 <span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
             // BPM summary inline (if groove data has IOIs and song has target BPM)
