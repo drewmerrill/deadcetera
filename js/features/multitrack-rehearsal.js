@@ -295,6 +295,81 @@ window._mtWizInputsChanged = function() {
     _mtRenderWizardStep();
 };
 
+// Folder-picker fallback for "I don't want to type the hex folder name."
+// User clicks the picker, navigates to /Volumes/SANDISK/ (or directly to
+// the session folder), picks anything. We walk the file list, find the
+// 8-char-hex-named .WAV chunks, and extract THEIR parent directory name
+// — that's the X-Live session folder regardless of whether the user
+// picked the volume root or the session folder itself.
+//
+// Bonus: validates the pick. If we don't find hex-named WAVs, we toast
+// the user that the folder doesn't look like an X-Live session so they
+// can pick again.
+window._mtWizPickFolderFromSDCard = function(input) {
+    var files = Array.from(input.files || []);
+    if (!files.length) return;
+    var hexRe = /(^|\/)([0-9A-Fa-f]{8})\.wav$/i;
+    var matched = [];
+    var sessionFolder = '';
+    files.forEach(function(f) {
+        var rel = f.webkitRelativePath || f.name || '';
+        var m = rel.match(hexRe);
+        if (!m) return;
+        // Parent dir of the WAV is the session folder
+        var parts = rel.split('/');
+        var folder = parts.length >= 2 ? parts[parts.length - 2] : '';
+        // Sanity: parent folder should be hex too
+        if (!/^[0-9A-Fa-f]{8}$/.test(folder)) return;
+        matched.push({ folder: folder, sizeBytes: f.size || 0 });
+        sessionFolder = folder;  // last write wins; multiple sessions warned below
+    });
+    if (!matched.length) {
+        if (typeof showToast === 'function') {
+            showToast("That folder doesn't look like an X-Live session " +
+                      "(no 8-char hex WAV chunks). Pick the SANDISK volume " +
+                      "or the session folder directly.");
+        }
+        // Clear the input so a second pick fires the change handler
+        input.value = '';
+        return;
+    }
+    // Group by folder to detect multi-session selection (rare but possible
+    // if user picked SANDISK and the card holds multiple sessions)
+    var folderSet = {};
+    var totalBytes = 0;
+    matched.forEach(function(m) {
+        folderSet[m.folder] = (folderSet[m.folder] || 0) + 1;
+        totalBytes += m.sizeBytes;
+    });
+    var folderNames = Object.keys(folderSet);
+    if (folderNames.length > 1) {
+        // Multiple sessions detected. Pick the largest (most chunks) for
+        // safety; the user can correct manually.
+        sessionFolder = folderNames.sort(function(a, b) {
+            return folderSet[b] - folderSet[a];
+        })[0];
+        if (typeof showToast === 'function') {
+            showToast('Multiple X-Live sessions on the card — picked ' +
+                      sessionFolder + ' (' + folderSet[sessionFolder] +
+                      ' chunks). Edit the folder name above if wrong.');
+        }
+    } else {
+        var gb = (totalBytes / 1073741824).toFixed(1);
+        if (typeof showToast === 'function') {
+            showToast('✓ Found ' + matched.length + ' chunks in ' +
+                      sessionFolder + ' (~' + gb + ' GB)');
+        }
+    }
+    // Fill input + re-render
+    var folderInput = document.getElementById('mtWizInputFolder');
+    if (folderInput) {
+        folderInput.value = sessionFolder;
+        _mtWizInputsChanged();
+    }
+    // Clear the file input so the same folder can be re-picked later
+    input.value = '';
+};
+
 function _mtRehearsalFolderHint() {
     return '~/Rehearsals/' + _mtWizGetDate() + '/';
 }
@@ -584,11 +659,21 @@ window._mtOpenImportModal = function() {
             '<div class="mt-wiz-inputbar">' +
                 '<label class="mt-wiz-input-label">' +
                     '<span class="mt-wiz-input-cap">Recording folder</span>' +
-                    '<input type="text" id="mtWizInputFolder" class="mt-wiz-input" ' +
-                        'placeholder="e.g. 5CB2934C" autocomplete="off" spellcheck="false" ' +
-                        'value="' + savedFolder + '" ' +
-                        'oninput="_mtWizInputsChanged()">' +
-                    '<span class="mt-wiz-input-hint">8-char hex from the SD card</span>' +
+                    '<div class="mt-wiz-input-row">' +
+                        '<input type="text" id="mtWizInputFolder" class="mt-wiz-input" ' +
+                            'placeholder="e.g. 5CB2934C" autocomplete="off" spellcheck="false" ' +
+                            'value="' + savedFolder + '" ' +
+                            'oninput="_mtWizInputsChanged()">' +
+                        '<button type="button" class="mt-wiz-pickbtn" ' +
+                            'onclick="document.getElementById(\'mtWizFolderPick\').click()" ' +
+                            'title="Open a folder picker; pick the SANDISK volume or session folder">📂 Pick</button>' +
+                        '<input type="file" id="mtWizFolderPick" webkitdirectory directory ' +
+                            'style="display:none" ' +
+                            'onchange="_mtWizPickFolderFromSDCard(this)">' +
+                    '</div>' +
+                    '<span class="mt-wiz-input-hint">8-char hex from the SD card · ' +
+                        '<a href="file:///Volumes/SANDISK/" target="_blank" rel="noopener" ' +
+                            'class="mt-wiz-finder-link">open SANDISK in Finder ↗</a></span>' +
                 '</label>' +
                 '<label class="mt-wiz-input-label">' +
                     '<span class="mt-wiz-input-cap">Rehearsal date</span>' +
@@ -629,6 +714,12 @@ function _mtInjectWizardStyles() {
         '.mt-wiz-input:focus { border-color: rgba(99,102,241,0.60); box-shadow: 0 0 0 2px rgba(99,102,241,0.18); }',
         '.mt-wiz-input::placeholder { color: rgba(148,163,184,0.45); }',
         '.mt-wiz-input-hint { font-size: 0.66em; color: var(--text-dim,#94a3b8); margin-top: 1px; }',
+        '.mt-wiz-input-row { display: flex; gap: 6px; align-items: stretch; }',
+        '.mt-wiz-input-row .mt-wiz-input { flex: 1; min-width: 0; }',
+        '.mt-wiz-pickbtn { background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.40); color: #a5b4fc; border-radius: 6px; padding: 0 10px; font-family: inherit; font-size: 0.78em; font-weight: 700; cursor: pointer; white-space: nowrap; transition: background 0.12s; }',
+        '.mt-wiz-pickbtn:hover { background: rgba(99,102,241,0.30); }',
+        '.mt-wiz-finder-link { color: var(--text-dim,#94a3b8); text-decoration: underline; text-decoration-color: rgba(148,163,184,0.35); }',
+        '.mt-wiz-finder-link:hover { color: #a5b4fc; text-decoration-color: rgba(165,180,252,0.6); }',
         '.mt-wiz-stepper { display: flex; align-items: center; gap: 4px; padding: 10px 16px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.04); overflow-x: auto; flex-shrink: 0; }',
         '.mt-wiz-pill { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 0.74em; white-space: nowrap; }',
         '.mt-wiz-pill:hover { background: rgba(255,255,255,0.05); color: var(--text); }',
