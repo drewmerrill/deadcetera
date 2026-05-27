@@ -263,25 +263,41 @@ class IngestJobReporter:
             snapshot = json.dumps(self._state)
             self._last_written_at = time.time()
             self._dirty = False
-        # Write to Firebase via the CLI. Use database:set on the full path
-        # so the document is atomic. The user's firebase CLI auth handles
-        # the credentials.
+        # Write to Firebase via the CLI. firebase-tools `database:set PATH -`
+        # stdin mode is broken (passes unread stream straight to fetch and
+        # times out); workaround: write to a temp file and pass the file
+        # path. The user's firebase CLI auth handles the credentials.
         path = f"/bands/{BAND_SLUG}/ingest_jobs/{self.job_id}"
-        cmd = [
-            "firebase", "database:set", path, "-",
-            "--project", FIREBASE_PROJECT, "--force",
-        ]
+        tmp_path = f"/tmp/glx_ingest_job_{self.job_id}.json"
         try:
-            subprocess.run(
-                cmd, input=snapshot, text=True,
-                capture_output=True, check=False, timeout=15,
-            )
-        except subprocess.TimeoutExpired:
-            # Don't crash the ingest because Firebase was slow.
-            pass
+            with open(tmp_path, "w") as f:
+                f.write(snapshot)
+            cmd = [
+                "firebase", "database:set", path, tmp_path,
+                "--project", FIREBASE_PROJECT, "--force",
+            ]
+            try:
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True,
+                    check=False, timeout=15,
+                )
+                if proc.returncode != 0:
+                    with open(DIAGNOSTIC_LOG, "a") as f:
+                        f.write(
+                            f"\n[reporter] CLI exit={proc.returncode}\n"
+                            f"stdout: {proc.stdout[:300]}\n"
+                            f"stderr: {proc.stderr[:300]}\n"
+                        )
+            except subprocess.TimeoutExpired:
+                pass
         except Exception as e:
             with open(DIAGNOSTIC_LOG, "a") as f:
                 f.write(f"\n[reporter] write failed: {e}\n")
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────

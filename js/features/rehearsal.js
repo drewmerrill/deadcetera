@@ -464,17 +464,13 @@ async function renderRehearsalPage(el) {
     // ingest mechanism; this Ingest Cockpit (above) makes that
     // operator-side flow visible to the band without exposing a
     // misleading upload promise.
-    var ingestTile = ingestCockpitTile + ''+
-        '<div onclick="_mtOpenImportModal()" style="cursor:pointer;margin:0 0 14px;padding:14px 18px;border-radius:12px;border:1px solid rgba(99,102,241,0.30);background:linear-gradient(135deg,rgba(99,102,241,0.10),rgba(168,85,247,0.06));display:flex;align-items:center;gap:14px;transition:transform 0.08s,box-shadow 0.15s" '+
-        'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 8px 24px rgba(99,102,241,0.20)\'" '+
-        'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+
-            '<div style="font-size:1.8em;flex-shrink:0">🎚</div>'+
-            '<div style="flex:1;min-width:0">'+
-                '<div style="font-weight:800;font-size:0.96em;color:#e0e7ff">Ingest a multitrack recording <span style="font-size:0.62em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(148,163,184,0.15);color:#94a3b8;margin-left:6px;vertical-align:middle">REAPER</span></div>'+
-                '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">Walk through the X32 SD card → REAPER → upload flow in 5 steps</div>'+
-            '</div>'+
-            '<div style="font-size:0.74em;font-weight:700;color:#a5b4fc;background:rgba(99,102,241,0.16);border:1px solid rgba(99,102,241,0.35);padding:6px 12px;border-radius:7px;flex-shrink:0">Start →</div>'+
-        '</div>';
+    // REAPER tile removed 2026-05-27 per Drew — the ingestion-first
+    // reframe makes REAPER an optional editing tool, not a primary
+    // ingest path. The _mtOpenImportModal entry point still exists in
+    // multitrack-rehearsal.js for power users / future re-exposure
+    // (e.g. via Settings or a "Power tools" disclosure); just no
+    // surface tile in the main Rehearsal page anymore.
+    var ingestTile = ingestCockpitTile;
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title" id="rhPageTitle">' + _pageTitle + '</div>'
         + ingestTile
