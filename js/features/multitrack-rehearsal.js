@@ -235,18 +235,68 @@ var _MT_WIZ_STEPS = [
     { n: 5, title: 'Review',            icon: '🎧' }
 ];
 
+// Wizard inputs — user fills these once, every copy-button regenerates
+// with real values. Persisted to localStorage so reopening mid-flow
+// preserves them. Drew 2026-05-27: "the date may not be today; the
+// folder name is the actual one on the card."
+var _MT_WIZ_LS_KEY = 'gl_mt_wiz_inputs';
+
 function _mtTodayStamp() {
     var d = new Date();
     return d.toISOString().slice(0, 10);
 }
 
-function _mtTodayStampUS() {
-    // Underscore form used as the sessionId date suffix
-    return _mtTodayStamp().replace(/-/g, '_');
+function _mtLoadWizardInputs() {
+    try {
+        var raw = localStorage.getItem(_MT_WIZ_LS_KEY);
+        if (!raw) return null;
+        var v = JSON.parse(raw);
+        // Stale > 14 days — drop, force a fresh think.
+        if (v.savedAt && Date.now() - v.savedAt > 14 * 24 * 3600 * 1000) {
+            localStorage.removeItem(_MT_WIZ_LS_KEY);
+            return null;
+        }
+        return v;
+    } catch (e) { return null; }
 }
 
+function _mtSaveWizardInputs() {
+    try {
+        var folder = (document.getElementById('mtWizInputFolder') || {}).value || '';
+        var date   = (document.getElementById('mtWizInputDate')   || {}).value || '';
+        localStorage.setItem(_MT_WIZ_LS_KEY, JSON.stringify({
+            folderName: folder.trim(),
+            rehearsalDate: date.trim(),
+            savedAt: Date.now(),
+        }));
+    } catch (e) {}
+}
+
+function _mtWizGetFolder() {
+    var el = document.getElementById('mtWizInputFolder');
+    var v = el ? (el.value || '').trim() : '';
+    return v || '<R_NNN>';
+}
+
+function _mtWizGetDate() {
+    var el = document.getElementById('mtWizInputDate');
+    var v = el ? (el.value || '').trim() : '';
+    return v || _mtTodayStamp();
+}
+
+function _mtWizGetDateUS() {
+    return _mtWizGetDate().replace(/-/g, '_');
+}
+
+// Triggered onchange/onkeyup from input fields — persists + re-renders the
+// current step body so all copy-buttons regenerate with the new values.
+window._mtWizInputsChanged = function() {
+    _mtSaveWizardInputs();
+    _mtRenderWizardStep();
+};
+
 function _mtRehearsalFolderHint() {
-    return '~/Rehearsals/' + _mtTodayStamp() + '/';
+    return '~/Rehearsals/' + _mtWizGetDate() + '/';
 }
 
 function _mtSourceFolderHint() {
@@ -254,7 +304,7 @@ function _mtSourceFolderHint() {
 }
 
 function _mtSessionIdHint() {
-    return 'rsess_mt_' + _mtTodayStampUS() + '_pass1';
+    return 'rsess_mt_' + _mtWizGetDateUS() + '_pass1';
 }
 
 function _mtRenderWizardStepper() {
@@ -273,17 +323,20 @@ function _mtRenderWizardStepper() {
 }
 
 function _mtRenderStep1() {
+    var folder = _mtWizGetFolder();
     var srcFolder = _mtSourceFolderHint();
-    var rsyncCmd =
-        'rsync -ah /Volumes/SANDISK/<R_NNN>/ ' + srcFolder;
+    var rsyncCmd = 'rsync -ah /Volumes/SANDISK/' + folder + '/ ' + srcFolder;
+    var folderHelp = folder === '<R_NNN>'
+        ? '(Fill in <strong>Recording folder</strong> above to get a ready-to-paste command.)'
+        : '<em>Command above is pre-filled with your folder name. Paste it as-is.</em>';
     return ''+
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 1 OF 5</div>' +
         '<div class="mt-wiz-step-title">💾 Copy SD card to your Mac</div>' +
         '<div class="mt-wiz-checklist">' +
             '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Pop the SD card</strong> out of the X32 → into a USB 3.0 reader → into your Mac.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Look at the card.</strong> Inside, the rehearsal lives in a folder with an 8-character hex name like <code>5CB2934C/</code>. That\'s your <code>&lt;R_NNN&gt;</code>.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>In Terminal, copy it locally:</strong><div class="mt-wiz-path">' + escHtml(rsyncCmd) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(rsyncCmd).replace(/'/g, '\\\'') + '\')">📋 Copy</button></div>(Replace <code>&lt;R_NNN&gt;</code> with the actual folder name.)</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Look at the card.</strong> Inside, the rehearsal lives in a folder with an 8-character hex name like <code>5CB2934C</code>. Fill that name into <strong>Recording folder</strong> at the top of this guide.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>In Terminal, copy it locally:</strong><div class="mt-wiz-path">' + escHtml(rsyncCmd) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(rsyncCmd).replace(/'/g, '\\\'') + '\')">📋 Copy</button></div>' + folderHelp + '</div></div>' +
             '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>Eject the card safely</strong> when the copy finishes (when the prompt returns).</div></div>' +
         '</div>' +
         '<div class="mt-wiz-callout">' +
@@ -508,6 +561,11 @@ window._mtOpenImportModal = function() {
     var ov = document.createElement('div');
     ov.id = 'mtImportModal';
     ov.className = 'mt-wiz-overlay';
+    // Pre-fill input values from localStorage so reopening keeps state.
+    var savedInputs = _mtLoadWizardInputs() || {};
+    var savedFolder = (savedInputs.folderName || '').replace(/"/g, '&quot;');
+    var savedDate   = (savedInputs.rehearsalDate || _mtTodayStamp()).replace(/"/g, '&quot;');
+
     ov.innerHTML =
         '<div class="mt-wiz-card">' +
             '<div class="mt-wiz-header">' +
@@ -517,6 +575,28 @@ window._mtOpenImportModal = function() {
                     '<div class="mt-wiz-header-sub">X32 SD card → GrooveLinx in 5 steps</div>' +
                 '</div>' +
                 '<button class="mt-wiz-close" onclick="_mtCancelImport()" title="Cancel">×</button>' +
+            '</div>' +
+            // Inputs row — folder name + rehearsal date drive every copy-
+            // button throughout the wizard. Per Drew 2026-05-27: terminal-
+            // visible commands shouldn't contain literal <R_NNN> or assume
+            // today's date — let the user fill the truth once, propagate
+            // everywhere.
+            '<div class="mt-wiz-inputbar">' +
+                '<label class="mt-wiz-input-label">' +
+                    '<span class="mt-wiz-input-cap">Recording folder</span>' +
+                    '<input type="text" id="mtWizInputFolder" class="mt-wiz-input" ' +
+                        'placeholder="e.g. 5CB2934C" autocomplete="off" spellcheck="false" ' +
+                        'value="' + savedFolder + '" ' +
+                        'oninput="_mtWizInputsChanged()">' +
+                    '<span class="mt-wiz-input-hint">8-char hex from the SD card</span>' +
+                '</label>' +
+                '<label class="mt-wiz-input-label">' +
+                    '<span class="mt-wiz-input-cap">Rehearsal date</span>' +
+                    '<input type="date" id="mtWizInputDate" class="mt-wiz-input" ' +
+                        'value="' + savedDate + '" ' +
+                        'oninput="_mtWizInputsChanged()">' +
+                    '<span class="mt-wiz-input-hint">when you recorded (not when you\'re uploading)</span>' +
+                '</label>' +
             '</div>' +
             '<div id="mtWizStepper">' + _mtRenderWizardStepper() + '</div>' +
             '<div class="mt-wiz-body" id="mtWizBody"></div>' +
@@ -541,6 +621,14 @@ function _mtInjectWizardStyles() {
         '.mt-wiz-header-title { font-size: 1.05em; font-weight: 800; color: #f1f5f9; }',
         '.mt-wiz-header-sub { font-size: 0.78em; color: var(--text-dim); margin-top: 2px; }',
         '.mt-wiz-close { background: none; border: none; color: #64748b; font-size: 1.5em; cursor: pointer; padding: 0 6px; }',
+        // Inputs bar (folder name + rehearsal date) — drives every copy-button
+        '.mt-wiz-inputbar { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(99,102,241,0.04); flex-shrink: 0; flex-wrap: wrap; }',
+        '.mt-wiz-input-label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }',
+        '.mt-wiz-input-cap { font-size: 0.62em; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #a5b4fc; }',
+        '.mt-wiz-input { background: rgba(15,23,42,0.7); border: 1px solid rgba(99,102,241,0.30); border-radius: 6px; padding: 7px 10px; color: #e2e8f0; font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; outline: none; }',
+        '.mt-wiz-input:focus { border-color: rgba(99,102,241,0.60); box-shadow: 0 0 0 2px rgba(99,102,241,0.18); }',
+        '.mt-wiz-input::placeholder { color: rgba(148,163,184,0.45); }',
+        '.mt-wiz-input-hint { font-size: 0.66em; color: var(--text-dim,#94a3b8); margin-top: 1px; }',
         '.mt-wiz-stepper { display: flex; align-items: center; gap: 4px; padding: 10px 16px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.04); overflow-x: auto; flex-shrink: 0; }',
         '.mt-wiz-pill { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 0.74em; white-space: nowrap; }',
         '.mt-wiz-pill:hover { background: rgba(255,255,255,0.05); color: var(--text); }',
