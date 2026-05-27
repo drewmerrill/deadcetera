@@ -6,193 +6,146 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-27 00:56 UTC · Build under test: `20260527-005638` (commit `4a2fdfc1` — home-dashboard null-guard fix) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE** · **SIX ships in one day** (Single-Tap Loop → WTR P1 → Bug #23 → Bugs #24/#25 → Bugs #18/#27 → home-dashboard TypeError null-guard) plus **11 overnight observation harvests** documenting the system's encoded discernment architecture. **Tonight's last ship:** 5-character null-guard at `home-dashboard.js:2688` resolving the "⚠ Could not load dashboard. Check connection." fallback that fired when `calEvents` contained a null entry. Originally surfaced in the calmness harvest, deferred during the observation phase, shipped at Drew's direct request as the dashboard surface is now seen working again. **Bugs #18 + #27 RESOLVED via opportunistic write-on-read:** multitrack sessions never persisted audio duration; consumers rendered `"0m"` on home Rehearsal page and suppressed Isolate banner. `_mtMaybeUpdateDuration` now writes both `durationSec` + `totalActualMin` to Firebase on first `loadedmetadata` when missing, with an authority guard that preserves future higher-authority sources (REAPER/X-Live/server-render duration). ~25 LOC delta in one file. **End-to-end live-build proof on production data:** the documented 5/18 session `rsess_mt_mpju4yyn_7pko` healed from `null` to `{durationSec: 11274.05, totalActualMin: 188}` in 903ms; home page now reads `"Last rehearsal · Mon, May 18 · 3h 8m"`. Embedded concept phrase: *"Truth persists where truth lives."* **Ten canonical memories standing.** Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
+_Last refreshed: 2026-05-27 01:05 UTC (session close-out) · Build under test: `20260527-005638` (commit `4a2fdfc1` code, `ce8445e4` docs, head `ce8445e4`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE — OBSERVATION POSTURE** · **SIX ships shipped in one day** (Tier 2 Single-Tap Loop → WTR P1 → Bug #23 ambient-inviolability TIME → Bugs #24/#25 ambient-inviolability SPACE → Bugs #18/#27 opportunistic duration backfill → home-dashboard null-guard) plus **ELEVEN overnight observation harvests** (calmness · longitudinal · 30-day Pass-1 · 30-day Pass-2 saturation · emotional authority evolution · intent vs exploration · reciprocal trust · reciprocity-collaborative · consent · discernment boundary · register transition) mapping the system's encoded discernment architecture across 77 cumulative clusters. **One experiment proposal (loop-restoration toast) → Path 1 hold (decision: don't ship; anchor sentence already does the acknowledgment correctly).** **STRATEGIC SYNTHESIS:** the system has highly restrained emotional judgment by design — milestone-only celebration, multi-tier cooldowns, "Hands-off Band Coach" persona, music-time silence, explicitly-deprecated multi-register UI gating. The system "demonstrates remembering. It does not announce remembering." The architecture has consciously rejected adaptive emotional routing. Honor that. **Next phase: OBSERVATION.** Let the six ships settle. No new harvests. No new experiments. Micro-interventions only, when real-use friction generates the next move. **Ten canonical memories standing.** Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260526-102503 (last code-shipping commit
-fd347556; most recent commit 9ae08630 is tooling-only), branch main,
-live on app.groovelinx.com via Vercel. Modal services/multitrack-render/
-render.py is DEPLOYED — Phase A.5 reverb wet-branch ratio boost LIVE
-(A/B verification still pending Drew).
+GrooveLinx is at build 20260527-005638 (head ce8445e4, last code commit
+4a2fdfc1 — home-dashboard null-guard), branch main, live on
+app.groovelinx.com. Modal/Worker/R2/Firebase unchanged from yesterday;
+Phase A.5 reverb LIVE awaiting Drew perceptual A/B.
 
-POST-PASS-2.5 PHASE: Workflow Refinement + Operational Intelligence
-(Drew 2026-05-26 strategic direction). 5-item roadmap canonical in
-00_Governance/CURRENT_PRIORITIES.md. This is NOT a feature-expansion
-phase. Trust hardening + real-world observation outranks new surfaces.
+PHASE: Workflow Refinement + Operational Intelligence — currently in
+OBSERVATION POSTURE. Per Drew's strategic synthesis at session close:
+"the system demonstrates remembering. It does not announce remembering."
+The architecture has highly restrained emotional judgment by design.
+The next phase is observation, not expansion. No new ships, no new
+harvests, no new experiments until specific real-use friction generates
+the next move.
 
-PASS 2.5 MUST-FIX PACKAGE SHIPPED 2026-05-26 morning. Bugs #20 + #21 +
-#22 all RESOLVED. GitHub Project reconciled with 20 items including
-📍 Phase Marker (#67) for Pierce's 3-min orientation. Project sync now
-MANDATORY operational hygiene per AI_WORKFLOW.md §Required Project sync.
+YESTERDAY (2026-05-26) WAS THE LARGEST SINGLE-DAY SESSION IN PROJECT
+HISTORY. Six code ships across the trust-hardening arc:
+  1. Tier 2 Single-Tap Loop MVP (56ff5a54) — the loop is the unit of
+     musical attention
+  2. Working-Thought Restoration P1 (79557c7d) — anchor sentence
+     reflects unresolved count
+  3. Bug #23 ambient-inviolability (9a274456) — "Ambient surfaces may
+     INFORM intent, but may not INTERRUPT intent"
+  4. Bugs #24/#25 ambient-spatial-recede (1c0180fe) — "Conductor
+     surfaces temporarily suppress ambient shell presence"
+  5. Bugs #18/#27 opportunistic duration backfill (c511ba29) — "Truth
+     persists where truth lives"
+  6. home-dashboard null-guard (4a2fdfc1) — 5-char fix, Event Risk Card
+     now renders (was silently swallowed before)
 
-TIER 1 OPERATIONAL DISCIPLINE TOOLING INSTALLED 2026-05-26 12:57 UTC
-(commit 9ae08630, no functional code change):
-* CLAUDE.md §OPERATIONAL DISCIPLINE — 6 load-bearing rules in repo
-  canon (trust-layer, continuity, deploy, atomic build-bump, observe-
-  before-expand, tooling tier discipline). Plus §GITHUB PROJECT SYNC
-  and §INDEPENDENT REVIEW (/ultrareview usage policy).
-* .claude/commands/ — /glx-deploy, /glx-handoff, /glx-uat,
-  /glx-bug-triage (visible at session start).
-* .claude/hooks/check-build-bump.py — PreToolUse hook, blocks `git push`
-  when version.json / meta tags / ?v= params / CACHE_NAME are not in
-  lockstep. Smoke-tested: passes clean, blocks synthetic mismatch.
-* .claude/hooks/check-session-stop.sh — Stop hook, nags /glx-handoff
-  when ≥3 commits have landed since CLAUDE_HANDOFF.md was refreshed.
-* .claude/settings.local.json now gitignored (user permissions only).
+Plus ELEVEN overnight observation harvests producing the 77-cluster
+discernment map. Findings concentrated in ~5 distinct truths:
+  - Multi-register UI gating EXPLICITLY DEPRECATED (gl-product-mode.js
+    source comment)
+  - Stoner Mode is a SEPARATE FULL-SCREEN PRODUCT, not a voice register
+  - Conservative discernment encoded across 8 tiers (showToast on saves
+    only, _sdCelebrate on 5/5 first-cross only, 5-tier cooldown
+    architecture, max-2-tips-per-day, "Hands-off Band Coach" persona)
+  - Data-shape gaps (no last_practiced, no viewCount, etc.)
+  - Built-but-unwired infrastructure (acknowledgment hooks exist but
+    aren't wired to attention-pattern moments)
 
-DO NOT propose Tier 2 (overnight UAT agents, screenshot harvesting,
-regression diffing, deploy verification loops) or Tier 3 (Anthropic API
-inside GrooveLinx, cross-session pattern analysis) unprompted. Drew
-must greenlight. Every automation proposal must name the repeated
-proven friction it removes.
-
-Six canonical memories formalize the operational stance:
-* project_musical_operational_memory — strategic frame, trust-layer
-  bug categorization, 5-item roadmap, moat = continuity not features
-* feedback_trust_layer_triage_rule — bugs that LOSE/OBSCURE/STALE =
-  HIGH priority regardless of LOC; canonical at top of bug_queue.md
-* feedback_observe_before_expand — default to observation when no
-  behavioral evidence supports the next move
-* feedback_github_project_sync_mandate — every code-shipping session
-  must sync Project at initiative/bug level only (NEVER per-commit);
-  helper at scripts/gh-project-item.sh
-* feedback_tooling_tier_discipline — Tier 1 only; Tier 2/3 require
-  explicit Drew greenlight; every automation must name the friction
-* feedback_load_bearing_memory_promotion — six rules eligible for
-  CLAUDE.md promotion; do NOT promote more unprompted; resist sprawl
-
-3-SURFACE OPERATIONAL MODEL:
-* Product Surface → GrooveLinx app
-* Operational Visibility Surface → GitHub Project + 📍 Phase Marker #67
-* System Memory Surface → repo governance/docs/handoffs
-
-OVERNIGHT FRICTION HARVEST (2026-05-25 23:28 - 2026-05-26 00:10 UTC)
-SHIPPED FINDINGS ONLY (no code). Full evidence in:
-  02_GrooveLinx/uat/findings/mobile-pass2-friction-harvest-2026-05-25.md
-30 findings filed. 9 iPhone screenshots at
-  02_GrooveLinx/uat/screenshots/2026-05-25/mobile-friction-harvest/
+One experiment proposal (loop-restoration toast acknowledgment) was
+honestly REJECTED via philosophical re-evaluation. The anchor sentence
+already does that work in user-invited chrome. Path 1 hold was correct.
 
 READ FIRST (in order — repo docs win over chat memory):
-  1. 02_GrooveLinx/CLAUDE_HANDOFF.md top "SESSION UPDATE" entry
-     (5-section operational handoff package — includes harvest TL;DR)
-  2. 02_GrooveLinx/uat/findings/mobile-pass2-friction-harvest-2026-05-25.md
-     (full top-10 + emotional UX observations + recommended next fix)
-  3. 02_GrooveLinx/uat/bug_queue.md — new Bugs #20-#27 from harvest
-  4. 02_GrooveLinx/00_Governance/STABILIZATION_QUEUE.md — Medium tier
-     gained 8 Pass 2.5 candidates from harvest
-  5. 02_GrooveLinx/00_Governance/AI_WORKFLOW.md §Session Continuity
-     Protocol (how to run / close this and every future session)
-  6. 02_GrooveLinx/00_Governance/CURRENT_STATE.md
-  7. 02_GrooveLinx/00_Governance/CURRENT_PRIORITIES.md
-  8. 02_GrooveLinx/CURRENT_PHASE.md top entry
+  1. 02_GrooveLinx/CLAUDE_HANDOFF.md top SESSION CLOSE-OUT entry
+     (5-section operational handoff package)
+  2. 02_GrooveLinx/uat/bug_queue.md top entries (six resolutions today)
+  3. 02_GrooveLinx/uat/findings/ — ELEVEN harvest docs from 2026-05-26
+     (calmness → longitudinal → 30-day Pass 1 → 30-day Pass 2 → EAE →
+     intent-vs-exploration → reciprocal-trust → reciprocity-collaborative
+     → consent → discernment-boundary → register-transition)
+  4. 00_Governance/CURRENT_STATE.md
+  5. 00_Governance/CURRENT_PRIORITIES.md
+  6. CURRENT_PHASE.md top entry
+  7. CLAUDE.md §OPERATIONAL DISCIPLINE — 6 load-bearing rules
 
-AUTHORITATIVE (when sources conflict, the LATER item wins):
-  - CLAUDE.md (project rules; SYSTEM LOCKs §7 are absolute)
-  - 00_Governance/* (canonical strategic + architectural truth)
-  - CLAUDE_HANDOFF.md latest session entry (operational truth)
-  - Repo code (factual truth — verify any memory claim before acting)
+AUTHORITATIVE (when sources conflict, LATER wins):
+  - CLAUDE.md (SYSTEM LOCKs §7 are absolute)
+  - 00_Governance/*
+  - CLAUDE_HANDOFF.md latest session entry
+  - Repo code (verify any memory claim before acting)
 
-ACTIVE convergence work (in flight, not yet complete):
-  - Mobile Review Mode Convergence v1 — Passes 1 + 2 SHIPPED
-    (20260525-222102 + 20260525-225157). Passes 3 + 4 designed,
-    awaiting Drew go-ahead. Spec at
-    02_GrooveLinx/specs/mobile_review_mode_convergence_v1.md
-  - Render persistence integration — Review Mode now subscribes to
-    glRenderJobUpdated + surfaces an inline status chip. Closes the
-    "I hope the render worked" emotional failure.
-  - Phase A.5 Custom Mix reverb fix — code shipped, STILL awaits
-    `modal deploy services/multitrack-render/render.py` + Drew audio listen
+OPEN BUGS: #17 architecture-verified · #19 HIGH→MITIGATED. All others
+shipped today (#18 #23 #24 #25 #26 #27 + home-dashboard null-guard).
 
-DEFERRED (Claude-implementable when Drew prioritizes; do NOT pick up
-without explicit go-ahead):
-  - Pass 3 mobile (~200 LOC): mobile tabs [Segments][Comments][Mix][Tools]
-  - Pass 4 mobile (~100 LOC): 6-category tag grouping
-    (Timing/Pitch/Arrangement/Dynamics/Tone/Workflow)
-  - Firebase-backed cross-device render sync (architectural decision
-    flagged — localStorage covers same-device; Firebase would unify across)
-  - C7 Phase 2 (~80 LOC): remaining inline-threshold sites
-  - UAT Lab calendar.stale-panel.desktop contract (~100 LOC)
-  - Recurrence EXDATE/RECURRENCE-ID bug at gl-calendar-sync.js:1591 (~150 LOC)
+PERSISTENT PRODUCTION DATA RESIDUE (flagged for Drew decision):
+  - 5/10 multitrack session (rsess_mt_moz3077x_5793) carries
+    durationSec: 30 / totalActualMin: 1 from yesterday's harvest
+    accidental write. Latent — hidden because 5/18 is more recent in
+    sort. One-line Firebase update would clear it. Untouched per
+    observation-only discipline.
 
-MUST NEVER DRIFT:
-  - SYSTEM LOCKs (CLAUDE.md §7): GL_PAGE_READY lifecycle, focusChanged
-    event model, Firebase error filtering, GLStore.ACTIVE_STATUSES
-  - GLStatus 6-band canonical model (Stab #15) — no inline-threshold drift
-  - GLStore as single state owner — no parallel state holders
-  - Vanilla JS — no React/Vue/Angular/build systems
-  - Drew + ChatGPT own Stab #N numbering + canonical-system declarations
-  - feedback_workbench_no_new_destinations: no new top-level tabs/lenses
-  - feedback_consolidate_dont_retire: consolidate features, never retire paid paths
-  - feedback_ground_truth_over_theater: never decorative simulation of state
-  - Session Continuity Protocol (this file's pinned prompt is part of it)
+THREE ENCODED PHILOSOPHY LINES live in code (worth respecting):
+  - help.js:glCheckOnboarding — "Ambient surfaces may INFORM intent,
+    but may not INTERRUPT intent." (Bug #23)
+  - multitrack-rehearsal.js Isolate construction — "Conductor surfaces
+    temporarily suppress ambient shell presence." (Bugs #24/#25)
+  - multitrack-rehearsal.js:_mtMaybeUpdateDuration — "Truth persists
+    where truth lives." (Bugs #18/#27)
 
-NEXT RECOMMENDED ACTION (single move, not a menu):
-  Drew greenlights the Bug #23 fix as the next ship. Bug #23 (Songs
-  onboarding overlay intercepts unrelated flows) was caught LIVE during
-  the iPhone Safari harvest mid-Mix flow and ChatGPT confirmed it as
-  a HIGH trust-layer candidate ("invisible interaction interception —
-  the app ignored my tap"). Small contained fix (5-30 LOC). It is the
-  cleanest test of whether the trust-layer triage rule + One Musical
-  Truth principle actually change behavior or sit as rhetoric.
-
-  Reverb A/B + Pass 2.5 iPhone Safari emotional validation continue in
-  parallel — those are Drew's ear-on-output / real-device work, not
-  Claude's. The harvest already advanced the DOM-level proof; what
-  remains is the *emotional* + *audible* validation only Drew can do.
-
-  After Bug #23 ships, revised Phase 1 Trust Hardening order is:
-    2. One Musical Truth convergence (collapse focus≠now-reviewing≠
-       playback three-way decoupling)
-    3. Clarify Custom Mix persistence semantics via Session Intent
-       Persistence pattern (NOT a bug fix — explicit product decision
-       between temporary scratch (A) vs persistent authored preference
-       (B); ChatGPT's recommended resolution: persist within session,
-       not globally forever)
-    4. Bug #11 + Bug #26 coherent pair (single auto-highlight gating
-       fix closes both)
-
-  After Drew's real-world validation: roadmap is Phase 1 Trust Hardening
-  (see 00_Governance/CURRENT_PRIORITIES.md). Candidate next moves
-  WITHIN Trust Hardening, ranked by behavioral-evidence weight:
-  - Bug #26 (auto-active-segment highlight cold-open) — visual trust
-    coherence, ~10-20 LOC
-  - Bug #24/#25 (tabbar + chatbot over player) — focus calmness on
-    mobile player surface, ~20-30 LOC combined
-  - Bug #27/#18 (durationSec backfill) — eliminates "0m" stale-state
-    on home page, ~30-50 LOC
-  - STABILIZATION_QUEUE Pass 2.5 candidates (6 remaining Trust-Hardening-
-    aligned entries: now-reviewing label collapse, focus-dim vs auto-
-    highlight, keyboard-hint footer, overflow-tag visibility, player-
-    state-survives-reopen, Possible-prefix confidence duplication)
-
-  DO NOT jump to Phase 2 (Musical Moment System) or beyond without
-  Phase 1 Trust Hardening showing real-world evidence of completeness.
-  Per feedback_observe_before_expand memory: default to observation when
-  no behavioral evidence supports the next move.
-
-  Reverb A/B + Pass 2.5 real-world validation are the gating
-  observations. Recording Ingestion Architecture v1 spec review remains
-  open for Drew + ChatGPT in parallel.
+ELEVEN CANONICAL MEMORIES + ONE NEW TODAY:
+  Standing: project_musical_operational_memory, project_one_musical_truth,
+  project_session_intent_persistence, project_accompaniment_axis,
+  project_prepared_for, feedback_trust_layer_triage_rule,
+  feedback_observe_before_expand, feedback_tooling_tier_discipline,
+  feedback_github_project_sync_mandate, feedback_load_bearing_memory_promotion
+  New 2026-05-26: feedback_uat_hard_reload (hard-reload before UAT
+  screenshots; learned from Drew's correction when Home dashboard
+  finding was initially misattributed to stale cache).
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
-  1. Formalize Stab #15 + GLPriority numbering
-  2. Calendar Model B (soft-cancel with status:'cancelled')
-  3. Operational Prioritization Phase 2 scope
-  4. Firebase-backed render persistence (cross-device sync vs.
-     localStorage same-device) — flagged this session
+  1. Reverb A/B verification (Drew, gating)
+  2. Custom Mix persistence A vs B (Drew + ChatGPT)
+  3. Calendar Model B soft-cancel (Drew + ChatGPT)
+  4. Recording Ingestion sequencing (Drew + ChatGPT)
+  5. Memory framework promotion to CLAUDE.md — One Musical Truth +
+     Accompaniment Axis + Prepared-for + ambient-inviolability principles
+     all eligible per the six-ship arc. Awaiting Drew explicit yes.
+  6. Should deprecated sharpen/lockin/play modes be removed from code (Drew)
+  7. Should 5/10 corrupt durationSec be manually corrected (Drew)
+  8. Should any of the "welcomed-tier" surfacing candidates be
+     experimentally probed in coming weeks (Drew + ChatGPT)
+  9. When does the 77-cluster framework stop being useful (Drew)
 
-OPEN BUGS: #17 architecture-verified · #18 MED (durationSec missing) ·
-#19 HIGH → MITIGATED by Phase A.5 (consumer-side surface added in Pass 2)
+MUST NEVER DRIFT (load-bearing):
+  - SYSTEM LOCKs (CLAUDE.md §7)
+  - Vanilla JS only (no React/Vue/Angular/build systems)
+  - feedback_workbench_no_new_destinations
+  - feedback_consolidate_dont_retire
+  - feedback_ground_truth_over_theater
+  - feedback_observe_before_expand — DOUBLY load-bearing now post-
+    six-ship-day; resist immediately producing new harvest output
+  - The conservative discernment encoded in code IS the product.
+    Don't expand acknowledgment surfaces without specific felt-friction
+    evidence from real use.
+
+NEXT RECOMMENDED ACTION (single move, not a menu):
+  Drew runs a single ~10-minute real-iPhone validation pass on the
+  six-ship day. Specific checks:
+    1. #rehearsal cold open → NO overlay
+    2. Home page renders cleanly with Event Risk Card visible (NEW —
+       was silently absent before today's null-guard; visually evaluate
+       whether the surfaced card feels welcome or like friction)
+    3. "Last rehearsal · Mon, May 18 · 3h 8m" on home Rehearsal
+    4. Open multitrack session → tabbar + fab vanish
+    5. Tap segment → loop sets silently, persists
+    6. Anchor sentence reads grammatically with unresolved count
+
+  Then: OBSERVATION POSTURE. No new ships, no new harvests, no new
+  experiments until specific real-use friction generates the next move.
 
 OUTSTANDING DEPLOY (operator action — Drew, not Claude):
   - `modal deploy services/multitrack-render/render.py` for the
-    Phase A.5 reverb wet-branch ratio boost to take effect
-
-UAT smoke: `node scripts/uat-lab/run.js songs.triage.desktop` should
-PASS in <10s with 0 findings on build 20260525-225157. If it fails,
-that's the first thing to investigate.
+    Phase A.5 reverb wet-branch boost — unchanged from prior session.
 ```
 
 <!-- ============================================================ -->
@@ -205,6 +158,104 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION CLOSE-OUT — 2026-05-27 01:05 UTC — Six-Ship Day + Eleven-Harvest Observation Cycle + Path-1 Hold
+
+**Session summary.** This was the largest single-day session in the project's history. Six code ships across the trust-hardening arc, eleven overnight observation harvests producing the 77-cluster discernment map, one experiment proposal honestly rejected via philosophical re-evaluation, one final null-guard fix on the home dashboard. The strategic synthesis at session-end: the architecture has highly restrained emotional judgment by design, and that restraint IS the product. The next phase is observation, not expansion.
+
+> _Generated via the `/glx-handoff` ritual._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260527-005638` (home-dashboard null-guard fix)
+* **Latest code commit:** `4a2fdfc1` — `fix(home): null-guard _renderEventRiskCard filter (Could not load dashboard)`
+* **HEAD commit:** `ce8445e4` — `docs(handoff+uat): home-dashboard null-guard ship`
+* **Branch:** `main` · **Working tree:** clean
+* **Mode:** WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE — now in OBSERVATION POSTURE
+* **Deployed systems:** browser live on `app.groovelinx.com` (Cloudflare Pages auto-deployed). Modal/Worker/R2/Firebase unchanged from earlier today. Modal Phase A.5 reverb wet-branch boost remains LIVE (still pending Drew's perceptual A/B).
+* **Six ships shipped today** (in chronological order):
+  1. `56ff5a54` Tier 2 Single-Tap Loop MVP — *"the loop is the unit of musical attention"*
+  2. `79557c7d` Working-Thought Restoration P1 — anchor sentence reflects unresolved count
+  3. `9a274456` Bug #23 ambient-inviolability fix — *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent"*
+  4. `1c0180fe` Bugs #24/#25 ambient-spatial-recede — *"Conductor surfaces temporarily suppress ambient shell presence"*
+  5. `c511ba29` Bugs #18/#27 duration backfill — *"Truth persists where truth lives"*
+  6. `4a2fdfc1` home-dashboard null-guard — 5-char fix, Event Risk Card now renders
+* **Eleven overnight harvest docs in `02_GrooveLinx/uat/findings/`:** see §5 below for the canonical list.
+* **Open bugs:** #17 architecture-verified (Bug #18/#19 follow-ons documented) · #19 HIGH→MITIGATED. **Bugs #11, #18, #23, #24, #25, #26, #27 all resolved today.**
+* **Stab work:** unchanged this session. No new Stab numbers issued.
+* **Ten canonical memories standing** (link: `~/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/MEMORY.md`). One new feedback memory created today: `feedback_uat_hard_reload` (hard-reload before UAT screenshots).
+* **Three encoded philosophy lines live in code** at their control points:
+  - `help.js:glCheckOnboarding` — *"Ambient surfaces may INFORM intent, but may not INTERRUPT intent."*
+  - `multitrack-rehearsal.js` Isolate construction — *"Conductor surfaces temporarily suppress ambient shell presence."*
+  - `multitrack-rehearsal.js:_mtMaybeUpdateDuration` — *"Truth persists where truth lives."*
+* **77-cluster harvest framework** across 11 harvests (letters A–YYY). Actual distinct load-bearing findings concentrated in ~5: deprecation decision (register-transition harvest) · Stoner-Mode-as-separate-product · conservative-discernment-encoded · data-shape-gaps · built-but-unwired infrastructure.
+* **Persistent production data residue:** the 5/10 multitrack session `rsess_mt_moz3077x_5793` still carries `durationSec: 30` / `totalActualMin: 1` from yesterday's accidental write during longitudinal harvest Sim 4. Latent — hidden because 5/18 is more recent in the sort. Becomes visible if 5/18 is deleted. Untouched tonight per observation-only discipline.
+
+For canonical project state, see `00_Governance/CURRENT_STATE.md` (this section deliberately does not duplicate).
+
+## 2. CURRENT PRIORITIES
+
+* **NOW —** Drew real-iPhone validation of the six-ship day in a single ~10-minute session. Six ships share the Rehearsal-page → multitrack-player → Home-page surface chain. Specific things to feel: (1) Rehearsal cold open has no overlay (Bug #23), (2) "Last rehearsal · 3h 8m" on Home (Bugs #18/#27), (3) tabbar + fab vanish on player open (Bugs #24/#25), (4) loop persists across close/reopen (Tier 2), (5) anchor sentence reads grammatically (WTR P1), (6) Home dashboard renders cleanly with Event Risk Card now visible (dashboard null-guard). **The Event Risk Card was silently absent in Drew's browser pre-fix; it will now surface — visual evaluation needed.**
+* **NEXT —** **Observation posture.** Per the session's strategic synthesis: no new ships, no new experiments, no new harvests until specific real-use friction generates the next move. Resist the harvest framework's gravity. The architecture has been mapped; let it breathe.
+* **LATER —** Bug #27/#18-class follow-ups if any surface · reverb A/B perceptual verification (Drew, #57) · possible Bug #24/#25 generalization to Live Gig Mode / Rehearsal Mode if those surfaces show similar conflicts · the 5/10 corrupt durationSec correction (one-line Firebase update, defer until Drew explicitly wants the cleanup).
+* **DEFERRED —** WTR P2 investigation-aware filter (explicitly deferred per Drew "do NOT begin WTR P2 yet") · Transition View · Listening Modes · Patterns doorway · Phase 2 Musical Moment System · Phase 3 Recording Ingestion · Phase 4 Homepage Convergence · Phase 5 Real AI Layer · all Tier 2/3 tooling beyond audio-uat (per Tooling Tier Discipline) · the loop-restoration toast experiment (Path 1 hold).
+
+For canonical roadmap, see `00_Governance/CURRENT_PRIORITIES.md`.
+
+## 3. OPEN PRODUCT DECISIONS
+
+1. **Reverb A/B verification** (Drew) — Phase A.5 wet-branch boost still gating perceptual validation.
+2. **Custom Mix persistence semantics A vs B** (Drew + ChatGPT) — unchanged.
+3. **Calendar Model B soft-cancel** (Drew + ChatGPT) — unchanged.
+4. **Recording Ingestion sequencing** (Drew + ChatGPT) — unchanged.
+5. **Memory framework promotion to CLAUDE.md** (Drew) — eligible per the six-ship arc. `project_one_musical_truth` + `project_accompaniment_axis` + `project_prepared_for` + ambient-inviolability principles all met the promotion criteria (3+ shipping decisions, multiple surfaces, Drew greenlight). Awaiting Drew's explicit yes.
+6. **NEW: should the deprecated `sharpen`/`lockin`/`play` product modes be removed from code** (Drew) — register-transition harvest documented they're explicitly deprecated but still tracked informationally. Deletion would simplify the codebase; retention preserves backward compat. Drew's call.
+7. **NEW: should the 5/10 session corrupt `durationSec: 30` be manually corrected** (Drew) — latent residue from yesterday's harvest accident. Currently invisible (5/18 is more recent in sort). Becomes visible if 5/18 is ever deleted. One-line Firebase update would clear it.
+8. **NEW: do any of the "welcomed-tier" surfacing candidates from the EAE/RT harvests deserve experimental probing in the coming weeks** (Drew + ChatGPT) — Path 1 hold tonight was correct, but the open question remains: are there specific real-use moments where the conservative discernment misses something Drew wants surfaced? Revisit when felt-friction emerges.
+9. **NEW: when does the cluster framework stop being useful** (Drew) — 77 clusters across 11 harvests is approaching the limit of letter-coded indexing. Future analysis may want to convert from letter clusters to thematic groups. Defer.
+
+## 4. OPERATIONAL RISKS
+
+* **Six-ship density** — Drew is validating compound surface area in real-device sessions tonight or tomorrow. If any one surface feels off, isolation across six ships may require extra investigation. The audio-uat harness catches technical regressions; only Drew's ear/eye catches the felt-feel issues.
+* **Latent corrupt production data** — the 5/10 session's `durationSec: 30` from yesterday is invisible TODAY but a real time-bomb if 5/18 is deleted. The Bug #27 home-page surface would surface `"Last rehearsal · 1m"` (30s rounds to 1 minute, then 0 minutes depending on rounding path). Flagged in §3.7 for Drew's decision.
+* **Event Risk Card visual addition** — the home-dashboard null-guard fix means a card that has been silently missing in Drew's browser will now render. If that card has visual presence Drew didn't realize was hidden, the fix has surfaced something. Quick visual check is the next-action gate.
+* **Harvest fatigue / framework sprawl risk** — 77 clusters across 11 harvests is at the limit of useful indexing. The next session must resist immediately producing new harvest output. The strategic synthesis at session-end was deliberately final: "freeze the philosophy."
+* **Auto-feedback telemetry remains performative** — console logs `[Feedback] Auto-submitted: onboarding_stall` but Firebase `avatar_feedback` path has 0 entries. Not addressed tonight per observation-only discipline. Real bug, real backlog item, not a harvest finding.
+* **Deprecated product modes still tracked** — `gl_product_mode` localStorage key still updates (e.g., Avatar Guide auto-`setProductMode('play')` on ≥3 songs). Effectively a no-op for UI but dead-code-adjacent. Risk: future developer mistakes the legacy mode flag for active state. Documented in register-transition harvest §3.
+* **Memory framework promotion gap** — the philosophy principles encoded in code (3 lines) and named across the harvest series have NOT been promoted to CLAUDE.md yet. The next agent picking this up may not absorb the encoded restraint unless they read the harvest docs explicitly.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**ONE move:** Drew runs a single ~10-minute real-iPhone validation pass on the six-ship day.
+
+Specific things to confirm:
+1. Cold-open of `#rehearsal` → NO onboarding overlay (Bug #23)
+2. Home page renders cleanly with Event Risk Card surfaced and feeling right (dashboard null-guard side effect)
+3. "Last rehearsal · Mon, May 18 · 3h 8m" on the home Rehearsal section (Bugs #18/#27)
+4. Open a multitrack session → tabbar + avatar fab vanish (Bugs #24/#25)
+5. Tap a segment row → loop sets silently, persists across close/reopen (Tier 2)
+6. Anchor sentence reads grammatically with the unresolved count (WTR P1)
+
+**Then: observation posture.** No new ships. No new harvests. No new experiments until real-use friction generates the next move. Per Drew's strategic synthesis at session-end: *"the system demonstrates remembering. It does not announce remembering."* Honor the discipline.
+
+**Blocker if Drew real-iPhone validation can't happen:** none — the live-build automated invariants all passed. Drew's check is felt-feel validation, not a code gate.
+
+**Eleven harvest docs in repo for asynchronous review:**
+1. `02_GrooveLinx/uat/findings/overnight-calmness-harvest-2026-05-26.md` (Clusters A–G)
+2. `02_GrooveLinx/uat/findings/overnight-longitudinal-continuity-2026-05-26.md` (H–K)
+3. `02_GrooveLinx/uat/findings/overnight-30day-bandlife-simulation-2026-05-26.md` (L–U)
+4. `02_GrooveLinx/uat/findings/overnight-30day-bandlife-pass2-saturation-2026-05-26.md` (V–AA)
+5. `02_GrooveLinx/uat/findings/overnight-emotional-authority-evolution-2026-05-26.md` (BB–II)
+6. `02_GrooveLinx/uat/findings/overnight-intent-vs-exploration-2026-05-26.md` (JJ–PP)
+7. `02_GrooveLinx/uat/findings/overnight-reciprocal-trust-2026-05-26.md` (QQ–XX)
+8. `02_GrooveLinx/uat/findings/overnight-reciprocity-collaborative-emotional-2026-05-26.md` (YY–DDD)
+9. `02_GrooveLinx/uat/findings/overnight-consent-2026-05-26.md` (EEE–KKK)
+10. `02_GrooveLinx/uat/findings/overnight-discernment-boundary-2026-05-26.md` (LLL–RRR)
+11. `02_GrooveLinx/uat/findings/overnight-register-transition-2026-05-26.md` (SSS–YYY)
+
+Drew + ChatGPT review at leisure; no urgency.
 
 ---
 
