@@ -1289,9 +1289,24 @@ async function _rhRenderCommandFlow(el) {
                 + '<span class="gl-section-label" style="padding:0;margin:0">History</span>'
                 + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
                 + '<div style="padding:0 14px 10px">'
+                // "Add rehearsal" promoted to a primary tile (Drew 2026-05-27)
+                // — operator-side ingest guide. Filled green to match the
+                // Ingest Cockpit accent so the visual relationship reads at
+                // a glance: this button explains how a rehearsal ends up in
+                // the cockpit + Review Mode.
+                + '<button onclick="_mtOpenImportModal()" title="How to add a new multitrack rehearsal — operator-side guide"'
+                + ' style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;margin-bottom:8px;'
+                + 'padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.35);'
+                + 'background:linear-gradient(135deg,rgba(34,197,94,0.16),rgba(99,102,241,0.08));'
+                + 'color:#bbf7d0;font-family:inherit;font-weight:700;font-size:0.82em;cursor:pointer;'
+                + 'transition:transform 0.08s,box-shadow 0.15s"'
+                + ' onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 6px 18px rgba(34,197,94,0.18)\'"'
+                + ' onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'
+                + '<span style="display:flex;align-items:center;gap:8px"><span style="font-size:1.2em">📖</span><span>How to add a rehearsal</span></span>'
+                + '<span style="font-size:0.82em;opacity:0.7">→</span>'
+                + '</button>'
                 + '<div style="margin-bottom:6px;display:flex;gap:4px;flex-wrap:wrap">'
                 + '<button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button>'
-                + '<button onclick="_mtOpenImportModal()" title="How to add a new multitrack rehearsal — operator-side guide" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">📖 How to add rehearsal</button>'
                 + '</div>'
                 + '<div id="rhSessionHistory"></div>'
                 + '</div></details>';
