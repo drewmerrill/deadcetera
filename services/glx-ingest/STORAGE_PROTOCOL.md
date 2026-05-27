@@ -42,7 +42,11 @@ rm ~/Rehearsals/<date>/FULL_REHEARSAL.wav   # frees ~64 GB
 
 The card you just recorded onto is the only physical copy of an unverified rehearsal (until you do step 1 above — even then it's the most recent physical backup). Don't wipe it tonight. Put it back in the bag as-is.
 
-## Weekly rotation (the two-card system) — corrected
+## Weekly rotation — the headline rule
+
+**Leave the last-recorded rehearsal on a card for a week. Only reformat the one from two weeks ago.** (Drew, 2026-05-27.)
+
+That sentence is the whole protocol. Everything below it is just the timeline view of the same rule.
 
 The wipe is associated with **re-insertion**, not with the just-completed recording. You wipe the OLDER card (which has been verified-in-cloud for a week+) just before putting it into the X32 for the next rehearsal.
 
