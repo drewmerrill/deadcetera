@@ -6,13 +6,14 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-27 02:00 UTC (session close-out) · Build under test: `20260527-005638` (unchanged; no code shipped this session) · Branch: `main` · Mode: **SHELL INTEGRITY PHASE — pre-fix architectural mapping required**. The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-27 11:35 UTC (Feed null-guard hotfix shipped) · Build under test: `20260527-113347` (commit `e65dbcc5` — F-016 stabilized) · Branch: `main` · Mode: **SHELL INTEGRITY PHASE — pre-fix architectural mapping required**. The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260527-005638 (unchanged from prior session —
-no code shipped overnight), branch main, live on app.groovelinx.com.
+GrooveLinx is at build 20260527-113347 (commit e65dbcc5 — Feed render
+null-guard hotfix shipped 11:35 UTC), branch main, live on
+app.groovelinx.com.
 
 PHASE: SHELL INTEGRITY — pre-fix architectural mapping required.
 
@@ -111,11 +112,19 @@ AUTHORITATIVE (when sources conflict, LATER wins):
   - CLAUDE_HANDOFF.md latest session entry
   - Repo code (verify any memory claim before acting)
 
-OPEN BUGS (pre-audit baseline carries over):
+OPEN BUGS:
   - #17 architecture-verified
   - #19 HIGH→MITIGATED
-  - All audit findings are NEW (not yet triaged into bug_queue —
-    deferred until after CO-Truth Audit per discipline above)
+  - F-016 (Feed render error) RESOLVED 2026-05-27 11:33 UTC via narrow
+    surgical null-guard. Root-cause (GLPriority dual-definition collision)
+    deferred to CO-Truth Audit per discipline.
+  - F-018 (iPhone primary-nav P0) RETRACTED 2026-05-27 09:15 UTC as
+    investigator error. Bottom tab bar IS visible. Hotfix cancelled
+    before merge. Audit instrumentation discipline saved as
+    feedback_audit_instrumentation_discipline.
+  - Other audit findings (F-001..F-021 minus F-016 and F-018) still
+    in FINDINGS_LIVE.md only; not yet triaged into bug_queue. Deferred
+    until after CO-Truth Audit per Shell Integrity discipline.
 
 PERSISTENT PRODUCTION DATA RESIDUE (unchanged from prior session):
   - 5/10 multitrack session (rsess_mt_moz3077x_5793) carries
@@ -129,7 +138,7 @@ THREE ENCODED PHILOSOPHY LINES still live in code:
   - multitrack-rehearsal.js:_mtMaybeUpdateDuration — "Truth persists
     where truth lives."
 
-ELEVEN CANONICAL MEMORIES + ONE NEW TODAY:
+ELEVEN CANONICAL MEMORIES + TWO NEW TODAY:
   Standing: project_musical_operational_memory, project_one_musical_truth,
   project_session_intent_persistence, project_accompaniment_axis,
   project_prepared_for, feedback_trust_layer_triage_rule,
@@ -139,7 +148,11 @@ ELEVEN CANONICAL MEMORIES + ONE NEW TODAY:
   NEW 2026-05-27: project_shell_integrity_phase — post-audit phase frame.
   Music-cognition core = validated moat (protect). Shell orchestration
   = next architectural frontier. Authority fragmentation = architectural
-  P0. iPhone nav = operational P0. CO-Truth Audit precedes bug-by-bug.
+  P0. iPhone nav P0 RETRACTED. CO-Truth Audit precedes bug-by-bug.
+  NEW 2026-05-27: feedback_audit_instrumentation_discipline — visibility
+  via bounding-rect + viewport intersection (NOT offsetParent);
+  selector discipline by ID/class/tag/role; trust screenshot over DOM
+  probe; pre-merge re-verification for "unreachable" claims.
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Reverb A/B verification (Drew, gating)
@@ -149,13 +162,20 @@ OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   5. Memory framework promotion to CLAUDE.md (Drew)
   6. Deprecated sharpen/lockin/play mode removal (Drew)
   7. 5/10 corrupt durationSec manual correction (Drew)
-  8. NEW: greenlight on Canonical Operational Truth Audit as next
-     architectural mapping pass (Drew)
-  9. NEW: iPhone nav hotfix — ship a visible hamburger trigger ahead
-     of CO-Truth Audit, or hold and bundle as P0 in CO-Truth scope?
-     (Drew)
-  10. NEW: Feed page fix — same shape as yesterday's home-dashboard
-     null-guard. Hotfix or hold for CO-Truth bundle? (Drew)
+  8. Canonical Operational Truth Audit GREENLIGHTED 2026-05-27 — next
+     architectural mapping pass. Drew's framing: "which surface is
+     authoritative?" not "where logic exists." Inventory ownership.
+  9. iPhone nav hotfix CANCELLED — investigator error, hamburger
+     trigger NOT needed (bottom tab bar already works on iPhone).
+  10. Feed page hotfix SHIPPED 2026-05-27 11:33 UTC as narrow surgical
+     null-guard. Root cause (GLPriority collision) deferred to
+     CO-Truth Audit per Drew's "coherence over theoretical purity"
+     discipline.
+  11. NEW: /ultrareview recommendation. The Feed hotfix is trust-
+     layer per CLAUDE.md §INDEPENDENT REVIEW. Drew may choose to
+     run /ultrareview on commit e65dbcc5 as a safety check before
+     considering the stabilization fully closed. Optional; the fix
+     is verified live and the guard cannot fail safely.
 
 MUST NEVER DRIFT (load-bearing):
   - SYSTEM LOCKs (CLAUDE.md §7)
@@ -170,11 +190,14 @@ MUST NEVER DRIFT (load-bearing):
     phase. Adding features to them is the wrong move.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Drew greenlights (or amends) the Canonical Operational Truth Audit
-  as the next architectural mapping pass. If Drew confirms, the next
-  session executes that audit (mapping inventory only — still no
-  fixes). If Drew wants the iPhone-nav P0 hotfixed first, that's a
-  ~5-line single-element addition to the topbar; confirm before doing.
+  Begin the Canonical Operational Truth Audit. Drew greenlighted at
+  09:15 UTC. The Feed hotfix is shipped + verified. iPhone nav P0
+  retracted. CO-Truth Audit is now the highest-leverage architectural
+  task. Output target: a single mapping doc inventorying authority
+  ownership across recommendation, urgency, readiness, breadcrumb,
+  route, restoration, shell-state, dashboard, and player-context
+  surfaces. NO fixes during the mapping pass — purely descriptive
+  inventory.
 
 OUTSTANDING DEPLOY (operator action — Drew, not Claude):
   - `modal deploy services/multitrack-render/render.py` for the
@@ -191,6 +214,19 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 POST-HANDOFF UPDATE — 2026-05-27 11:35 UTC — Feed Hotfix Shipped · iPhone-Nav P0 Retracted · CO-Truth Audit Greenlighted
+
+After the saturation-audit handoff was committed, Drew greenlighted the three gates. Two events flowed:
+
+1. **iPhone-nav hotfix (F-018) RETRACTED before merge.** When I went to find the code to patch, I verified the actual iPhone state and discovered the `#glBottomTabs` bottom tab bar IS visible and IS the primary mobile nav. The audit's F-018 finding was investigator error — my probe used a wrong selector (`[class*=tab-bar]` matched only `.sd-tab-bar`) and a wrong visibility check (`offsetParent` is always null for `position:fixed` elements). Reported the retraction to Drew before patching; the hotfix was cancelled with explicit acknowledgement that catching the false P0 is the discipline pattern Shell Integrity requires.
+2. **Feed null-guard hotfix (F-016) SHIPPED 11:33 UTC** as build `20260527-113347` (commit `e65dbcc5`). Two-line conjunctive `typeof method === 'function'` guard at `band-feed.js:2052` (forRsvpEvent) and `:2068` (forAction). Live-build verification: Feed page now renders 4 Needs-You items with full content, fallback "RSVP needed" labels appear correctly, zero console errors. The two-GLPriority-definitions root cause (gl-priority.js:248 collides with gl-decision-language.js:248 based on load order) is deferred to the CO-Truth Audit per Drew's "coherence over theoretical purity" discipline.
+
+**New memory captured 2026-05-27:** `feedback_audit_instrumentation_discipline.md` — audit-tooling rules learned the hard way. Visibility via bounding-rect + viewport intersection (not offsetParent — fails for fixed-position). Selector discipline by ID + class + tag + role. Trust the screenshot over the DOM probe. Pre-merge re-verification for "unreachable" claims. Drew framed this explicitly as tooling maturity, not investigator error.
+
+**Phase principle re-anchored by Drew at greenlight:** *"Coherence over theoretical purity. Do not prematurely solve architecture while stabilizing user-facing ruptures."* Correct sequence: (1) stabilize obvious trust-poisoning defects, (2) map canonical authority ownership, (3) reconcile fragmented truth sources carefully. Step 1 is now complete for Feed. Step 2 is the next major inflection point: the Canonical Operational Truth Audit.
 
 ---
 
