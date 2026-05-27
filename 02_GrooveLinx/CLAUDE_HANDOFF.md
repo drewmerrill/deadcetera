@@ -6,66 +6,103 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-27 01:05 UTC (session close-out) · Build under test: `20260527-005638` (commit `4a2fdfc1` code, `ce8445e4` docs, head `ce8445e4`) · Branch: `main` · Mode: **WORKFLOW REFINEMENT + OPERATIONAL INTELLIGENCE PHASE — OBSERVATION POSTURE** · **SIX ships shipped in one day** (Tier 2 Single-Tap Loop → WTR P1 → Bug #23 ambient-inviolability TIME → Bugs #24/#25 ambient-inviolability SPACE → Bugs #18/#27 opportunistic duration backfill → home-dashboard null-guard) plus **ELEVEN overnight observation harvests** (calmness · longitudinal · 30-day Pass-1 · 30-day Pass-2 saturation · emotional authority evolution · intent vs exploration · reciprocal trust · reciprocity-collaborative · consent · discernment boundary · register transition) mapping the system's encoded discernment architecture across 77 cumulative clusters. **One experiment proposal (loop-restoration toast) → Path 1 hold (decision: don't ship; anchor sentence already does the acknowledgment correctly).** **STRATEGIC SYNTHESIS:** the system has highly restrained emotional judgment by design — milestone-only celebration, multi-tier cooldowns, "Hands-off Band Coach" persona, music-time silence, explicitly-deprecated multi-register UI gating. The system "demonstrates remembering. It does not announce remembering." The architecture has consciously rejected adaptive emotional routing. Honor that. **Next phase: OBSERVATION.** Let the six ships settle. No new harvests. No new experiments. Micro-interventions only, when real-use friction generates the next move. **Ten canonical memories standing.** Plus Tier 1 tooling. **GitHub Project sync mandatory.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker #67) · System Memory._
+_Last refreshed: 2026-05-27 02:00 UTC (session close-out) · Build under test: `20260527-005638` (unchanged; no code shipped this session) · Branch: `main` · Mode: **SHELL INTEGRITY PHASE — pre-fix architectural mapping required**. The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260527-005638 (head ce8445e4, last code commit
-4a2fdfc1 — home-dashboard null-guard), branch main, live on
-app.groovelinx.com. Modal/Worker/R2/Firebase unchanged from yesterday;
-Phase A.5 reverb LIVE awaiting Drew perceptual A/B.
+GrooveLinx is at build 20260527-005638 (unchanged from prior session —
+no code shipped overnight), branch main, live on app.groovelinx.com.
 
-PHASE: Workflow Refinement + Operational Intelligence — currently in
-OBSERVATION POSTURE. Per Drew's strategic synthesis at session close:
-"the system demonstrates remembering. It does not announce remembering."
-The architecture has highly restrained emotional judgment by design.
-The next phase is observation, not expansion. No new ships, no new
-harvests, no new experiments until specific real-use friction generates
-the next move.
+PHASE: SHELL INTEGRITY — pre-fix architectural mapping required.
 
-YESTERDAY (2026-05-26) WAS THE LARGEST SINGLE-DAY SESSION IN PROJECT
-HISTORY. Six code ships across the trust-hardening arc:
-  1. Tier 2 Single-Tap Loop MVP (56ff5a54) — the loop is the unit of
-     musical attention
-  2. Working-Thought Restoration P1 (79557c7d) — anchor sentence
-     reflects unresolved count
-  3. Bug #23 ambient-inviolability (9a274456) — "Ambient surfaces may
-     INFORM intent, but may not INTERRUPT intent"
-  4. Bugs #24/#25 ambient-spatial-recede (1c0180fe) — "Conductor
-     surfaces temporarily suppress ambient shell presence"
-  5. Bugs #18/#27 opportunistic duration backfill (c511ba29) — "Truth
-     persists where truth lives"
-  6. home-dashboard null-guard (4a2fdfc1) — 5-char fix, Event Risk Card
-     now renders (was silently swallowed before)
+The 2026-05-27 overnight FULL-SURFACE OPERATIONAL SATURATION AUDIT
+answered "where is the real fragility?" — and the answer reframed
+the phase. The audit was deterministic systems work, NOT philosophical
+interpretation. Outputs at:
+  02_GrooveLinx/uat/saturation_audit_2026-05-27/
+    reports/00_README.md   ← start here
+    reports/04_top_10_findings.md
+    reports/05_surprisingly_good.md
+    reports/03_operational_coherence.md
+    reports/01_traversal_map.md
+    reports/02_console_harvest.md
+    reports/06_screenshot_index.md
+    FINDINGS_LIVE.md       ← append-only F-001..F-021 + G-001..G-009
+    desktop/route-probe.json  ← definitive route map (36 routes)
+    desktop/ ipad-portrait/ ipad-landscape/ iphone/   ← 39 screenshots
+    console/               ← exported logs
 
-Plus ELEVEN overnight observation harvests producing the 77-cluster
-discernment map. Findings concentrated in ~5 distinct truths:
-  - Multi-register UI gating EXPLICITLY DEPRECATED (gl-product-mode.js
-    source comment)
-  - Stoner Mode is a SEPARATE FULL-SCREEN PRODUCT, not a voice register
-  - Conservative discernment encoded across 8 tiers (showToast on saves
-    only, _sdCelebrate on 5/5 first-cross only, 5-tier cooldown
-    architecture, max-2-tips-per-day, "Hands-off Band Coach" persona)
-  - Data-shape gaps (no last_practiced, no viewCount, etc.)
-  - Built-but-unwired infrastructure (acknowledgment hooks exist but
-    aren't wired to attention-pattern moments)
+VALIDATED AS MOAT (PROTECT — do not touch unprompted):
+  - Song-detail drawer (auto-generated per-song practice plan
+    reasoning about per-member readiness, vote state, weak link)
+  - Rehearsal page (prepared-for at depth — tonight's flow, plan
+    history, latest review, ingest CTA)
+  - Stoner Mode (3-button intent menu — discipline holds)
+  - Setlists (disambiguation copy, time-aware framing)
+  - Gigs coordination (per-member confirmation, per-role coverage
+    with severity gradient)
+  - GrooveMate Hands-on/Balanced/Hands-off tri-state
 
-One experiment proposal (loop-restoration toast acknowledgment) was
-honestly REJECTED via philosophical re-evaluation. The anchor sentence
-already does that work in user-invited chrome. Path 1 hold was correct.
+  The music-cognition layer IS the moat. Empirical, not asserted.
+
+FRONTIER (Shell Integrity Phase):
+  - Route truth
+  - Breadcrumb truth
+  - URL truth (incl. drawer-state deep-link)
+  - Restoration truth
+  - Dashboard determinism
+  - Canonical recommendation source
+  - Navigation coherence
+  - Shell continuity
+  - Cross-surface orchestration
+
+ARCHITECTURAL P0 — AUTHORITY FRAGMENTATION:
+  Home / Songs / Practice give three different "what to work on next"
+  answers via three different selection rules:
+    Home     → Frankenstein (never practiced)
+    Songs    → One Way Out (2.5/5)
+    Practice → In Memory of Elizabeth Reed (1.0/5)
+  Until ONE canonical operational-truth layer exists, trust remains
+  unstable. This — NOT the Feed error — is the architectural P0.
+
+OPERATIONAL P0 — iPHONE NAV UNREACHABLE:
+  Slide menu containing 32 nav links is rendered at x=-300 (off-screen).
+  Zero visible elements call toggleMenu(). Only Home / Calendar /
+  Stoner Mode / Admin / Google-Drive-auth are reachable from iPhone
+  chrome. Songs / Practice / Rehearsal / Setlists / Tuner / Metronome /
+  Playlists / Gigs / Stage Plot / Venues / Contacts / Band Room /
+  Feed / Care Packages / Equipment / Help are all UNREACHABLE from
+  primary mobile chrome. If navigation becomes unreachable, the
+  philosophy becomes irrelevant.
+
+DISCIPLINE — DO NOT IMMEDIATELY FIX BUG-BY-BUG:
+  21 findings (F-001..F-021) likely share root causes — distributed
+  truth sources, breadcrumb authority drift, route-resolution
+  inconsistency. Bug-by-bug remediation without root mapping will
+  produce regressions and miss the architectural fix.
+
+  Propose the CANONICAL OPERATIONAL TRUTH AUDIT before shipping any
+  shell-layer fix. Inventory every source of "what matters now,"
+  every recommendation engine, every breadcrumb authority, every
+  route authority, every page-restoration authority, every shell-
+  state authority. Single-source-of-truth mapping precedes fixes.
+
+  EXCEPTION CANDIDATE: iPhone-nav P0 may warrant a small hotfix
+  (add a visible hamburger trigger) ahead of the CO-Truth Audit
+  because navigation reachability is foundational. Confirm with Drew
+  before treating as exempt.
+
+  Music-cognition surfaces (the moat list above) are OFF-CRITICAL-
+  PATH for this phase. Adding features to them is wrong tempo.
 
 READ FIRST (in order — repo docs win over chat memory):
-  1. 02_GrooveLinx/CLAUDE_HANDOFF.md top SESSION CLOSE-OUT entry
-     (5-section operational handoff package)
-  2. 02_GrooveLinx/uat/bug_queue.md top entries (six resolutions today)
-  3. 02_GrooveLinx/uat/findings/ — ELEVEN harvest docs from 2026-05-26
-     (calmness → longitudinal → 30-day Pass 1 → 30-day Pass 2 → EAE →
-     intent-vs-exploration → reciprocal-trust → reciprocity-collaborative
-     → consent → discernment-boundary → register-transition)
-  4. 00_Governance/CURRENT_STATE.md
-  5. 00_Governance/CURRENT_PRIORITIES.md
-  6. CURRENT_PHASE.md top entry
+  1. 02_GrooveLinx/uat/saturation_audit_2026-05-27/reports/00_README.md
+  2. 02_GrooveLinx/uat/saturation_audit_2026-05-27/reports/04_top_10_findings.md
+  3. 02_GrooveLinx/uat/saturation_audit_2026-05-27/FINDINGS_LIVE.md
+  4. 02_GrooveLinx/CLAUDE_HANDOFF.md top entry (5-section package)
+  5. 00_Governance/CURRENT_STATE.md
+  6. 00_Governance/CURRENT_PRIORITIES.md
   7. CLAUDE.md §OPERATIONAL DISCIPLINE — 6 load-bearing rules
 
 AUTHORITATIVE (when sources conflict, LATER wins):
@@ -74,47 +111,51 @@ AUTHORITATIVE (when sources conflict, LATER wins):
   - CLAUDE_HANDOFF.md latest session entry
   - Repo code (verify any memory claim before acting)
 
-OPEN BUGS: #17 architecture-verified · #19 HIGH→MITIGATED. All others
-shipped today (#18 #23 #24 #25 #26 #27 + home-dashboard null-guard).
+OPEN BUGS (pre-audit baseline carries over):
+  - #17 architecture-verified
+  - #19 HIGH→MITIGATED
+  - All audit findings are NEW (not yet triaged into bug_queue —
+    deferred until after CO-Truth Audit per discipline above)
 
-PERSISTENT PRODUCTION DATA RESIDUE (flagged for Drew decision):
+PERSISTENT PRODUCTION DATA RESIDUE (unchanged from prior session):
   - 5/10 multitrack session (rsess_mt_moz3077x_5793) carries
-    durationSec: 30 / totalActualMin: 1 from yesterday's harvest
-    accidental write. Latent — hidden because 5/18 is more recent in
-    sort. One-line Firebase update would clear it. Untouched per
-    observation-only discipline.
+    durationSec: 30 / totalActualMin: 1. Latent. Untouched.
 
-THREE ENCODED PHILOSOPHY LINES live in code (worth respecting):
+THREE ENCODED PHILOSOPHY LINES still live in code:
   - help.js:glCheckOnboarding — "Ambient surfaces may INFORM intent,
-    but may not INTERRUPT intent." (Bug #23)
+    but may not INTERRUPT intent."
   - multitrack-rehearsal.js Isolate construction — "Conductor surfaces
-    temporarily suppress ambient shell presence." (Bugs #24/#25)
+    temporarily suppress ambient shell presence."
   - multitrack-rehearsal.js:_mtMaybeUpdateDuration — "Truth persists
-    where truth lives." (Bugs #18/#27)
+    where truth lives."
 
 ELEVEN CANONICAL MEMORIES + ONE NEW TODAY:
   Standing: project_musical_operational_memory, project_one_musical_truth,
   project_session_intent_persistence, project_accompaniment_axis,
   project_prepared_for, feedback_trust_layer_triage_rule,
   feedback_observe_before_expand, feedback_tooling_tier_discipline,
-  feedback_github_project_sync_mandate, feedback_load_bearing_memory_promotion
-  New 2026-05-26: feedback_uat_hard_reload (hard-reload before UAT
-  screenshots; learned from Drew's correction when Home dashboard
-  finding was initially misattributed to stale cache).
+  feedback_github_project_sync_mandate, feedback_load_bearing_memory_promotion,
+  feedback_uat_hard_reload
+  NEW 2026-05-27: project_shell_integrity_phase — post-audit phase frame.
+  Music-cognition core = validated moat (protect). Shell orchestration
+  = next architectural frontier. Authority fragmentation = architectural
+  P0. iPhone nav = operational P0. CO-Truth Audit precedes bug-by-bug.
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Reverb A/B verification (Drew, gating)
   2. Custom Mix persistence A vs B (Drew + ChatGPT)
   3. Calendar Model B soft-cancel (Drew + ChatGPT)
   4. Recording Ingestion sequencing (Drew + ChatGPT)
-  5. Memory framework promotion to CLAUDE.md — One Musical Truth +
-     Accompaniment Axis + Prepared-for + ambient-inviolability principles
-     all eligible per the six-ship arc. Awaiting Drew explicit yes.
-  6. Should deprecated sharpen/lockin/play modes be removed from code (Drew)
-  7. Should 5/10 corrupt durationSec be manually corrected (Drew)
-  8. Should any of the "welcomed-tier" surfacing candidates be
-     experimentally probed in coming weeks (Drew + ChatGPT)
-  9. When does the 77-cluster framework stop being useful (Drew)
+  5. Memory framework promotion to CLAUDE.md (Drew)
+  6. Deprecated sharpen/lockin/play mode removal (Drew)
+  7. 5/10 corrupt durationSec manual correction (Drew)
+  8. NEW: greenlight on Canonical Operational Truth Audit as next
+     architectural mapping pass (Drew)
+  9. NEW: iPhone nav hotfix — ship a visible hamburger trigger ahead
+     of CO-Truth Audit, or hold and bundle as P0 in CO-Truth scope?
+     (Drew)
+  10. NEW: Feed page fix — same shape as yesterday's home-dashboard
+     null-guard. Hotfix or hold for CO-Truth bundle? (Drew)
 
 MUST NEVER DRIFT (load-bearing):
   - SYSTEM LOCKs (CLAUDE.md §7)
@@ -122,30 +163,22 @@ MUST NEVER DRIFT (load-bearing):
   - feedback_workbench_no_new_destinations
   - feedback_consolidate_dont_retire
   - feedback_ground_truth_over_theater
-  - feedback_observe_before_expand — DOUBLY load-bearing now post-
-    six-ship-day; resist immediately producing new harvest output
-  - The conservative discernment encoded in code IS the product.
-    Don't expand acknowledgment surfaces without specific felt-friction
-    evidence from real use.
+  - feedback_observe_before_expand
+  - project_shell_integrity_phase — do NOT bug-by-bug fix the 21
+    audit findings. Root-cause mapping FIRST.
+  - The music-cognition moat surfaces are OFF-CRITICAL-PATH this
+    phase. Adding features to them is the wrong move.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Drew runs a single ~10-minute real-iPhone validation pass on the
-  six-ship day. Specific checks:
-    1. #rehearsal cold open → NO overlay
-    2. Home page renders cleanly with Event Risk Card visible (NEW —
-       was silently absent before today's null-guard; visually evaluate
-       whether the surfaced card feels welcome or like friction)
-    3. "Last rehearsal · Mon, May 18 · 3h 8m" on home Rehearsal
-    4. Open multitrack session → tabbar + fab vanish
-    5. Tap segment → loop sets silently, persists
-    6. Anchor sentence reads grammatically with unresolved count
-
-  Then: OBSERVATION POSTURE. No new ships, no new harvests, no new
-  experiments until specific real-use friction generates the next move.
+  Drew greenlights (or amends) the Canonical Operational Truth Audit
+  as the next architectural mapping pass. If Drew confirms, the next
+  session executes that audit (mapping inventory only — still no
+  fixes). If Drew wants the iPhone-nav P0 hotfixed first, that's a
+  ~5-line single-element addition to the topbar; confirm before doing.
 
 OUTSTANDING DEPLOY (operator action — Drew, not Claude):
   - `modal deploy services/multitrack-render/render.py` for the
-    Phase A.5 reverb wet-branch boost — unchanged from prior session.
+    Phase A.5 reverb wet-branch boost — still unchanged.
 ```
 
 <!-- ============================================================ -->
@@ -161,7 +194,95 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 
 ---
 
-# 📍 SESSION CLOSE-OUT — 2026-05-27 01:05 UTC — Six-Ship Day + Eleven-Harvest Observation Cycle + Path-1 Hold
+# 📍 SESSION CLOSE-OUT — 2026-05-27 02:00 UTC — Full-Surface Operational Saturation Audit · Shell Integrity Phase Declared
+
+**Session summary.** Overnight deterministic systems audit per Drew's brief: full-surface operational coherence assessment across desktop (1440×900) / iPad landscape (1024×768) / iPad portrait (768×1024) / iPhone 14 (390×844). 36 hash routes probed deterministically. 39 screenshots captured. 21 findings (F-001..F-021) + 9 positive surfaces (G-001..G-009). One console error (Feed render). Drew's strategic synthesis at close: **musical-cognition core = validated moat (PROTECT)**; **shell orchestration = next architectural frontier**. **Architectural P0: authority fragmentation.** **Operational P0: iPhone primary-nav unreachable.** **Discipline: do NOT immediately fix bug-by-bug — Canonical Operational Truth Audit must precede shell-layer remediation.** No code shipped this session — audit was observation-only by brief.
+
+> _Generated via the `/glx-handoff` ritual._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260527-005638` (unchanged — no code shipped this session)
+* **Latest code commit:** `4a2fdfc1` — `fix(home): null-guard _renderEventRiskCard filter` (from prior session)
+* **HEAD commit:** `45c883be` — `docs(handoff): session close-out 2026-05-27 — six-ship day + eleven-harvest observation cycle` (from prior session)
+* **Branch:** `main` · **Working tree:** clean apart from the new untracked audit directory at `02_GrooveLinx/uat/saturation_audit_2026-05-27/`
+* **Mode:** **SHELL INTEGRITY PHASE** — declared at session close per Drew's synthesis. Music-cognition core is now explicitly protected; shell orchestration is the architectural frontier; pre-fix mapping is required before any shell-layer remediation.
+* **Deployed systems:** browser live on `app.groovelinx.com` (unchanged from prior session). Modal/Worker/R2/Firebase unchanged. Modal Phase A.5 reverb wet-branch boost remains LIVE pending Drew perceptual A/B.
+* **Audit artifacts in repo at `02_GrooveLinx/uat/saturation_audit_2026-05-27/`:**
+  * `reports/00_README.md` — index + one-paragraph summary
+  * `reports/01_traversal_map.md` — 36 routes probed, working vs broken, modals visited, unreachable surfaces
+  * `reports/02_console_harvest.md` — error/warning inventory (1 real error: Feed render)
+  * `reports/03_operational_coherence.md` — texture read across 8 dimensions
+  * `reports/04_top_10_findings.md` — TOP 10 capped list, trust-layer weighted
+  * `reports/05_surprisingly_good.md` — 9 mature/positive surfaces
+  * `reports/06_screenshot_index.md` — file-by-file pointer to the archive
+  * `FINDINGS_LIVE.md` — append-only F-001..F-021 + G-001..G-009 source-of-truth
+  * `desktop/route-probe.json` — definitive route map (36 routes, breadcrumb + heading + first words)
+  * `desktop/` `ipad-portrait/` `ipad-landscape/` `iphone/` — 39 screenshots
+  * `console/all-errors.log` / `all-warnings.log` — exported logs
+* **21 audit findings (F-001..F-021)** + **9 positive surfaces (G-001..G-009)** — full list in `FINDINGS_LIVE.md`. Not yet triaged into `uat/bug_queue.md` — deferred until after CO-Truth Audit per discipline below.
+* **Open bugs (pre-audit baseline):** #17 architecture-verified · #19 HIGH→MITIGATED. Audit findings are NEW and not yet in bug queue.
+* **Eleven canonical memories + one new today:** `project_shell_integrity_phase` (post-audit phase frame). MEMORY.md updated.
+* **Persistent production data residue (unchanged):** 5/10 multitrack session `rsess_mt_moz3077x_5793` `durationSec: 30` / `totalActualMin: 1`. Latent. Untouched.
+
+For canonical project state, see `00_Governance/CURRENT_STATE.md` (this section deliberately does not duplicate).
+
+## 2. CURRENT PRIORITIES
+
+* **NOW —** Drew reviews the saturation audit reports (start at `02_GrooveLinx/uat/saturation_audit_2026-05-27/reports/00_README.md`, then top-10 findings, then surprisingly-good). Decides whether to greenlight the **Canonical Operational Truth Audit** as the next architectural mapping pass. Decides whether iPhone-nav P0 warrants pre-CO-Truth hotfix vs bundling into the audit scope.
+* **NEXT —** Pending Drew greenlight: execute the Canonical Operational Truth Audit. Mapping inventory only — still no fixes. Identifies every source of "what matters now," every recommendation engine, every breadcrumb authority, every route authority, every page-restoration authority, every shell-state authority. Single-source-of-truth mapping precedes any shell-layer remediation.
+* **LATER —** Once the CO-Truth Audit is complete: a consolidation pass that unifies authority (one source for "what matters now"), unifies route resolution (canonical hash forms with redirects from legacy variants), unifies breadcrumb authority, and unifies recommendation source. Then individual shell-layer bugs become near-trivial because they share a root.
+* **DEFERRED —** All music-cognition feature work (Song detail extensions, Rehearsal page extensions, Stoner Mode extensions, Setlists extensions, Gigs extensions, GrooveMate behavior extensions). These surfaces are the validated moat; adding features to them is the wrong tempo this phase. Also deferred: all items from prior session that remain queued (WTR P2, Transition View, Listening Modes, Patterns doorway, Phase 2/3/4/5 expansions, etc.).
+
+For canonical roadmap, see `00_Governance/CURRENT_PRIORITIES.md`.
+
+## 3. OPEN PRODUCT DECISIONS
+
+Carried forward from prior session unless marked NEW:
+
+1. **Reverb A/B verification** (Drew) — Phase A.5 wet-branch boost still gating perceptual validation.
+2. **Custom Mix persistence semantics A vs B** (Drew + ChatGPT) — unchanged.
+3. **Calendar Model B soft-cancel** (Drew + ChatGPT) — unchanged.
+4. **Recording Ingestion sequencing** (Drew + ChatGPT) — unchanged.
+5. **Memory framework promotion to CLAUDE.md** (Drew) — `project_one_musical_truth` + `project_accompaniment_axis` + `project_prepared_for` + ambient-inviolability principles eligible. `project_shell_integrity_phase` becomes eligible after the CO-Truth Audit lands.
+6. **Should deprecated `sharpen`/`lockin`/`play` modes be removed from code** (Drew) — unchanged.
+7. **Should 5/10 corrupt durationSec be manually corrected** (Drew) — unchanged.
+8. **NEW: Greenlight on Canonical Operational Truth Audit as the next architectural mapping pass** (Drew) — gating the entire Shell Integrity Phase. Without this confirmation, the audit's 21 findings will sit untouched (which is the correct hold, per discipline — bug-by-bug fixes without root mapping risk regression).
+9. **NEW: iPhone-nav P0 (F-018) — hotfix or bundle?** (Drew) — Songs/Practice/Rehearsal/etc are currently unreachable from iPhone primary chrome. A ~5-line addition (a visible hamburger trigger calling `toggleMenu()`) would unblock immediately. Alternative: bundle into the CO-Truth Audit scope so navigation gets the full mapping treatment. Drew's call. Operational severity is genuinely P0 given band's iPhone use.
+10. **NEW: Feed page fix (F-016) — hotfix or bundle?** (Drew) — `[Feed] TypeError: GLPriority.forRsvpEvent is not a function` at `band-feed.js:2052`. Same shape as yesterday's `4a2fdfc1` home-dashboard null-guard. A small null-guard or method-existence check would restore the page. Alternative: bundle as part of the shell-layer remediation pass.
+
+## 4. OPERATIONAL RISKS
+
+* **Authority fragmentation as root cluster** — Top-10 findings #1, #4, #6, #9, #10 (Home non-determinism, broken nav routes, stale-state lamination, contradictory sync indicators, three "what to work on next" answers) likely share root causes in distributed truth sources. Fixing them bug-by-bug risks shipping six patches that introduce a seventh inconsistency. The CO-Truth Audit is the proposed mitigation — it must land BEFORE remediation begins. If Drew greenlights bug-by-bug fixing instead, that's an acceptable but risk-elevated path.
+* **iPhone navigation invisibility** — Per F-018, an iPhone user who hasn't memorized hash routes cannot reach most of the product from primary chrome. The band is performing live UAT — every rehearsal/gig where the iPhone is the field device, this is felt. Severity is P0 operationally even though the workaround (Home cards + direct URL) exists.
+* **Audit findings not in bug_queue** — 21 findings sit in `FINDINGS_LIVE.md` only, not in `uat/bug_queue.md`. Deliberate — until CO-Truth Audit identifies which are root vs which are symptoms, queueing them prematurely risks fixing symptoms while the root persists. Documented here so the next agent doesn't assume oversight.
+* **Music-cognition surface temptation** — The audit validated the moat. The temptation will be to extend it (more song-drawer tabs, more rehearsal-page features, more Gigs coverage signals). Resist. Shell integrity is the load-bearing pass. The moat is already mature.
+* **Carry-overs from prior session unchanged:**
+  * Latent corrupt 5/10 durationSec (now a known time-bomb if 5/18 is deleted)
+  * Auto-feedback telemetry performative (logs but doesn't write to Firebase)
+  * Deprecated product modes still tracked
+  * Memory framework promotion gap (not yet in CLAUDE.md)
+
+## 5. RECOMMENDED NEXT ACTION
+
+**ONE move:** Drew greenlights (or amends) the Canonical Operational Truth Audit as the next architectural mapping pass.
+
+If Drew confirms:
+* Next session executes the CO-Truth Audit. Inventory only — still no code fixes. Output: a single architectural-mapping doc identifying every authority source for "what matters now," recommendations, breadcrumbs, routes, page restoration, and shell state.
+
+If Drew amends:
+* Most likely amendment: iPhone-nav P0 hotfix first (visible hamburger trigger), THEN CO-Truth Audit. This is a defensible carve-out because navigation reachability is foundational. Single shell-layer fix, ~5 lines, low blast radius.
+
+If Drew defers:
+* Audit reports sit in repo as reference. No remediation begins. The 21 findings stay in `FINDINGS_LIVE.md` only. This is acceptable — observation-before-expand discipline tolerates a hold, but trust-layer findings (authority fragmentation, iPhone nav, Feed error) compound while held.
+
+**Blocker if Drew cannot review the audit:** none in the agent's lane. The audit reports are complete, the moat is intact, the production build is stable. The block is decision-shaped, not code-shaped.
+
+**Outstanding deploy (operator action — Drew, not Claude):** `modal deploy services/multitrack-render/render.py` for the Phase A.5 reverb wet-branch boost — still unchanged.
+
+---
+
+
 
 **Session summary.** This was the largest single-day session in the project's history. Six code ships across the trust-hardening arc, eleven overnight observation harvests producing the 77-cluster discernment map, one experiment proposal honestly rejected via philosophical re-evaluation, one final null-guard fix on the home dashboard. The strategic synthesis at session-end: the architecture has highly restrained emotional judgment by design, and that restraint IS the product. The next phase is observation, not expansion.
 
