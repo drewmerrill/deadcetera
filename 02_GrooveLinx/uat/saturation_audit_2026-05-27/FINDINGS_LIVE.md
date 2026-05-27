@@ -247,3 +247,31 @@ After deterministic traversal of 36 hash routes:
 - Console captures `[UX] hesitation: {"page":"home","duration_sec":15}` — the app already observes per-page hesitation durations.
 - This is the kind of behavioral telemetry that supports the "observe before expand" discipline. The infrastructure to learn from real usage is already there.
 
+
+---
+
+## CORRECTION 2026-05-27 09:15 UTC — F-018 retracted as INVESTIGATOR ERROR
+
+Caught when preparing the hotfix patch. Before shipping, verified the actual rendered iPhone topbar/footer via fresh Playwright probe and direct file inspection.
+
+**Reality:**
+- The iPhone primary nav IS the `#glBottomTabs` bottom tab bar (created in `js/ui/gl-left-rail.js:305-347`)
+- It contains 7 children: Home + 5 core pages + More (which opens a tools drawer)
+- Visually present at y=795-844, full width, z-index 8000, display:flex, opacity 1 — confirmed both by computed style AND by screenshot `iphone/09-bottom-tabs-recheck.png` (Home label clearly visible bottom-left).
+- The hamburger is intentionally hidden on mobile (`gl-left-rail.js:333` injects `.hamburger{display:none!important}` inside `@media(max-width:900px)`) because the bottom tab bar replaces it.
+
+**Two compounding errors in the original probe (F-018):**
+1. Selector `[class*=tab-bar]` matched the song-drawer's `.sd-tab-bar` (16px wide, irrelevant) and missed `#glBottomTabs` which has no `tab-bar` substring in any class.
+2. Visibility check `offsetParent !== null` always returns null for `position:fixed` elements, so even if my selector had hit, I would have marked it hidden.
+
+**Net:** All iPhone primary destinations ARE reachable from primary chrome via the bottom tab bar. iPhone navigation is NOT a P0. The hotfix Drew greenlighted in good faith based on this finding has been cancelled before merge.
+
+**What stays:**
+- F-019 (touch-target undersize in topbar buttons) still stands — independent of F-018.
+- The 16+ "More" destinations (Tuner/Metronome/Playlists/Gigs/Stage Plot/Venues/Contacts/Band Room/Feed/Care Packages/Equipment/Help) are accessed through the "More" tab → tools drawer; that flow's UX wasn't audited and deserves a check in the CO-Truth Audit.
+
+**Methodological note for future audits:**
+- Don't filter visibility via `offsetParent` alone; use `getBoundingClientRect()` + viewport intersection.
+- When asserting "X is unreachable," probe by ID *and* class *and* tag *and* `getComputedStyle(position)`.
+- Trust the screenshot before the DOM probe.
+

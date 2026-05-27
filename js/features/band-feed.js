@@ -2049,7 +2049,7 @@ function _feedRenderItem(item, isFirstAction) {
 
         if (state.isRsvpUrgent) {
             var _urgDays = state.urgency ? state.urgency.days : null;
-            var _rsvpP = (typeof GLPriority !== 'undefined') ? GLPriority.forRsvpEvent(_urgDays) : { label: 'RSVP needed', color: 'var(--gl-red)' };
+            var _rsvpP = (typeof GLPriority !== 'undefined' && typeof GLPriority.forRsvpEvent === 'function') ? GLPriority.forRsvpEvent(_urgDays) : { label: 'RSVP needed', color: 'var(--gl-red)' };
             var _isFinal = _urgDays !== null && _urgDays <= 1;
             html += '<div style="font-size:0.75em;font-weight:800;color:' + _rsvpP.color + ';margin-top:6px;padding:var(--gl-space-xs) var(--gl-space-sm);background:rgba(239,68,68,' + (_isFinal ? '0.12' : '0.08') + ');border-radius:6px;border-left:3px solid ' + _rsvpP.color + '">'
                 + _rsvpP.label + '</div>';
@@ -2065,7 +2065,7 @@ function _feedRenderItem(item, isFirstAction) {
                     ? ' <span style="opacity:0.8;font-weight:600">\u00B7 everyone else responded</span>'
                     : ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
             }
-            var _pri = (typeof GLPriority !== 'undefined')
+            var _pri = (typeof GLPriority !== 'undefined' && typeof GLPriority.forAction === 'function')
                 ? GLPriority.forAction({ isBlocker: _isBlocker, isStuck: _isStuck, isMentioned: state.isMentioned, isRsvpUrgent: false })
                 : { label: 'Waiting on YOU', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1' };
             html += '<div style="font-size:0.72em;font-weight:' + _pri.weight + ';color:' + _pri.color + ';margin-top:6px;padding:3px 0">'
