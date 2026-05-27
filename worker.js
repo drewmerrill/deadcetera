@@ -208,6 +208,17 @@ export default {
       return handleMultitrackRenderCheck(request, env);
     if (path === '/multitrack/render/status' && request.method === 'GET')
       return handleMultitrackRenderStatus(request, env);
+    // Ingest-first architecture (2026-05-27): demux a single FULL_REHEARSAL.wav
+    // already uploaded to R2 staging into per-channel FLACs using the band's
+    // hardcoded channel map. See services/glx-ingest/demux.py.
+    //   /multitrack/ingest/from_concat/start → POST { bandSlug, sessionId, stagedWavKey, ingestMetadata } → { call_id }
+    //   /multitrack/ingest/from_concat/check → POST { call_id, progressId } → { status, result?, progress? }
+    if (path === '/multitrack/ingest/from_concat/start' && request.method === 'POST')
+      return handleIngestFromConcatStart(request, env);
+    if (path === '/multitrack/ingest/from_concat/check' && request.method === 'POST')
+      return handleIngestFromConcatCheck(request, env);
+    if (path === '/multitrack/ingest/upload-url' && request.method === 'POST')
+      return handleIngestUploadUrl(request, env);
     // Rehearsal segmenter — server-side analysis of long rehearsal MP3s.
     // Replaces the in-browser decodeAudioData + RehearsalSegmentationEngine
     // path for multi-hour files that exceed browser AudioBuffer limits.
@@ -2283,6 +2294,172 @@ async function handleMultitrackRenderCheck(request, env) {
         call_id: callId,
         token: env.STEMS_SHARED_SECRET,
         progress_id: progressId,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// POST /multitrack/ingest/upload-url — returns a Sigv4-presigned PUT URL
+// for an ingest staging file. The existing /multitrack/upload-url only
+// accepts NN_role-member.ext filenames in the canonical tracks/ location;
+// ingest staging needs to land FULL_REHEARSAL.wav at a job-scoped
+// staging path so the demuxer can find it and the file gets cleaned up
+// after demux completes.
+//
+// Body: JSON { jobId, filename }   (filename: 'FULL_REHEARSAL.wav' or 'ingest_metadata.json')
+// Headers: X-Band-Slug
+// Returns: { uploadUrl, key, expiresAt }
+async function handleIngestUploadUrl(request, env) {
+  if (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY || !env.R2_ACCOUNT_ID) {
+    return cors(jsonError('ingest_upload_url_not_configured: requires R2_* worker secrets', 500));
+  }
+  var bandSlug = String(request.headers.get('X-Band-Slug') || '').trim();
+  if (!bandSlug)  return cors(jsonError('missing_header: X-Band-Slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug)) return cors(jsonError('bad_band_slug', 400));
+
+  var body;
+  try { body = await request.json(); } catch (e) {
+    return cors(jsonError('bad_json_body: ' + (e && e.message), 400));
+  }
+  var jobId    = String((body && body.jobId)    || '').trim();
+  var filename = String((body && body.filename) || '').trim();
+  if (!jobId)    return cors(jsonError('missing_field: jobId', 400));
+  if (!filename) return cors(jsonError('missing_field: filename', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(jobId)) {
+    return cors(jsonError('bad_jobId', 400));
+  }
+  // Only the two filenames the CLI produces are allowed here. Prevents
+  // a compromised browser from staging arbitrary content under the
+  // staging path.
+  if (filename !== 'FULL_REHEARSAL.wav' && filename !== 'ingest_metadata.json') {
+    return cors(jsonError('bad_filename: must be FULL_REHEARSAL.wav or ingest_metadata.json', 400));
+  }
+
+  var bucket = 'groovelinx-stems';
+  var key = 'multitrack/' + bandSlug + '/_staging/' + jobId + '/' + filename;
+
+  try {
+    // 4-hour expiry. A 70 GB upload over home gigabit fiber is ~10-15 min
+    // typical but can stretch on slower connections; 4h leaves headroom
+    // without being abusively long.
+    var uploadUrl = await _r2PresignedPutUrl(env, bucket, key, 4 * 3600);
+    var expiresAt = new Date(Date.now() + 4 * 3600 * 1000).toISOString();
+    return jsonResp({ ok: true, uploadUrl: uploadUrl, key: key, expiresAt: expiresAt });
+  } catch (e) {
+    return cors(jsonError('presign_failed: ' + (e && e.message), 500));
+  }
+}
+
+// ── Ingest-from-concat: demux a single FULL_REHEARSAL.wav into per-channel
+// FLACs. Server-side counterpart to the local glx_ingest.py CLI. Per
+// project_ingestion_first_architecture (Drew 2026-05-27): the CLI does
+// hex-sort + continuity + safe concat locally; this endpoint does the
+// channel demux + FLAC encode + R2 upload. Browser writes Firebase
+// after polling completion.
+//
+// The Modal endpoint URL lives in env.INGEST_DEMUX_URL (separate secret
+// from MULTITRACK_RENDER_URL — they're different Modal apps).
+function _ingestDemuxModalUrl(env) {
+  return env.INGEST_DEMUX_URL || '';
+}
+
+async function handleIngestFromConcatStart(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('ingest_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var url = _ingestDemuxModalUrl(env);
+  if (!url) {
+    return cors(jsonError('ingest_not_configured: INGEST_DEMUX_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var bandSlug      = String(body.bandSlug      || '').trim();
+  var sessionId     = String(body.sessionId     || '').trim();
+  var stagedWavKey  = String(body.stagedWavKey  || '').trim();
+  var ingestMetadata = body.ingestMetadata || {};
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+  // R2 key validation: alphanumeric + / + . + _ + - only, max 256 chars.
+  if (!stagedWavKey || stagedWavKey.length > 256 || !/^[a-zA-Z0-9_./-]+$/.test(stagedWavKey)) {
+    return cors(jsonError('bad_staged_wav_key', 400));
+  }
+  // Belt-and-suspenders: key MUST live under multitrack/{bandSlug}/_staging/
+  // so a compromised browser can't redirect the demuxer at arbitrary R2 keys.
+  var expectedPrefix = 'multitrack/' + bandSlug + '/_staging/';
+  if (stagedWavKey.indexOf(expectedPrefix) !== 0) {
+    return cors(jsonError('staged_wav_key_outside_band_staging', 400));
+  }
+  if (typeof ingestMetadata !== 'object' || Array.isArray(ingestMetadata)) {
+    return cors(jsonError('bad_ingest_metadata', 400));
+  }
+  var progressId = String(body.progressId || body.progress_id || '').trim();
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 60000);
+  try {
+    var modalRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'start',
+        bandSlug: bandSlug,
+        sessionId: sessionId,
+        stagedWavKey: stagedWavKey,
+        ingestMetadata: ingestMetadata,
+        token: env.STEMS_SHARED_SECRET,
+        progressId: progressId || sessionId,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+async function handleIngestFromConcatCheck(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('ingest_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var url = _ingestDemuxModalUrl(env);
+  if (!url) {
+    return cors(jsonError('ingest_not_configured: INGEST_DEMUX_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var callId = String(body.call_id || body.callId || '').trim();
+  if (!callId) return cors(jsonError('missing_call_id', 400));
+  var progressId = String(body.progressId || body.progress_id || '').trim();
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+  try {
+    var modalRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'check',
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET,
+        progressId: progressId,
       }),
       signal: ctrl.signal,
     });
