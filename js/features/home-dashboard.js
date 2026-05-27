@@ -2685,8 +2685,8 @@ function _renderEventRiskCard(bundle) {
     // mislabels them as "Rehearsal tomorrow" (the eventLabel logic below
     // falls back to Rehearsal for everything that isn't a gig).
     var upcoming = calEvents
-        .filter(function(e) { return (e.date || '') >= today && (e.type === 'rehearsal' || e.type === 'gig'); })
-        .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+        .filter(function(e) { return e && (e.date || '') >= today && (e.type === 'rehearsal' || e.type === 'gig'); })
+        .sort(function(a,b) { return (a && a.date || '').localeCompare(b && b.date || ''); });
     var nextEvent = upcoming[0];
     if (!nextEvent) return '';
 
