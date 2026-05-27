@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-27 11:35 UTC (Feed null-guard hotfix shipped) · Build under test: `20260527-113347` (commit `e65dbcc5` — F-016 stabilized) · Branch: `main` · Mode: **SHELL INTEGRITY PHASE — pre-fix architectural mapping required**. The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-27 12:05 UTC (Feed hotfix shipped · CO-Truth framing locked) · Build under test: `20260527-113347` (commit `e65dbcc5` — F-016 stabilized) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — CO-Truth Audit is CARTOGRAPHY, NOT DESIGN**. The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -15,7 +15,31 @@ GrooveLinx is at build 20260527-113347 (commit e65dbcc5 — Feed render
 null-guard hotfix shipped 11:35 UTC), branch main, live on
 app.groovelinx.com.
 
-PHASE: SHELL INTEGRITY — pre-fix architectural mapping required.
+PHASE: COHERENCE STEWARDSHIP — the project is no longer in
+feature-invention mode. Target = coherent lived operational reality,
+NOT capability expansion. Fundamentally different engineering
+discipline. First task within this phase is the Canonical Operational
+Truth Audit — and it is CARTOGRAPHY, NOT DESIGN.
+
+CRITICAL CO-TRUTH AUDIT FRAMING (Drew 2026-05-27 12:05 UTC):
+  - Write a MAP, not a proposal. Descriptive inventory only.
+  - Do NOT assume all duplication is bad
+  - Do NOT assume all divergence is accidental
+  - Do NOT assume all truth should centralize
+  - Do NOT assume GLStore should own everything
+  - Do NOT assume one engine should absorb all logic
+  - Some divergence may be INTENTIONAL CONTEXTUAL TRUTH
+    (e.g. Practice ranking by readiness for Solo context vs Home
+     prioritizing "never practiced" for Band context — the bug may
+     be that surfaces don't communicate which authority they serve,
+     NOT that they disagree.)
+
+THE CORE AUDIT QUESTION (do not forget this):
+  NOT "which source computed last?"
+  IT IS: "When two surfaces disagree, which one does the musician
+          trust?"
+  Map BOTH layers: technical computation source AND lived trust
+  position.
 
 The 2026-05-27 overnight FULL-SURFACE OPERATIONAL SATURATION AUDIT
 answered "where is the real fragility?" — and the answer reframed
@@ -171,11 +195,11 @@ OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
      null-guard. Root cause (GLPriority collision) deferred to
      CO-Truth Audit per Drew's "coherence over theoretical purity"
      discipline.
-  11. NEW: /ultrareview recommendation. The Feed hotfix is trust-
-     layer per CLAUDE.md §INDEPENDENT REVIEW. Drew may choose to
-     run /ultrareview on commit e65dbcc5 as a safety check before
-     considering the stabilization fully closed. Optional; the fix
-     is verified live and the guard cannot fail safely.
+  11. /ultrareview for Feed hotfix DECLINED per Drew 2026-05-27.
+     Reserve /ultrareview for architectural weight (orchestration,
+     restoration systems, shell-state architecture, canonical truth
+     ownership, route/breadcrumb coherence, dashboard authority,
+     cross-surface synchronization), NOT bounded null-guards.
 
 MUST NEVER DRIFT (load-bearing):
   - SYSTEM LOCKs (CLAUDE.md §7)
@@ -184,20 +208,30 @@ MUST NEVER DRIFT (load-bearing):
   - feedback_consolidate_dont_retire
   - feedback_ground_truth_over_theater
   - feedback_observe_before_expand
-  - project_shell_integrity_phase — do NOT bug-by-bug fix the 21
-    audit findings. Root-cause mapping FIRST.
+  - project_shell_integrity_phase — do NOT bug-by-bug fix the
+    remaining 19 audit findings. Root-cause mapping FIRST.
+  - feedback_coherence_stewardship_phase — CO-Truth Audit is
+    CARTOGRAPHY, not design. Map first. Interpret second.
+    Consolidate later (or not at all). The core question is
+    musician trust, not technical correctness.
   - The music-cognition moat surfaces are OFF-CRITICAL-PATH this
-    phase. Adding features to them is the wrong move.
+    phase. Adding features to them is feature-invention reflex
+    in the wrong phase.
+  - Biggest risk to avoid: over-centralization, abstraction
+    theater, rewrite addiction, elegance obsession. The output
+    should look like a MAP, not a redesign proposal.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Begin the Canonical Operational Truth Audit. Drew greenlighted at
-  09:15 UTC. The Feed hotfix is shipped + verified. iPhone nav P0
-  retracted. CO-Truth Audit is now the highest-leverage architectural
-  task. Output target: a single mapping doc inventorying authority
+  Begin the Canonical Operational Truth Audit AS CARTOGRAPHY.
+  Drew greenlighted 09:15 UTC; framing locked 12:05 UTC. Output
+  target: a single MAP doc — descriptive inventory of authority
   ownership across recommendation, urgency, readiness, breadcrumb,
-  route, restoration, shell-state, dashboard, and player-context
-  surfaces. NO fixes during the mapping pass — purely descriptive
-  inventory.
+  route, restoration, shell-state, dashboard, player-context
+  surfaces. For each surface pair that may disagree, capture BOTH
+  the technical source AND the lived musician trust position.
+  NO fixes. NO consolidation proposals. NO redesign sketches.
+  A map. The reader of the map will know what to do; the map's
+  job is to make the choices visible.
 
 OUTSTANDING DEPLOY (operator action — Drew, not Claude):
   - `modal deploy services/multitrack-render/render.py` for the
@@ -214,6 +248,32 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 FRAMING LOCK — 2026-05-27 12:05 UTC — Coherence Stewardship Phase + CO-Truth Audit Discipline
+
+After acknowledging the Feed hotfix, Drew issued the final framing for the phase:
+
+**The project has entered coherence stewardship phase.** Not feature invention phase. Fundamentally different engineering discipline. Target = coherent lived operational reality, NOT capability expansion.
+
+**The CO-Truth Audit is cartography, NOT design.** Write a map, not a proposal. The reader of the map will know what to do; the map's job is to make the choices visible.
+
+**Critical warnings against premature consolidation:**
+- Do NOT assume all duplication is bad
+- Do NOT assume all divergence is accidental
+- Do NOT assume all truth should centralize
+- Do NOT assume GLStore should own everything
+- Do NOT assume one engine should absorb all logic
+- Some divergence may be **intentional contextual truth** (e.g. Practice ranking by readiness for Solo context vs Home prioritizing "never practiced" for Band context — the bug may be that surfaces don't communicate which authority they serve, NOT that they disagree).
+
+**The core audit question:** NOT "which source computed last?" but **"When two surfaces disagree, which one does the musician trust?"** Map both layers: technical computation source AND lived trust position.
+
+**/ultrareview policy for this phase:** skip for bounded null-guard repairs. Reserve for architectural weight — orchestration, restoration systems, shell-state architecture, canonical truth ownership, route/breadcrumb coherence, dashboard authority, cross-surface synchronization. Feed hotfix /ultrareview DECLINED.
+
+**Biggest risk to avoid:** over-centralization, abstraction theater, rewrite addiction, elegance obsession.
+
+**New memory captured:** `feedback_coherence_stewardship_phase.md`. Pinned restart prompt rewritten to embed these principles so the next session opens with cartography discipline already loaded.
 
 ---
 
