@@ -1291,7 +1291,7 @@ async function _rhRenderCommandFlow(el) {
                 + '<div style="padding:0 14px 10px">'
                 + '<div style="margin-bottom:6px;display:flex;gap:4px;flex-wrap:wrap">'
                 + '<button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button>'
-                + '<button onclick="_mtOpenImportModal()" title="Import per-track FLACs exported from REAPER (X32 multitrack)" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Import multitrack 🎚</button>'
+                + '<button onclick="_mtOpenImportModal()" title="How to add a new multitrack rehearsal — operator-side guide" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">📖 How to add rehearsal</button>'
                 + '</div>'
                 + '<div id="rhSessionHistory"></div>'
                 + '</div></details>';

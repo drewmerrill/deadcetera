@@ -220,12 +220,19 @@ function _mtGenTrackId(role, memberKey) {
 // drop zone; step 4 reuses _mtRenderMappingTable + _mtConfirmMapping; step
 // 5 is the post-upload success state. All existing IDs preserved.
 
+// Rewritten 2026-05-27 — REAPER pulled out of the middle. The new flow
+// is operator-side CLI (glx_ingest.py + ingest_full_rehearsal.py) with
+// the browser as a live read-only progress surface (Ingest Cockpit on
+// the Rehearsal page). This wizard becomes an in-app how-to guide for
+// musicians who want to know what the operator-side flow looks like;
+// it does NOT initiate any browser-side action. The drop-zone +
+// mapping table from the prior REAPER flow are intentionally gone.
 var _MT_WIZ_STEPS = [
-    { n: 1, title: 'SD Card → Mac',     icon: '💾' },
-    { n: 2, title: 'REAPER render',     icon: '🎛' },
-    { n: 3, title: 'Drop stems',        icon: '📂' },
-    { n: 4, title: 'Confirm + upload',  icon: '🚀' },
-    { n: 5, title: 'Review',            icon: '🎚' }
+    { n: 1, title: 'Copy SD → Mac',     icon: '💾' },
+    { n: 2, title: 'Reconstruct',       icon: '🛠' },
+    { n: 3, title: 'Upload',            icon: '🚀' },
+    { n: 4, title: 'Watch progress',    icon: '👁' },
+    { n: 5, title: 'Review',            icon: '🎧' }
 ];
 
 function _mtTodayStamp() {
@@ -233,8 +240,21 @@ function _mtTodayStamp() {
     return d.toISOString().slice(0, 10);
 }
 
+function _mtTodayStampUS() {
+    // Underscore form used as the sessionId date suffix
+    return _mtTodayStamp().replace(/-/g, '_');
+}
+
 function _mtRehearsalFolderHint() {
-    return '~/Music/DeadCetera/Rehearsals/' + _mtTodayStamp() + '-deadcetera/';
+    return '~/Rehearsals/' + _mtTodayStamp() + '/';
+}
+
+function _mtSourceFolderHint() {
+    return _mtRehearsalFolderHint() + 'source/';
+}
+
+function _mtSessionIdHint() {
+    return 'rsess_mt_' + _mtTodayStampUS() + '_pass1';
 }
 
 function _mtRenderWizardStepper() {
@@ -253,78 +273,72 @@ function _mtRenderWizardStepper() {
 }
 
 function _mtRenderStep1() {
-    var safePath = _mtRehearsalFolderHint();
+    var srcFolder = _mtSourceFolderHint();
+    var rsyncCmd =
+        'rsync -ah /Volumes/SANDISK/<R_NNN>/ ' + srcFolder;
     return ''+
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 1 OF 5</div>' +
-        '<div class="mt-wiz-step-title">💾 Get the recording onto your Mac</div>' +
+        '<div class="mt-wiz-step-title">💾 Copy SD card to your Mac</div>' +
         '<div class="mt-wiz-checklist">' +
             '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Pop the SD card</strong> out of the X32 → into a USB 3.0 reader → into your Mac.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Copy the dated session folder</strong> (named like <code>5CB2934C/</code>) from the card to:<div class="mt-wiz-path">' + escHtml(safePath) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(safePath) + '\')">📋 Copy</button></div>Skip the empty <code>X_LIVE/</code> folder and any <code>.Spotlight-V100</code> / <code>.fseventsd</code> metadata.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Eject the card safely</strong> when copy finishes.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Look at the card.</strong> Inside, the rehearsal lives in a folder with an 8-character hex name like <code>5CB2934C/</code>. That\'s your <code>&lt;R_NNN&gt;</code>.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>In Terminal, copy it locally:</strong><div class="mt-wiz-path">' + escHtml(rsyncCmd) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(rsyncCmd).replace(/'/g, '\\\'') + '\')">📋 Copy</button></div>(Replace <code>&lt;R_NNN&gt;</code> with the actual folder name.)</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>Eject the card safely</strong> when the copy finishes (when the prompt returns).</div></div>' +
         '</div>' +
         '<div class="mt-wiz-callout">' +
-            '<strong>What\'s in the folder?</strong> The X32 records multi-channel WAV split into chunks at 4 GB (FAT32 limit). A 3-hour rehearsal is ~17 chunks at ~4.3 GB each plus one smaller tail file. REAPER reassembles + demuxes them in the next step.' +
+            '<strong>Why copy first?</strong> The X32 records 32-channel WAV split into ~4 GB chunks (FAT32 limit) — a 3-hour rehearsal is ~17 chunks at ~67 GB total. Reconstructing directly on the SD card is unsafe (slow writes, wear-leveling, filesystem corruption risk). We always reconstruct on the local SSD.' +
         '</div>' +
-        '<div class="mt-wiz-time-est">⏱ ~2-4 min for ~30-70 GB at USB 3.0 speeds. Longer rehearsals = larger card contents.</div>' +
+        '<div class="mt-wiz-time-est">⏱ ~20-30 min for a 3-hour rehearsal at USB 3.0 + SD read speeds. The card stays plugged in until step finishes.</div>' +
     '</div>';
 }
 
 function _mtRenderStep2() {
-    var path = _mtRehearsalFolderHint();
+    var sid = _mtSessionIdHint();
+    var folder = _mtRehearsalFolderHint();
+    var src = _mtSourceFolderHint();
+    var cmd = 'python3 services/glx-ingest/glx_ingest.py ' + src +
+              ' --output-dir ' + folder +
+              ' --session-id ' + sid;
     return ''+
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 2 OF 5</div>' +
-        '<div class="mt-wiz-step-title">🎛 Demux + render to FLAC stems (REAPER)</div>' +
+        '<div class="mt-wiz-step-title">🛠 Reconstruct into one rehearsal file</div>' +
         '<div class="mt-wiz-checklist">' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Open REAPER</strong> → File → New project from template → <code>GrooveLinx-Multitrack</code>.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Set project sample rate to 48 kHz.</strong> ⌘⇧P → <em>check the "Project sample rate" box</em> → 48000 → OK. (If unchecked, REAPER falls back to hardware default; X32 records at 48.)</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Bulk-drag all WAV chunks in.</strong> Select all in Finder, drag together onto the empty arrange area. Prompt → pick <strong>"Sequential time positions on a single track"</strong>.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>Glue + Explode.</strong> Select all items (⌘A) → right-click → <strong>Glue items</strong>. Then right-click the glued item → <strong>Item processing → Explode multichannel audio to new one-channel items</strong>. ~10 min wait. Result: ~32 mono tracks named <code>[c1]</code>–<code>[c32]</code>.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑤</span><div><strong>Solo + listen + rename</strong> each <code>[cN]</code> track per the convention <code>NN_role-member</code> (see table). <em>Don\'t delete the source track</em> — exploded items reference it.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑥</span><div><strong>Reset all track faders to 0 dB + pans to center</strong> before render. Track levels bake into the stems and bias analysis. Action list (<code>?</code>) → <code>Track: Set selected track(s) volume to 0 dB</code>.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑦</span><div><strong>File → Render…</strong> Select the audio tracks only (NOT the source / Master File). Load preset <code>GrooveLinx FLAC stems</code> (24-bit · 48 kHz · mono · FLAC). Click <strong>Render N files</strong>. ~5-15 min.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑧</span><div><strong>Stems land in:</strong> <code>' + escHtml(path) + 'stems/</code></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>In Terminal, cd into the GrooveLinx repo:</strong><div class="mt-wiz-path">cd ~/Documents/GitHub/deadcetera <button class="mt-wiz-copy" onclick="_mtCopyPath(\'cd ~/Documents/GitHub/deadcetera\')">📋 Copy</button></div></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Run the reconstruction CLI:</strong><div class="mt-wiz-path">' + escHtml(cmd) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(cmd).replace(/'/g, '\\\'') + '\')">📋 Copy</button></div></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Look at the last line of output.</strong> You want:<div class="mt-wiz-path">continuity=OK · sample_rate=OK · channels=OK · bit_depth=OK</div>If anything is not OK, stop and inspect before continuing.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>Two files now exist:</strong><div class="mt-wiz-path">' + escHtml(folder) + 'FULL_REHEARSAL.wav</div><div class="mt-wiz-path">' + escHtml(folder) + 'ingest_metadata.json</div></div></div>' +
         '</div>' +
-        '<details class="mt-wiz-details" open>' +
-            '<summary>Expected files (Deadcetera X32 plot — verify the first time)</summary>' +
-            '<table class="mt-wiz-roster">' +
-                '<tr><td><code>01</code></td><td>Vocal</td><td><strong>Drew</strong></td></tr>' +
-                '<tr><td><code>02</code></td><td>Vocal</td><td><strong>Brian</strong></td></tr>' +
-                '<tr><td><code>03</code></td><td>Vocal</td><td><strong>Chris</strong></td></tr>' +
-                '<tr><td><code>04</code></td><td>Vocal</td><td><strong>Pierce</strong></td></tr>' +
-                '<tr><td><code>05</code></td><td>Lead guitar</td><td><strong>Brian</strong></td></tr>' +
-                '<tr><td><code>06</code></td><td>Rhythm guitar</td><td><strong>Drew</strong></td></tr>' +
-                '<tr><td><code>07</code></td><td>Bass</td><td><strong>Chris</strong></td></tr>' +
-                '<tr><td><code>08</code></td><td>Reserved — mute</td><td><em>future Jay mic</em></td></tr>' +
-                '<tr><td><code>09</code></td><td>Bongos</td><td><strong>Jay</strong></td></tr>' +
-                '<tr><td><code>10</code></td><td>Kick</td><td><strong>Jay</strong></td></tr>' +
-                '<tr><td><code>11</code></td><td>Snare</td><td><strong>Jay</strong></td></tr>' +
-                '<tr><td><code>12–14</code></td><td>Toms 1-3</td><td><strong>Jay</strong></td></tr>' +
-                '<tr><td><code>15–16</code></td><td>Overheads L/R</td><td><strong>Jay</strong></td></tr>' +
-                '<tr><td><code>17–18</code></td><td>Keys L/R</td><td><strong>Pierce</strong></td></tr>' +
-            '</table>' +
-            '<div class="mt-wiz-note">Channel <code>08</code> is a placeholder for a future Jay mic — mute the track before render so no noise-only FLAC gets written. Channels 19-32 are unused inputs; don\'t include them in the render selection.</div>' +
-        '</details>' +
-        '<div class="mt-wiz-time-est">⏱ First-time setup: ~25 min (template + verify channel layout). Future rehearsals: ~10 min using the saved template + preset. Full recipe: <code>02_GrooveLinx/specs/multitrack_reaper_export_checklist.md</code></div>' +
+        '<div class="mt-wiz-callout">' +
+            '<strong>What\'s happening?</strong> The CLI sorts chunks by hex value (NOT lexicographic — that order silently scrambles X-Live chunks), verifies continuity, reads each chunk\'s RIFF header, then concatenates them with <code>ffmpeg -c copy</code>. No re-encode, no resample — bit-identical reconstruction of the original continuous multichannel stream. Output: one ~64 GB WAV + a metadata file with provenance.' +
+        '</div>' +
+        '<div class="mt-wiz-time-est">⏱ ~5-15 min depending on rehearsal length. Disk-write-bound on SSD.</div>' +
     '</div>';
 }
 
 function _mtRenderStep3() {
+    var sid = _mtSessionIdHint();
+    var folder = _mtRehearsalFolderHint();
+    var exportCmd = 'export R2_ACCOUNT_ID=...\nexport R2_ACCESS_KEY_ID=...\nexport R2_SECRET_ACCESS_KEY=...';
+    var ingestCmd = 'nohup ./services/glx-ingest/venv/bin/python3 services/glx-ingest/ingest_full_rehearsal.py ' +
+        folder + 'FULL_REHEARSAL.wav ' +
+        folder + 'ingest_metadata.json ' +
+        '--session-id ' + sid + ' ' +
+        '> ' + folder + 'ingest.log 2>&1 &';
     return ''+
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 3 OF 5</div>' +
-        '<div class="mt-wiz-step-title">📂 Drop stems folder into GrooveLinx</div>' +
-        '<div class="mt-wiz-step-sub">Open your <code>stems/</code> folder, select all the FLAC files (<code>⌘A</code>), and drag them onto the box. OR click the box to browse + multi-select. Auto-mapping fires the moment files land. <em>(Dragging the folder itself doesn\'t work — browsers don\'t expand folders into the file list.)</em></div>' +
-        // Drop zone — same id/wiring as the legacy modal so _mtFilesPicked
-        // and the change/drop handlers work unchanged.
-        '<div id="mtDropZone" class="mt-wiz-dropzone">' +
-            '<div class="mt-wiz-dropzone-icon">📁</div>' +
-            '<div class="mt-wiz-dropzone-title">Drop FLACs here</div>' +
-            '<div class="mt-wiz-dropzone-sub">or click to browse — multiple files OK. Convention: <code>NN_role-member.flac</code></div>' +
-            '<input type="file" id="mtFileInput" multiple accept=".flac,.wav,.opus,.mp3,.m4a" style="display:none">' +
+        '<div class="mt-wiz-step-title">🚀 Upload to GrooveLinx</div>' +
+        '<div class="mt-wiz-checklist">' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Set R2 credentials</strong> for this Terminal (one-time per session; get from your password manager or Cloudflare dashboard):<div class="mt-wiz-path" style="white-space:pre-wrap">' + escHtml(exportCmd) + '</div></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Fire the upload in the background:</strong><div class="mt-wiz-path" style="white-space:pre-wrap;font-size:0.78em">' + escHtml(ingestCmd) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(ingestCmd).replace(/'/g, '\\\'').replace(/\n/g, ' ') + '\')">📋 Copy</button></div></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Close the terminal.</strong> The <code>nohup … &amp;</code> combination makes the upload survive logout and sleep. Watch progress in the next step instead.</div></div>' +
         '</div>' +
-        '<div class="mt-wiz-time-est">⏱ Files stay local until you click Upload in the next step.</div>' +
+        '<div class="mt-wiz-callout">' +
+            '<strong>What\'s happening?</strong> The script multipart-uploads the reconstructed WAV, then asks the server to separate it into per-instrument FLAC tracks using your band\'s channel map, then renders a single mix for fast playback, then writes the session record. All five phases report live status to GrooveLinx — you watch it in the browser, not the terminal.' +
+        '</div>' +
+        '<div class="mt-wiz-time-est">⏱ ~6 hours on home cable upload (22 Mbps · 64 GB). Faster on fiber (~30 min) or 5G hotspot. Server-side processing after upload is ~20-50 min for a 3-hour rehearsal. <em>Run overnight if uplink is slow.</em></div>' +
     '</div>';
 }
 
@@ -332,46 +346,40 @@ function _mtRenderStep4() {
     return ''+
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 4 OF 5</div>' +
-        '<div class="mt-wiz-step-title">🚀 Confirm mapping & upload</div>' +
-        '<div class="mt-wiz-step-sub">Review the auto-mapped roles. Set the date and venue. Then upload — runs in parallel.</div>' +
-        // Existing IDs reused so _mtRenderMappingTable populates them
-        '<div id="mtMappingArea" class="mt-wiz-mapping"></div>' +
-        '<div id="mtFooter" class="mt-wiz-confirm-row"></div>' +
-        '<div class="mt-wiz-destinations">' +
-            '<div class="mt-wiz-destinations-title">Where it ends up</div>' +
-            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">📦 Files</span><span class="mt-wiz-dest-val">Cloudflare R2 — <code>groovelinx-multitrack</code> bucket</span></div>' +
-            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">🗂 Metadata</span><span class="mt-wiz-dest-val">Firebase — <code>bands/deadcetera/multitrack_sessions/{sessionId}</code></span></div>' +
-            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">▶ Playback</span><span class="mt-wiz-dest-val">Streamed back through the multitrack player (mute / solo / scrub)</span></div>' +
-            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">📝 Comments</span><span class="mt-wiz-dest-val">Timestamped + tagged; promotable to PracticeTasks</span></div>' +
+        '<div class="mt-wiz-step-title">👁 Watch the cockpit</div>' +
+        '<div class="mt-wiz-step-sub">The <strong>Ingest Cockpit</strong> at the top of the Rehearsal page lights up automatically the moment the upload starts. It shows live phase narrative, progress bar, elapsed time, and a per-step checklist.</div>' +
+        '<div class="mt-wiz-checklist">' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Open the Rehearsal page</strong> in any browser (this one, your phone, a bandmate\'s).</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Look at the top of the page.</strong> You\'ll see a panel that walks itself through:<ul style="margin:6px 0 0 18px;padding:0;list-style:disc"><li>Preparing rehearsal · Recording chunks verified</li><li>Uploading rehearsal (progress bar)</li><li>Building instrument tracks</li><li>Rendering rehearsal mix</li><li>Ready to review · 🎧 Open Review Mode →</li></ul></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>You can close the browser</strong> and come back later. The cockpit reflects the current state whenever you return. The upload runs on its own.</div></div>' +
         '</div>' +
-        '<div class="mt-wiz-time-est">⏱ ~3–5 min for ~14 GB on a 100 Mbps connection.</div>' +
+        '<div class="mt-wiz-callout">' +
+            '<strong>Where it ends up:</strong> per-instrument FLAC tracks + a single rehearsal mix in cloud storage, with a session record in GrooveLinx that the multitrack player reads. You don\'t need to think about any of this — the cockpit ticks each item ✓ as it lands.' +
+        '</div>' +
+        '<div class="mt-wiz-time-est">⏱ Wait time = upload time + ~20-50 min server-side processing. Cockpit stays accurate the whole way.</div>' +
     '</div>';
 }
 
 function _mtRenderStep5() {
-    var sid = _mtState.sessionId || '';
-    var trackCount = (_mtState.pickedFiles || []).length;
-    var totalBytes = (_mtState.pickedFiles || []).reduce(function(s, p) { return s + (p.sizeBytes || 0); }, 0);
     return ''+
     '<div class="mt-wiz-step">' +
-        '<div class="mt-wiz-step-eyebrow">STEP 5 OF 5 · DONE</div>' +
-        '<div class="mt-wiz-step-title">🎉 Session uploaded — ready to review</div>' +
-        '<div class="mt-wiz-summary">' +
-            '<div class="mt-wiz-summary-row"><span>Session ID</span><code>' + escHtml(sid) + '</code></div>' +
-            '<div class="mt-wiz-summary-row"><span>Tracks</span><strong>' + trackCount + '</strong></div>' +
-            '<div class="mt-wiz-summary-row"><span>Total size</span><strong>' + _mtBytesLabel(totalBytes) + '</strong></div>' +
-        '</div>' +
+        '<div class="mt-wiz-step-eyebrow">STEP 5 OF 5</div>' +
+        '<div class="mt-wiz-step-title">🎧 Open Review Mode</div>' +
+        '<div class="mt-wiz-step-sub">When the Ingest Cockpit shows <strong>Ready to review</strong>, tap the <strong>🎧 Open Review Mode →</strong> button on the cockpit. Or open the new session from the Rehearsal page History list.</div>' +
         '<div class="mt-wiz-next-actions">' +
-            '<div class="mt-wiz-step-sub">Up next inside the multitrack player:</div>' +
+            '<div class="mt-wiz-step-sub">Inside the multitrack player:</div>' +
             '<ul>' +
-                '<li><strong>Mute / solo</strong> any combination of tracks. Scrub the master timeline.</li>' +
+                '<li><strong>Single-stream playback</strong> from a pre-rendered mix — seek anywhere instantly.</li>' +
+                '<li><strong>Isolate Mode</strong> to mute / solo any combination of instrument tracks. Scrub the master timeline.</li>' +
                 '<li><strong>Drop timestamped comments</strong> with tags (rushed, dragged, pitchy, wrong chord, missed cue, transition, too loud, too quiet, tone, nail this, revisit).</li>' +
                 '<li><strong>Promote a comment</strong> to a PracticeTask so it surfaces in the next Practice session for that song.</li>' +
             '</ul>' +
         '</div>' +
+        '<div class="mt-wiz-callout">' +
+            '<strong>That\'s the whole flow.</strong> Five steps, three terminal commands, one button. The rehearsal is now reviewable, navigable, and analyzable — for as long as you want to keep it.' +
+        '</div>' +
         '<div class="mt-wiz-action-row">' +
-            '<button class="mt-wiz-btn-primary" onclick="_mtWizOpenPlayer()">▶ Open multitrack player</button>' +
-            '<button class="mt-wiz-btn-ghost" onclick="_mtCancelImport()">Close</button>' +
+            '<button class="mt-wiz-btn-ghost" onclick="_mtCancelImport()">Close guide</button>' +
         '</div>' +
     '</div>';
 }
@@ -422,32 +430,30 @@ function _mtRenderWizardStep() {
     var step = _mtState.wizardStep || 1;
     if (step === 1) body.innerHTML = _mtRenderStep1();
     else if (step === 2) body.innerHTML = _mtRenderStep2();
-    else if (step === 3) {
-        body.innerHTML = _mtRenderStep3();
-        _mtWireDropZoneInWizard();
-    }
-    else if (step === 4) {
-        body.innerHTML = _mtRenderStep4();
-        _mtRenderMappingTable();
-        // Patch the existing Confirm button so it advances to step 5 on success
-        _mtPatchConfirmForWizard();
-    }
+    else if (step === 3) body.innerHTML = _mtRenderStep3();
+    else if (step === 4) body.innerHTML = _mtRenderStep4();
     else if (step === 5) body.innerHTML = _mtRenderStep5();
+    // Steps 3 + 4 used to wire a drop zone and patch a confirm button
+    // (browser-side upload flow); the new ingest-first path is operator-
+    // side via the CLI, so those wires are gone.
 
-    // Footer: prev / next buttons (hidden on step 5)
+    // Footer: prev / next buttons (hidden on step 5).
+    // All steps are pure guidance — user clicks Next when they've done
+    // the operator-side action in their terminal. No "files loaded" or
+    // "upload complete" gating because none of those happen in the
+    // browser anymore.
     if (step >= 5) {
         footer.innerHTML = '';
     } else {
         var canBack = step > 1;
-        var canNext = step < 4 || (step === 4 && !!_mtState.uploadComplete);
         var nextLabel = step === 1 ? 'Did the copy → Step 2 →' :
-                        step === 2 ? 'Render done → Step 3 →' :
-                        step === 3 ? (_mtState.pickedFiles.length ? 'Files loaded → Step 4 →' : 'Drop files first to continue') :
-                        step === 4 ? 'Upload first to continue' : 'Next →';
+                        step === 2 ? 'Reconstruct done → Step 3 →' :
+                        step === 3 ? 'Upload started → Step 4 →' :
+                        step === 4 ? 'I see the cockpit → Step 5 →' : 'Next →';
         footer.innerHTML =
             '<button class="mt-wiz-btn-ghost" ' + (canBack ? '' : 'disabled ') + 'onclick="_mtWizBack()">← Back</button>' +
             '<span style="flex:1"></span>' +
-            '<button class="mt-wiz-btn-primary" ' + (canNext ? '' : 'disabled ') + 'onclick="_mtWizNext()">' + nextLabel + '</button>';
+            '<button class="mt-wiz-btn-primary" onclick="_mtWizNext()">' + nextLabel + '</button>';
     }
 }
 
