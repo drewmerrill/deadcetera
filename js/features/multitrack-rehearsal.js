@@ -677,6 +677,17 @@ window._mtOpenImportModal = function() {
             // today's date — let the user fill the truth once, propagate
             // everywhere.
             '<div class="mt-wiz-inputbar">' +
+                // Date first — it's the simpler one-click action (defaults to
+                // today, change if different) and should be set BEFORE the
+                // folder picker since picking folder triggers a Chrome
+                // "upload" prompt that can feel alarming mid-flow.
+                '<label class="mt-wiz-input-label" style="flex:0 0 auto;min-width:160px">' +
+                    '<span class="mt-wiz-input-cap">Rehearsal date</span>' +
+                    '<input type="date" id="mtWizInputDate" class="mt-wiz-input" ' +
+                        'value="' + savedDate + '" ' +
+                        'oninput="_mtWizInputsChanged()">' +
+                    '<span class="mt-wiz-input-hint">when you recorded</span>' +
+                '</label>' +
                 '<label class="mt-wiz-input-label">' +
                     '<span class="mt-wiz-input-cap">Recording folder</span>' +
                     '<div class="mt-wiz-input-row">' +
@@ -686,21 +697,17 @@ window._mtOpenImportModal = function() {
                             'oninput="_mtWizInputsChanged()">' +
                         '<button type="button" class="mt-wiz-pickbtn" ' +
                             'onclick="document.getElementById(\'mtWizFolderPick\').click()" ' +
-                            'title="Open a folder picker; pick the SANDISK volume or session folder">📂 Pick</button>' +
+                            'title="Reads folder names from the SD card so the form auto-fills. NO upload happens here — that\'s Step 3.">📂 Pick</button>' +
                         '<input type="file" id="mtWizFolderPick" webkitdirectory directory ' +
                             'style="display:none" ' +
                             'onchange="_mtWizPickFolderFromSDCard(this)">' +
                     '</div>' +
-                    '<span class="mt-wiz-input-hint">8-char hex from the SD card · ' +
+                    '<span class="mt-wiz-input-hint">' +
+                        '<strong>Pick</strong> reads folder names locally — nothing uploads yet. ' +
+                        '(Chrome will say "Upload N files" — that\'s its generic wording for folder access.) · ' +
                         '<a href="file:///Volumes/SANDISK/" target="_blank" rel="noopener" ' +
-                            'class="mt-wiz-finder-link">open SANDISK in Finder ↗</a></span>' +
-                '</label>' +
-                '<label class="mt-wiz-input-label">' +
-                    '<span class="mt-wiz-input-cap">Rehearsal date</span>' +
-                    '<input type="date" id="mtWizInputDate" class="mt-wiz-input" ' +
-                        'value="' + savedDate + '" ' +
-                        'oninput="_mtWizInputsChanged()">' +
-                    '<span class="mt-wiz-input-hint">when you recorded (not when you\'re uploading)</span>' +
+                            'class="mt-wiz-finder-link">open SANDISK in Finder ↗</a>' +
+                    '</span>' +
                 '</label>' +
             '</div>' +
             '<div id="mtWizStepper">' + _mtRenderWizardStepper() + '</div>' +
