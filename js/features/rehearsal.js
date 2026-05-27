@@ -454,23 +454,17 @@ async function renderRehearsalPage(el) {
     // services/glx-ingest/ingest_full_rehearsal.py for the writer.
     var ingestCockpitTile = '<div id="rhIngestCockpit" style="display:none"></div>';
 
-    // Prominent multitrack ingest tiles — Drew 2026-05-10 (REAPER) +
-    // 2026-05-27 (ingest-first reframe). Two paths: ingest-first (new
-    // canonical) and REAPER bundle (legacy convenience). Per
-    // project_ingestion_first_architecture: ingest-first is now the
-    // primary path; REAPER stays for users who want to edit/curate.
-    var ingestFirstTile = ''+
-        '<div onclick="_ifOpenIngestModal()" style="cursor:pointer;margin:0 0 10px;padding:14px 18px;border-radius:12px;border:1px solid rgba(34,197,94,0.30);background:linear-gradient(135deg,rgba(34,197,94,0.10),rgba(99,102,241,0.06));display:flex;align-items:center;gap:14px;transition:transform 0.08s,box-shadow 0.15s" '+
-        'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 8px 24px rgba(34,197,94,0.18)\'" '+
-        'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+
-            '<div style="font-size:1.8em;flex-shrink:0">📥</div>'+
-            '<div style="flex:1;min-width:0">'+
-                '<div style="font-weight:800;font-size:0.96em;color:#e0e7ff">Upload reconstructed rehearsal <span style="font-size:0.66em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(34,197,94,0.18);color:#86efac;margin-left:6px;vertical-align:middle">NEW</span></div>'+
-                '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">From X-Live SD card via local glx_ingest.py CLI — no REAPER needed</div>'+
-            '</div>'+
-            '<div style="font-size:0.74em;font-weight:700;color:#86efac;background:rgba(34,197,94,0.16);border:1px solid rgba(34,197,94,0.35);padding:6px 12px;border-radius:7px;flex-shrink:0">Upload →</div>'+
-        '</div>';
-    var ingestTile = ingestCockpitTile + ingestFirstTile + ''+
+    // NOTE: The "Upload reconstructed rehearsal" browser tile
+    // (multitrack-ingest-first.js) is intentionally hidden in this
+    // build per Drew 2026-05-27 — browser-side ingest UI shouldn't
+    // appear to musicians until full raw-folder ingest works
+    // end-to-end. The 5 GB R2 single-PUT cap means the current tile
+    // would silently fail on a real 64 GB rehearsal. The operator-side
+    // path (services/glx-ingest/ingest_full_rehearsal.py) is the real
+    // ingest mechanism; this Ingest Cockpit (above) makes that
+    // operator-side flow visible to the band without exposing a
+    // misleading upload promise.
+    var ingestTile = ingestCockpitTile + ''+
         '<div onclick="_mtOpenImportModal()" style="cursor:pointer;margin:0 0 14px;padding:14px 18px;border-radius:12px;border:1px solid rgba(99,102,241,0.30);background:linear-gradient(135deg,rgba(99,102,241,0.10),rgba(168,85,247,0.06));display:flex;align-items:center;gap:14px;transition:transform 0.08s,box-shadow 0.15s" '+
         'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 8px 24px rgba(99,102,241,0.20)\'" '+
         'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+
