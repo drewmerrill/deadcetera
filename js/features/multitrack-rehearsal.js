@@ -1492,7 +1492,20 @@ window._mtOpenPlayer = async function(sessionId, opts) {
             if (sr.ok) {
                 var sj = await sr.json();
                 if (sj && Array.isArray(sj.renders) && sj.renders.length) {
-                    existingRender = sj.renders[0]; // newest by worker sort
+                    // User-pinned render takes precedence over auto-load.
+                    // Drew 2026-05-28: per-user selection persists across
+                    // refresh/reopen/deploy/navigation. Pierce's comment
+                    // anchors stay aligned with the user's chosen render.
+                    // Fall back to renders[0] (newest by worker sort) if
+                    // no user selection OR if the pinned renderId no
+                    // longer exists in R2 (e.g. user previously pinned
+                    // a custom render that was later cleaned up).
+                    var pinnedRenderId = null;
+                    try { pinnedRenderId = await _mtLoadRenderSelection(sessionId); } catch (e) {}
+                    var pinnedRender = pinnedRenderId
+                        ? sj.renders.find(function(r) { return r && r.renderId === pinnedRenderId; })
+                        : null;
+                    existingRender = pinnedRender || sj.renders[0];
                 }
             }
         } catch (e) {
@@ -1874,7 +1887,7 @@ window._mtToggleToolsMenu = function(mode) {
         if (isMobile) {
             items.push({ label: (keeperOn ? '⭐ Keeper — unmark this rehearsal' : '☆ Keeper — mark this rehearsal'), call: '_mtToggleKeeper()' });
             items.push({ label: '👁 Switch to Review Mode — single stream, fast seek', call: '_mtSwitchToReview()', accent: 'indigo' });
-            items.push({ label: '📦 Download stems — original FLAC ZIP', call: '_mtDownloadStems()' });
+            items.push({ label: '📦 Download stems — pick whole-session ZIP or individual tracks', call: '_mtOpenDownloadStemsModal()' });
         }
         items.push({ label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' });
     } else {
@@ -1883,10 +1896,11 @@ window._mtToggleToolsMenu = function(mode) {
             items.push({ label: (keeperOn ? '⭐ Keeper — unmark this rehearsal' : '☆ Keeper — mark this rehearsal'), call: '_mtToggleKeeper()' });
         }
         items.push({ label: '🎛 Mix — dial in levels + render', call: '_mtOpenCustomMixModal()', accent: 'indigo' });
+        items.push({ label: '🎵 All renders — switch which mix is playing', call: '_mtOpenRendersModal()' });
         items.push({ label: '📤 Export Mix — download as MP3 / WAV / FLAC', call: '_mtExportRehearsalMix()' });
         items.push({ label: '📨 Text band — share current mix via SMS', call: '_mtShareCurrentMix()', accent: 'green' });
         items.push({ label: '🎚 Isolate stems — per-track mute/solo', call: '_mtSwitchToIsolate()' });
-        items.push({ label: '📦 Download stems — original FLAC ZIP', call: '_mtDownloadStems()' });
+        items.push({ label: '📦 Download stems — pick whole-session ZIP or individual tracks', call: '_mtOpenDownloadStemsModal()' });
         items.push({ label: '✏️ Edit date + venue', call: '_mtEditSessionHeader()' });
     }
     var itemsHtml = items.map(function(it) {
@@ -3566,6 +3580,380 @@ window._mtToggleKeeper = async function() {
     }
 };
 
+// ── Render selection persistence ──────────────────────────────────
+// Per-USER, per-SESSION persistence of the active render. Drew 2026-05-28:
+// "without persistence, Pierce's comment-drift recovery path silently
+// disappears on refresh/reopen/deploy/navigation. That recreates: 'I
+// thought I already fixed this.' This is not feature creep. This is
+// continuity integrity."
+//
+// Path: bands/{slug}/render_selections/{memberKey}/{sessionId} = renderId
+// Fallback: localStorage (per-device) when no memberKey is available
+// (signed-in user not yet matched to bandMembers, or unauthenticated).
+async function _mtSaveRenderSelection(sessionId, renderId) {
+    if (!sessionId || !renderId) return;
+    try {
+        var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (memberKey && db && typeof bandPath === 'function') {
+            await db.ref(bandPath('render_selections/' + memberKey + '/' + sessionId)).set(renderId);
+        }
+        // Always also cache to localStorage — offline-safe + per-device
+        // fallback when memberKey is briefly unavailable on cold start.
+        try { localStorage.setItem('gl_mt_render_selection_' + sessionId, renderId); } catch (e) {}
+    } catch (e) { console.warn('[Multitrack] save render selection failed:', e && e.message); }
+}
+
+async function _mtLoadRenderSelection(sessionId) {
+    if (!sessionId) return null;
+    try {
+        var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (memberKey && db && typeof bandPath === 'function') {
+            var snap = await db.ref(bandPath('render_selections/' + memberKey + '/' + sessionId)).once('value');
+            var val = snap && snap.val();
+            if (val) return val;
+        }
+        // Fall back to localStorage (will catch cases where memberKey
+        // is null at boot but the user did make a selection earlier).
+        try {
+            var ls = localStorage.getItem('gl_mt_render_selection_' + sessionId);
+            return ls || null;
+        } catch (e) { return null; }
+    } catch (e) { return null; }
+}
+
+// Transient "Now playing" confirmation banner. Drew 2026-05-28:
+// "audio changes can be subtle. Users need confidence the switch
+// actually happened. Especially with similar mixes."
+//
+// Inserts a brief green pill below the player playing-label that
+// announces the new render's name + auto-fades after 4 seconds.
+// Stacks gracefully if the user rapidly switches renders (newest
+// banner replaces any prior).
+function _mtFlashRenderSwitchBanner(displayName) {
+    var existing = document.getElementById('mtRenderSwitchBanner');
+    if (existing) existing.remove();
+    // Anchor: above the audio element or below the playing-label.
+    // mtPlayingLabel is the canonical "what's loaded" surface (file name).
+    var anchor = document.getElementById('mtPlayingLabel');
+    if (!anchor) return;
+    var banner = document.createElement('div');
+    banner.id = 'mtRenderSwitchBanner';
+    banner.style.cssText = 'background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.45);border-radius:6px;padding:6px 12px;margin-top:6px;color:#86efac;font-size:0.84em;font-weight:700;display:flex;align-items:center;gap:8px;animation:mtBannerFadeIn 240ms ease-out;transition:opacity 600ms ease-out';
+    banner.innerHTML = '🎵 <span>Now playing: <span style="color:#dcfce7">' + escHtml(displayName) + '</span></span>';
+    anchor.parentNode.insertBefore(banner, anchor.nextSibling);
+    // Inject keyframes once.
+    if (!document.getElementById('mtBannerKeyframes')) {
+        var style = document.createElement('style');
+        style.id = 'mtBannerKeyframes';
+        style.textContent = '@keyframes mtBannerFadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }';
+        document.head.appendChild(style);
+    }
+    // Fade out + remove after 4s.
+    setTimeout(function() {
+        if (banner.parentNode) {
+            banner.style.opacity = '0';
+            setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 600);
+        }
+    }, 4000);
+}
+
+// 🎵 All renders — list every render that exists for this session in R2
+// and let the user load any of them. Drew 2026-05-28: filed earlier as
+// deferred when 4 renders existed for tonight's session but the UI only
+// surfaced one. Pierce's comment-drift bug was the consequence — the
+// player auto-loaded mix_default after deploys reset the SW cache, even
+// though Pierce had been listening to the songs-only mix when he wrote
+// his comments. Render-picker exposes the choice explicitly. Selection
+// persists per-user, per-session (Firebase + localStorage fallback) so
+// the recovery path doesn't silently disappear on reload.
+window._mtOpenRendersModal = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var existing = document.getElementById('mtRendersModal');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'mtRendersModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:6500;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'max-width:600px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(255,255,255,0.08);max-height:88vh;overflow-y:auto';
+    modal.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+        + '<span style="font-size:1.4em">🎵</span>'
+        + '<div style="flex:1;font-weight:800;color:#f1f5f9;font-size:1.05em">All renders for this session</div>'
+        + '<button onclick="document.getElementById(\'mtRendersModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px;line-height:1.5">Each row is a separate render of this rehearsal. Click any one to load it in the player. The currently-loaded render is highlighted.</div>'
+        + '<div id="mtRendersList" style="font-size:0.85em;color:#cbd5e1">⏳ Loading renders…</div>';
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var currentUrl = (p.renderInfo && p.renderInfo.url) || '';
+    var currentRenderId = (p.renderInfo && p.renderInfo.renderId) || 'mix_default';
+    try {
+        var res = await fetch(workerBase + '/multitrack/render/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(p.sessionId));
+        var data = await res.json();
+        var renders = (data && data.renders) || [];
+        // Filter out preview clips and the placeholder _previews dir entries.
+        renders = renders.filter(function(r) {
+            return r.renderId && r.renderId !== '_previews' && !/^preview-/.test(r.renderId || '');
+        });
+        var listEl = document.getElementById('mtRendersList');
+        if (!listEl) return;
+        if (!renders.length) {
+            listEl.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text-dim)">No renders found for this session.</div>';
+            return;
+        }
+        // Empty-state line when only the default render exists. Drew:
+        // "extremely lightly — one sentence only, no tutorial, no
+        // explanation wall, no defensive copy."
+        var emptyStateHtml = (renders.length === 1) ? (
+            '<div style="font-size:0.78em;color:var(--text-dim);padding:10px;margin-top:8px;text-align:center;font-style:italic">Only the default render exists for this rehearsal. Create alternate mixes from 🎛 Mix → Render Mix.</div>'
+        ) : '';
+        listEl.innerHTML = renders.map(function(r) {
+            var isCurrent = (r.url && r.url === currentUrl) || (r.renderId === currentRenderId);
+            var sizeMb = r.sizeBytes ? (r.sizeBytes / (1024*1024)).toFixed(1) + ' MB' : '?';
+            var modStr = r.lastModified ? new Date(r.lastModified).toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+            var displayName = r.renderId || r.fileName || 'render';
+            var subtitle = r.fileName || '';
+            var bgColor = isCurrent ? 'rgba(34,197,94,0.10)' : 'rgba(255,255,255,0.03)';
+            var borderColor = isCurrent ? 'rgba(34,197,94,0.40)' : 'rgba(255,255,255,0.08)';
+            var encodedRenderId = (r.renderId || '').replace(/'/g, "\\'");
+            var encodedUrl = (r.url || '').replace(/'/g, "\\'");
+            var encodedName = (r.fileName || '').replace(/'/g, "\\'");
+            return ''
+                + '<div style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px">'
+                + '<div style="flex:1;min-width:0">'
+                +   '<div style="font-weight:700;color:#f1f5f9;display:flex;align-items:center;gap:6px">' + escHtml(displayName) + (isCurrent ? ' <span style="background:rgba(34,197,94,0.2);color:#86efac;border-radius:3px;padding:1px 6px;font-size:0.65em;font-weight:700">▶ NOW PLAYING</span>' : '') + '</div>'
+                +   '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(subtitle) + '</div>'
+                +   '<div style="font-size:0.7em;color:#64748b;margin-top:3px">' + sizeMb + (modStr ? ' · ' + escHtml(modStr) : '') + '</div>'
+                + '</div>'
+                + (isCurrent ? ''
+                    : '<button onclick="_mtSwitchToRender(\'' + encodedRenderId + '\',\'' + encodedUrl + '\',\'' + encodedName + '\')" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.45);border-radius:6px;color:#a5b4fc;padding:7px 14px;cursor:pointer;font-size:0.82em;font-weight:700;flex-shrink:0">▶ Load</button>'
+                  )
+                + '</div>';
+        }).join('') + emptyStateHtml;
+    } catch (e) {
+        var le = document.getElementById('mtRendersList');
+        if (le) le.innerHTML = '<div style="padding:12px;color:#fca5a5;font-size:0.82em">Failed to load renders: ' + escHtml(e.message || 'unknown') + '</div>';
+    }
+};
+
+// Switch the player to a different render. Called from the renders modal.
+// Persists the selection (per-user, per-session) so reloads/deploys/nav
+// don't silently revert to the auto-load default — Drew 2026-05-28:
+// continuity integrity.
+window._mtSwitchToRender = function(renderId, url, fileName) {
+    var p = _mtState.player;
+    if (!p || !url) return;
+    // Pause current playback before swap.
+    var audio = (p.audios && p.audios[0]) || document.getElementById('mtMasterAudio');
+    if (audio) {
+        try { audio.pause(); } catch (e) {}
+    }
+    // Update renderInfo so future operations (SMS share, export, comments)
+    // know which render is loaded.
+    p.renderInfo = { url: url, fileName: fileName || '', renderId: renderId || '' };
+    // Update header label.
+    var headerLbl = document.getElementById('mtPlayingLabel');
+    if (headerLbl) headerLbl.textContent = 'Playing ' + (fileName || renderId || 'render');
+    // Swap the audio element src + reload.
+    if (audio) {
+        try {
+            audio.src = url;
+            audio.load();
+        } catch (e) { console.warn('[Multitrack] render swap failed:', e); }
+    }
+    // Close the modal.
+    var modal = document.getElementById('mtRendersModal');
+    if (modal) modal.remove();
+    // Transient in-chrome confirmation that the switch happened —
+    // less ephemeral than a toast, anchored to where the player lives.
+    _mtFlashRenderSwitchBanner(fileName || renderId || 'render');
+    if (typeof showToast === 'function') showToast('🎵 Now playing: ' + (fileName || renderId || 'render'));
+    // Persist (fire-and-forget — failure shouldn't block playback).
+    if (p.sessionId) _mtSaveRenderSelection(p.sessionId, renderId);
+};
+
+// 📦 Download stems modal — replaces the old direct-trigger
+// _mtDownloadStems flow. Two paths: whole-session ZIP (legacy flow,
+// now with a clear "download started, check your browser" status +
+// expected speed range) and per-track individual downloads (direct
+// R2 URLs for each FLAC, no zip step required). Drew 2026-05-28:
+// "Brian was questioning download speed and wasn't sure it was
+// even downloading when he clicked. Make it obvious and show
+// progress while also being clear about acceptable bandwidth from
+// our R2 server."
+window._mtOpenDownloadStemsModal = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var existing = document.getElementById('mtDownloadStemsModal');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'mtDownloadStemsModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:6500;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'max-width:640px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;overflow-y:auto';
+
+    // Per-track URL pattern — same path that R2 serves at via the
+    // public bucket. p.tracks already has stemUrl populated from
+    // the demux record; that's the source of truth here.
+    var tracks = (p.tracks || []).filter(function(t) { return t.stemUrl; });
+    var totalStemBytes = tracks.reduce(function(sum, t) { return sum + (t.stemBytes || 0); }, 0);
+    var totalMb = (totalStemBytes / (1024*1024)).toFixed(0);
+    var totalGb = (totalStemBytes / (1024*1024*1024)).toFixed(1);
+
+    modal.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+        + '<span style="font-size:1.4em">📦</span>'
+        + '<div style="flex:1;font-weight:800;color:#f1f5f9;font-size:1.05em">Download stems</div>'
+        + '<button onclick="document.getElementById(\'mtDownloadStemsModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>'
+        + '</div>'
+        // ── Bandwidth advisory: tells users what speed to expect AND offers a probe.
+        + '<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:12px;margin-bottom:14px;font-size:0.78em;color:#cbd5e1;line-height:1.5">'
+        +   '<div style="font-weight:700;color:#a5b4fc;margin-bottom:4px">📊 Expected download speed from our server</div>'
+        +   '<div style="margin-bottom:6px">Cloudflare R2 typically delivers <strong>50–300 Mbps</strong> to consumer connections. If you\'re getting much less than that, it\'s your network (LTE deprioritization, congested wifi, ISP throttling), not the app.</div>'
+        +   '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">'
+        +     '<button id="mtDlSpeedTestBtn" onclick="_mtRunBandwidthProbe()" style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.45);border-radius:5px;color:#a5b4fc;padding:5px 11px;cursor:pointer;font-size:0.85em;font-weight:700">🧪 Test my speed</button>'
+        +     '<span id="mtDlSpeedResult" style="font-size:0.85em;color:var(--text-dim)">Measures actual throughput from R2 to this device.</span>'
+        +   '</div>'
+        + '</div>'
+        // ── Whole-session ZIP option (the legacy path, now with clearer messaging)
+        + '<div style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.22);border-radius:8px;padding:14px;margin-bottom:14px">'
+        +   '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">'
+        +     '<div style="flex:1">'
+        +       '<div style="font-weight:700;color:#86efac;font-size:0.95em">Whole-session ZIP — all ' + tracks.length + ' tracks</div>'
+        +       '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">Best for DAW import — every FLAC at once, ready to drop in. ZIP is ~' + totalGb + ' GB.</div>'
+        +     '</div>'
+        +     '<button onclick="_mtStartZipDownload()" id="mtDlZipBtn" style="background:rgba(34,197,94,0.22);border:1px solid rgba(34,197,94,0.5);border-radius:6px;color:#86efac;padding:8px 14px;cursor:pointer;font-size:0.86em;font-weight:700;flex-shrink:0">📦 ZIP</button>'
+        +   '</div>'
+        +   '<div id="mtDlZipStatus" style="font-size:0.78em;color:var(--text-dim);margin-top:6px;display:none"></div>'
+        + '</div>'
+        // ── Per-track individual downloads — fast path for "I just need MY tracks"
+        + '<div>'
+        +   '<div style="font-weight:700;color:#f1f5f9;font-size:0.92em;margin-bottom:4px">Individual tracks</div>'
+        +   '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px;line-height:1.5">Click any track to download just that FLAC. Useful if you\'re on a slow connection and only need your own stems. Each track is ~600 MB.</div>'
+        +   '<div style="display:flex;flex-direction:column;gap:5px">'
+        +   tracks.map(function(t) {
+                var sz = t.stemBytes ? (t.stemBytes / (1024*1024)).toFixed(0) + ' MB' : '?';
+                var roleEmoji = (t.role || '').indexOf('vocal') === 0 ? '🎤'
+                              : (t.role || '').indexOf('guitar') === 0 ? '🎸'
+                              : (t.role || '') === 'bass' ? '🎸'
+                              : ['kick','snare','tom1','tom2','tom3','bongos','oh-l','oh-r'].indexOf(t.role || '') >= 0 ? '🥁'
+                              : (t.role || '').indexOf('keys') === 0 ? '🎹'
+                              : '🎵';
+                var label = (t.label || ((t.role || '') + (t.member ? ' · ' + t.member : '')));
+                var safeUrl = (t.stemUrl || '').replace(/'/g, "\\'");
+                var safeName = (t.filename || ((t.role || '') + '.flac')).replace(/'/g, "\\'");
+                return ''
+                    + '<a href="' + escHtml(t.stemUrl) + '" download="' + escHtml(t.filename || '') + '" '
+                    +    'onclick="_mtTrackDownloadClicked(\'' + safeName + '\')" '
+                    +    'style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px;text-decoration:none;color:inherit;transition:background 150ms,border-color 150ms">'
+                    + '<span style="font-size:1.1em">' + roleEmoji + '</span>'
+                    + '<div style="flex:1;min-width:0">'
+                    +   '<div style="font-weight:600;color:#f1f5f9;font-size:0.86em">' + escHtml(label) + '</div>'
+                    +   '<div style="font-size:0.7em;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(t.filename || '') + ' · ' + sz + '</div>'
+                    + '</div>'
+                    + '<span style="color:#a5b4fc;font-size:0.84em;flex-shrink:0;font-weight:700">⬇ Download</span>'
+                    + '</a>';
+            }).join('')
+        +   '</div>'
+        + '</div>';
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+};
+
+// Per-track download click — show a tiny toast so the user knows the
+// browser is now handling the download (and gives them confidence
+// something actually happened when the browser doesn't surface a
+// download dialog on macOS Safari, etc.).
+window._mtTrackDownloadClicked = function(filename) {
+    if (typeof showToast === 'function') {
+        showToast('📥 Downloading ' + filename + ' — check your browser\'s download tray.');
+    }
+};
+
+// Bandwidth probe — fetch the first 10 MB of an audio file from R2 via
+// HTTP Range, time it, report the result. Uses the currently-loaded
+// rehearsal-mix file since we know it exists and isn't being modified.
+// Result lives in the speed-test row of the Download Stems modal.
+window._mtRunBandwidthProbe = async function() {
+    var p = _mtState.player;
+    var resultEl = document.getElementById('mtDlSpeedResult');
+    var btn = document.getElementById('mtDlSpeedTestBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Measuring…'; }
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--text-dim)">⏳ Pulling 10 MB sample…</span>';
+    var probeUrl = (p && p.renderInfo && p.renderInfo.url) || '';
+    if (!probeUrl) {
+        // Fall back to the first per-channel FLAC if no render is loaded.
+        var firstTrack = (p && p.tracks && p.tracks[0]) || null;
+        probeUrl = firstTrack && firstTrack.stemUrl;
+    }
+    if (!probeUrl) {
+        if (resultEl) resultEl.innerHTML = '<span style="color:#fca5a5">No probe target available.</span>';
+        if (btn) { btn.disabled = false; btn.textContent = '🧪 Test my speed'; }
+        return;
+    }
+    var probeBytes = 10 * 1024 * 1024;  // 10 MB
+    try {
+        var t0 = performance.now();
+        var res = await fetch(probeUrl, {
+            headers: { 'Range': 'bytes=0-' + (probeBytes - 1) },
+            cache: 'no-store',
+        });
+        if (!res.ok && res.status !== 206) throw new Error('HTTP ' + res.status);
+        var buf = await res.arrayBuffer();
+        var t1 = performance.now();
+        var elapsedSec = (t1 - t0) / 1000;
+        var bytes = buf.byteLength;
+        var bps = bytes / elapsedSec;
+        var mbps = (bps * 8) / 1_000_000;
+        var mibps = bps / (1024 * 1024);
+        var qual, qualColor;
+        if (mbps >= 50) { qual = '✓ Excellent — server bandwidth fully available'; qualColor = '#86efac'; }
+        else if (mbps >= 20) { qual = '✓ Good — typical for most home connections'; qualColor = '#86efac'; }
+        else if (mbps >= 8) { qual = '○ Moderate — workable but not fast'; qualColor = '#fbbf24'; }
+        else { qual = '⚠ Slow — likely LTE deprioritization, congested wifi, or ISP throttling'; qualColor = '#fca5a5'; }
+        if (resultEl) {
+            resultEl.innerHTML = '<strong style="color:#f1f5f9">' + mbps.toFixed(1) + ' Mbps</strong> '
+                + '<span style="color:var(--text-dim);font-size:0.92em">(' + mibps.toFixed(1) + ' MiB/s · ' + elapsedSec.toFixed(1) + 's for 10 MB)</span>'
+                + '<br><span style="color:' + qualColor + ';font-size:0.86em">' + qual + '</span>';
+        }
+    } catch (e) {
+        if (resultEl) resultEl.innerHTML = '<span style="color:#fca5a5">Probe failed: ' + escHtml(e.message || 'unknown') + '</span>';
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '🧪 Test my speed again'; }
+};
+
+// Whole-session ZIP entry — wraps the existing _mtDownloadStems flow
+// but provides clear in-modal status messaging so the user knows the
+// download started and what to expect. The actual download is handed
+// to the browser (we don't proxy 13 GB through the page), so the
+// status here surfaces the lifecycle until the browser takes over.
+window._mtStartZipDownload = async function() {
+    var btn = document.getElementById('mtDlZipBtn');
+    var status = document.getElementById('mtDlZipStatus');
+    if (status) {
+        status.style.display = 'block';
+        status.innerHTML = '<span style="color:var(--text-dim)">⏳ Checking if ZIP exists in R2 (cached from a previous request)…</span>';
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing…'; }
+    try {
+        await window._mtDownloadStems({ inModalStatusId: 'mtDlZipStatus', inModalBtnId: 'mtDlZipBtn' });
+    } catch (e) {
+        if (status) status.innerHTML = '<span style="color:#fca5a5">✗ ' + escHtml(e.message || 'failed') + '</span>';
+        if (btn) { btn.disabled = false; btn.textContent = '📦 ZIP'; }
+    }
+};
+
 // 📦 Download stems — uses the existing /multitrack/zip async pipeline.
 // Flow:
 //   1. Check /multitrack/zip/status — if a session.zip is already cached
@@ -3574,25 +3962,67 @@ window._mtToggleKeeper = async function() {
 //      a call_id back.
 //   3. Poll /multitrack/zip/check every 5s until state==='done'.
 //   4. Trigger a browser download via the returned publicUrl.
-window._mtDownloadStems = async function() {
+// Accepts optional opts.inModalStatusId / opts.inModalBtnId so the new
+// Download Stems modal can surface lifecycle status inline rather than
+// only via the old Tools-button label. Backwards compatible — when
+// called with no args, status falls back to the legacy button label.
+window._mtDownloadStems = async function(opts) {
+    opts = opts || {};
     var p = _mtState.player;
     if (!p || !p.sessionId) return;
     var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
     var btn = document.getElementById('mtDownloadBtn');
     var origLabel = btn ? btn.textContent : '';
+    // When called from the new Download Stems modal, route status to
+    // the in-modal status div + the modal ZIP button instead of the
+    // legacy Tools-bar button. Old callers (mobile Tools rail) still
+    // get button-label updates.
+    var modalStatusEl = opts.inModalStatusId ? document.getElementById(opts.inModalStatusId) : null;
+    var modalBtnEl = opts.inModalBtnId ? document.getElementById(opts.inModalBtnId) : null;
 
     function setLabel(text, isError) {
-        if (!btn) return;
-        btn.textContent = text;
-        btn.disabled = !isError;
-        btn.style.opacity = isError ? '1' : '0.7';
+        if (modalStatusEl) {
+            // Phase markers in modal: spinner emoji + colored text + helpful
+            // sub-line that builds confidence ("yes it's working").
+            var color = isError ? '#fca5a5' : 'var(--text-dim)';
+            modalStatusEl.innerHTML = '<span style="color:' + color + '">' + text + '</span>';
+        }
+        if (modalBtnEl) {
+            modalBtnEl.textContent = isError ? '📦 ZIP' : text;
+            modalBtnEl.disabled = !isError;
+        }
+        if (btn) {
+            btn.textContent = text;
+            btn.disabled = !isError;
+            btn.style.opacity = isError ? '1' : '0.7';
+        }
     }
     function resetLabel() {
-        if (!btn) return;
-        btn.textContent = origLabel || '📦 Stems';
-        btn.disabled = false;
-        btn.style.opacity = '1';
+        if (modalBtnEl) {
+            modalBtnEl.textContent = '📦 ZIP';
+            modalBtnEl.disabled = false;
+        }
+        if (btn) {
+            btn.textContent = origLabel || '📦 Stems';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    }
+    // Show a "download started" confirmation that survives after the
+    // browser takes over the actual file transfer. The browser handles
+    // the multi-GB transfer (we don't proxy it through the page); this
+    // status tells the user clearly that the handoff happened.
+    function announceDownloadStarted(url) {
+        if (modalStatusEl) {
+            modalStatusEl.innerHTML =
+                '<div style="background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.35);border-radius:6px;padding:10px;color:#86efac;line-height:1.5">'
+                + '<div style="font-weight:700;margin-bottom:4px">✓ Download started in your browser</div>'
+                + '<div style="font-size:0.86em;color:#cbd5e1">Check your browser\'s download tray (top-right in Chrome / Safari) for live progress. The ZIP is being transferred by your browser, not the app — closing this modal is fine; the download continues.</div>'
+                + '<div style="font-size:0.78em;color:var(--text-dim);margin-top:6px"><strong>Tip:</strong> if the speed seems low, run the 🧪 Test my speed probe above to compare your actual throughput against our server\'s baseline (50–300 Mbps typical).</div>'
+                + '</div>';
+        }
+        if (typeof showToast === 'function') showToast('📥 Download started — check your browser\'s download tray');
     }
 
     setLabel('⏳ Checking…');
@@ -3602,7 +4032,18 @@ window._mtDownloadStems = async function() {
         var statusJson = await statusRes.json();
         if (statusJson && statusJson.ready && statusJson.publicUrl) {
             setLabel('📥 Downloading…');
-            window.location.href = statusJson.publicUrl;
+            // Use a hidden anchor + click() instead of window.location.href
+            // so the modal doesn't blank out — Chrome navigates the tab on
+            // .href assignment for some content-types; a download anchor
+            // keeps us on the page.
+            var a = document.createElement('a');
+            a.href = statusJson.publicUrl;
+            a.download = 'session.zip';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function() { document.body.removeChild(a); }, 100);
+            announceDownloadStarted(statusJson.publicUrl);
             setTimeout(resetLabel, 2000);
             return;
         }
@@ -3640,7 +4081,14 @@ window._mtDownloadStems = async function() {
                 }
                 if (!url) throw new Error('zip ready but no URL returned');
                 setLabel('📥 Downloading…');
-                window.location.href = url;
+                var a2 = document.createElement('a');
+                a2.href = url;
+                a2.download = 'session.zip';
+                a2.rel = 'noopener';
+                document.body.appendChild(a2);
+                a2.click();
+                setTimeout(function() { document.body.removeChild(a2); }, 100);
+                announceDownloadStarted(url);
                 setTimeout(resetLabel, 2000);
                 return;
             }

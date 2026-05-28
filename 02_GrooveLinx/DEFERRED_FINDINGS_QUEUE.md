@@ -2326,3 +2326,67 @@ Future contributors should not "fix" these without checking back.
     dates in the future render-picker UI confusing.
   - **Discovered:** 2026-05-28
   - **Status:** open
+
+- **Finding:** Multitrack-rehearsal comments are anchored to absolute
+  `timestampSec` in the rendered audio file, NOT to segment IDs.
+  Surfaced live 2026-05-28 by Pierce: he made 11 comments while playing
+  the songs-only mix (303.8 MB, ~2:12 duration); the player has since
+  reverted to auto-loading the full mix (443.8 MB, ~3:14 duration);
+  his comment timestamps now drift forward by the cumulative
+  silence+chatter excluded BEFORE each comment position. Delta is
+  +14:41 at 42:02 (songs-only timeline) and grows to +31:08 by
+  1:16:09 — fully accounting for ~1h of excluded chatter/silence
+  spread through the rehearsal.
+  - **Why this is bad:** any render switch — overwrite of `mix_default`,
+    user toggle between songs-only and full, service-worker cache
+    reset reverting auto-load to default, future Custom Mix renders
+    changing the newest-wins order — silently breaks comment
+    alignment. Pierce reported this himself with an exact reproduction:
+    "I think the rendered rehearsal file may have changed, but the
+    comment time points are the same." This is a real trust-layer
+    bug per Drew's own triage rule (comments are captured user data;
+    misaligning them = lost meaning + lost effort).
+  - **Why deferred:** People in the app at moment of discovery; no
+    commits per Drew's request. Also a non-trivial fix — needs to
+    span save / load / render / display paths AND migrate ~existing
+    comments. Estimated 200-300 LOC.
+  - **Trigger:** Next user-reported comment drift, OR before
+    onboarding bands beyond Deadcetera (other bands will have NO
+    workaround context for the drift).
+  - **Fix shape:** Store `{segmentId, offsetWithinSegment, fallback:
+    {timestampSec, renderId}}` per comment instead of just
+    `timestampSec`. At display time, look up the segment from the
+    current player's segment list, add the offset, render the
+    absolute position. If the segment was excluded from the current
+    render (e.g., chatter excluded from songs-only), surface the
+    comment as "exists but out of view; jump to context?" rather
+    than silently mapping to wrong position. Fall back to absolute
+    timestamp if segmentId can't be resolved (legacy comments
+    without the new anchor field).
+  - **Workaround for Pierce TODAY:** point him at the songs-only
+    render URL directly (still in R2, never overwritten), where
+    his original comment timestamps line up. Requires manual URL
+    handoff until a render-picker UI ships (separate deferred item).
+  - **Discovered:** 2026-05-28 · post-90313264 review-mode session
+  - **Status:** open
+
+- **Finding:** Stems download is whole-session ZIP only (13.3 GB for
+  a typical 3-hour rehearsal × 17 channels × 24-bit FLAC). No per-stem
+  download path in the UI. Surfaced 2026-05-28 by Brian: he's on LTE
+  with carrier deprioritization, getting 3.2 Mbps, projected 9+ hours
+  to pull the full ZIP. He only actually needs HIS tracks (vocal +
+  guitar = ~1.2 GB = 50 min vs 9 hours).
+  - **Why deferred:** People in app; no commits per Drew's request.
+    Also genuinely small fix (~50-80 LOC UI patch) — should ship
+    soon but doesn't block tonight.
+  - **Fix shape:** Per-track download icons in the existing Stems
+    modal track list. URL pattern already works (R2 public bucket
+    with per-track FLAC at known path); just needs the affordance
+    surfaced. No backend changes. Optional: bulk-select checkboxes
+    for "download these 4 tracks" zipped subset, but YAGNI for v1.
+  - **Workaround until shipped:** Manual URL share. Per-stem URL
+    pattern: `https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/
+    multitrack/{slug}/{sessionId}/{filenameStem}.flac`. Track list
+    is in Firebase `bands/{slug}/rehearsal_sessions/{sid}/tracks/`.
+  - **Discovered:** 2026-05-28 · Brian Hillman first-real-DAW pull
+  - **Status:** open
