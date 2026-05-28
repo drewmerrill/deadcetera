@@ -122,6 +122,18 @@ If you skip the wipe step (e.g., recorded twice between formats, or you're using
     ...
 ```
 
+**Firmware variation — two layouts observed in the wild (2026-05-27):**
+
+```
+Layout A (5/18 card):                Layout B (5/27 card):
+/Volumes/SANDISK/                    /Volumes/SANDISK/
+  X_LIVE/      (empty marker)          X_LIVE/
+  5CB2934C/    (session)                 5CBB9250/    (session NESTED here)
+    00000001.WAV                           00000001.WAV
+```
+
+X-Live firmware versions differ on whether the session folder lives at the SD root or nested under `X_LIVE/`. Same hardware, just different firmware behavior. **The wizard's 📂 Pick button auto-detects which layout your card is using** and generates the right rsync path (`/Volumes/SANDISK/X_LIVE/5CBB9250/` vs `/Volumes/SANDISK/5CB2934C/`) — you never have to know which firmware quirk applied. If you type the folder name manually, the wizard assumes Layout A; if your card is Layout B, prepend `X_LIVE/` to the path.
+
 **How to tell which is newest:**
 - The 8-char hex name is the X-Live's internal session counter — higher hex = newer. `5CB293EC` > `5CB29350` > `5CB2934C`. (NOT date-based — just a monotonic counter.)
 - Easier: Finder → sort by Date Modified. Most recent date = newest rehearsal.

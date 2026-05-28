@@ -260,12 +260,23 @@ function _mtLoadWizardInputs() {
     } catch (e) { return null; }
 }
 
+// In-memory carry for the FULL on-card path discovered by the picker
+// (e.g. "X_LIVE/5CBB9250" on firmware that nests the session under
+// X_LIVE/, OR just "5CB2934C" on firmware that writes at the SD root).
+// Two firmware variations observed on Drew's actual cards 2026-05-27.
+// We persist this so the rsync command in Step 1 uses the correct
+// depth-of-nesting and the user doesn't have to know which their
+// firmware did. Cleared when the user types into the folder input
+// manually (since we no longer know the path then).
+var _mtWizFolderPathOnCard = '';
+
 function _mtSaveWizardInputs() {
     try {
         var folder = (document.getElementById('mtWizInputFolder') || {}).value || '';
         var date   = (document.getElementById('mtWizInputDate')   || {}).value || '';
         localStorage.setItem(_MT_WIZ_LS_KEY, JSON.stringify({
             folderName: folder.trim(),
+            folderPathOnCard: _mtWizFolderPathOnCard,
             rehearsalDate: date.trim(),
             savedAt: Date.now(),
         }));
@@ -276,6 +287,17 @@ function _mtWizGetFolder() {
     var el = document.getElementById('mtWizInputFolder');
     var v = el ? (el.value || '').trim() : '';
     return v || '<R_NNN>';
+}
+
+// Returns the path RELATIVE TO /Volumes/SANDISK/ that points at the
+// session folder. The picker fills this in with the correct depth
+// (e.g. "X_LIVE/5CBB9250" or just "5CB2934C"). If unset (user typed
+// manually), falls back to the folder name alone, which works for
+// flat-at-SD-root firmware. If the user's firmware nests under X_LIVE/
+// and they typed manually, they'll need to type that prefix too.
+function _mtWizGetFolderPath() {
+    if (_mtWizFolderPathOnCard) return _mtWizFolderPathOnCard;
+    return _mtWizGetFolder();
 }
 
 function _mtWizGetDate() {
@@ -290,7 +312,12 @@ function _mtWizGetDateUS() {
 
 // Triggered onchange/onkeyup from input fields — persists + re-renders the
 // current step body so all copy-buttons regenerate with the new values.
-window._mtWizInputsChanged = function() {
+// When the user TYPES into the folder input manually, we clear any
+// picker-set folderPathOnCard since we no longer know the nesting depth.
+window._mtWizInputsChanged = function(opts) {
+    if (!opts || !opts.fromPicker) {
+        _mtWizFolderPathOnCard = '';  // user is typing — discard picker hint
+    }
     _mtSaveWizardInputs();
     _mtRenderWizardStep();
 };
@@ -310,6 +337,16 @@ window._mtWizPickFolderFromSDCard = function(input) {
     if (!files.length) return;
     var hexRe = /(^|\/)([0-9A-Fa-f]{8})\.wav$/i;
     var matched = [];
+    // Also remember the FULL relative path TO the session folder so
+    // we can construct the right rsync command. Two firmware variations
+    // observed on Drew's actual X-Live cards 2026-05-27:
+    //   (a) session folder at SD root           — e.g. "5CB2934C/"
+    //   (b) session folder nested under X_LIVE/ — e.g. "X_LIVE/5CBB9250/"
+    // We strip the volume name (first segment from webkitRelativePath)
+    // and keep everything from there up to (not including) the WAV
+    // filename. That gives us "5CB2934C" OR "X_LIVE/5CBB9250" as
+    // appropriate for plugging into /Volumes/SANDISK/<path>/.
+    var folderPaths = {};  // folder-name → set of full paths-to-folder seen
     files.forEach(function(f) {
         var rel = f.webkitRelativePath || f.name || '';
         var m = rel.match(hexRe);
@@ -320,8 +357,20 @@ window._mtWizPickFolderFromSDCard = function(input) {
         matched.push({
             folder: folder,
             sizeBytes: f.size || 0,
-            lastModified: f.lastModified || 0,  // ms epoch
+            lastModified: f.lastModified || 0,
         });
+        // Build path-from-volume-root to this folder. Drop the very
+        // first segment (which is whatever the user picked — likely
+        // "SANDISK" if they picked the volume root, or the session
+        // folder name if they picked the session folder directly) and
+        // the last segment (the WAV filename itself).
+        if (parts.length >= 2) {
+            var pathToFolder = parts.slice(1, parts.length - 1).join('/');
+            // If user picked the session folder directly, slice() yields
+            // an empty string — fall back to the folder name alone.
+            if (!pathToFolder) pathToFolder = folder;
+            if (!folderPaths[folder]) folderPaths[folder] = pathToFolder;
+        }
     });
     if (!matched.length) {
         if (typeof showToast === 'function') {
@@ -380,11 +429,13 @@ window._mtWizPickFolderFromSDCard = function(input) {
                       sessionFolder + ' (~' + gb + ' GB)');
         }
     }
-    // Fill input + re-render
+    // Fill input + re-render. Capture BOTH the folder name (for display)
+    // and the full path-on-card (for the rsync command).
+    _mtWizFolderPathOnCard = folderPaths[sessionFolder] || sessionFolder;
     var folderInput = document.getElementById('mtWizInputFolder');
     if (folderInput) {
         folderInput.value = sessionFolder;
-        _mtWizInputsChanged();
+        _mtWizInputsChanged({ fromPicker: true });
     }
     // Clear the file input so the same folder can be re-picked later
     input.value = '';
@@ -455,11 +506,18 @@ function _mtRenderWizardStepper() {
 
 function _mtRenderStep1() {
     var folder = _mtWizGetFolder();
+    var folderPath = _mtWizGetFolderPath();
     var srcFolder = _mtSourceFolderHint();
-    var rsyncCmd = 'rsync -ah /Volumes/SANDISK/' + folder + '/ ' + srcFolder;
+    var rsyncCmd = 'rsync -ah /Volumes/SANDISK/' + folderPath + '/ ' + srcFolder;
+    // Show a small "card layout" hint when the picker found the session
+    // nested under X_LIVE/ — so the user understands why the path has
+    // an extra segment vs the simple <R_NNN>/ they might have expected.
+    var nestedHint = (folderPath !== folder && folderPath !== '<R_NNN>')
+        ? '<div style="font-size:0.66em;color:#a5b4fc;margin-top:3px"><strong>Note:</strong> your card stores the session under <code>X_LIVE/</code> — that\'s normal X-Live firmware variation. The command above accounts for it.</div>'
+        : '';
     var folderHelp = folder === '<R_NNN>'
-        ? '(Fill in <strong>Recording folder</strong> above to get a ready-to-paste command.)'
-        : '<em>Command above is pre-filled with your folder name. Paste it as-is.</em>';
+        ? '(Fill in <strong>Recording folder</strong> above — or click <strong>📂 Pick</strong> — to get a ready-to-paste command.)'
+        : '<em>Command above is pre-filled with your folder name. Paste it as-is.</em>' + nestedHint;
     return ''+
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 1 OF 5</div>' +
@@ -698,6 +756,10 @@ window._mtOpenImportModal = function() {
     var savedInputs = _mtLoadWizardInputs() || {};
     var savedFolder = (savedInputs.folderName || '').replace(/"/g, '&quot;');
     var savedDate   = (savedInputs.rehearsalDate || _mtTodayStamp()).replace(/"/g, '&quot;');
+    // Restore the picker-derived full path (X_LIVE/HEX vs flat HEX) if
+    // we captured it last time. Falls back to "" so manual typing path
+    // remains valid.
+    _mtWizFolderPathOnCard = savedInputs.folderPathOnCard || '';
 
     ov.innerHTML =
         '<div class="mt-wiz-card">' +
