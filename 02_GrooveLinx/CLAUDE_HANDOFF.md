@@ -6,14 +6,21 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-27 13:00 UTC (CO-Truth Map first pass shipped · Ingestion-First reframe captured) · Build under test: `20260527-113347` (commit `e65dbcc5` — F-016 stabilized) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS** (1) Shell Integrity / CO-Truth Audit (cartography only) + (2) Ingestion-First Architecture (validated necessity — sequencing decision open with Drew). The 2026-05-27 overnight saturation audit (39 screenshots across desktop / iPad / iPhone · 36 hash routes probed deterministically) answered "where is the real fragility?" — and the answer reframed the phase. **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state. The music-cognition layer IS the moat — empirically, not asserted. **Frontier:** shell orchestration — route truth, breadcrumb truth, URL truth, restoration truth, dashboard determinism, canonical recommendation source. **Architectural P0:** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. Until ONE canonical operational-truth layer exists, trust remains unstable. **Operational P0:** iPhone has NO visible primary-nav trigger — slide menu rendered at x=-300, zero visible elements call toggleMenu(). Songs/Practice/Rehearsal/etc unreachable from iPhone chrome. **DISCIPLINE:** do NOT immediately fix the 21 findings bug-by-bug. Many share root causes. Propose the **Canonical Operational Truth Audit** (architectural mapping pass) BEFORE any shell-layer remediation. iPhone-nav P0 may justify hotfix carve-out — confirm with Drew. Music-cognition surfaces stay off-critical-path. **Eleven canonical memories standing + one new today** (`project_shell_integrity_phase`). **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-28 16:00 UTC (First overnight multitrack ingest VALIDATED end-to-end · Custom Mix in real use · five ships) · Build live: `20260528-154723` (commit `90313264` — segment duration + smart preview-slice picker) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection open) + (2) Ingestion-First Architecture (no longer speculative — first 67 GB X-Live session ingested overnight 5/27→5/28 at 37.8 MB/s sustained, 40 min total vs 6h projection). **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state — the music-cognition layer IS the moat empirically. **Frontier:** shell orchestration + ingestion build-out (render picker UI, mix template builder, date-drift fix). **Trust-layer guard SHIPPED today:** re-Analyze on edited multitrack sessions now demands explicit acknowledgment (`04169069`) — band members cannot casually destroy curated rehearsal edits. **First-ingest operational realities surfaced:** (a) ingest script's session-date bug (sets to ingest-run date not recording date) — manually corrected via Firebase write for 5/27 session, code fix MUST land before 2026-06-03 to avoid recurrence; (b) Live Gig analyze branch silently auto-picks `setlists[0]` — workaround via Band Rehearsal branch + plan-prior write; (c) no UI surface lists multiple renders per session (4 exist for tonight's session, only one visible). **All three filed in DEFERRED_FINDINGS_QUEUE.md.** **New memory:** `feedback_run_operator_workflows_via_bash` — when repo CLIs exist for operator workflows, I run them via Bash while Drew watches the user-facing surface. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. **DISCIPLINE:** do NOT bug-by-bug fix; CO-Truth Map (`a797cce4`) precedes remediation. Music-cognition surfaces stay off-critical-path. **Twelve canonical memories standing.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260527-113347 (commit e65dbcc5 — Feed render
-null-guard hotfix shipped 11:35 UTC), branch main, live on
+GrooveLinx is at build 20260528-154723 (commit 90313264 — segment
+duration display + smart preview-slice picker), branch main, live on
 app.groovelinx.com.
+
+MILESTONE: First overnight multitrack ingest VALIDATED end-to-end.
+5/27 rehearsal (67 GB X-Live multitrack) reconstructed locally,
+uploaded to R2 at 37.8 MB/s sustained (~40 min vs 6h projection),
+demuxed into 17 per-channel FLACs with canonical NN_role-member.flac
+naming, surfaced in Review Mode correctly. The ingestion-first
+architectural reframe survived first real-world contact.
 
 PHASE: COHERENCE STEWARDSHIP — the project is no longer in
 feature-invention mode. Target = coherent lived operational reality,
@@ -139,16 +146,32 @@ AUTHORITATIVE (when sources conflict, LATER wins):
 OPEN BUGS:
   - #17 architecture-verified
   - #19 HIGH→MITIGATED
-  - F-016 (Feed render error) RESOLVED 2026-05-27 11:33 UTC via narrow
-    surgical null-guard. Root-cause (GLPriority dual-definition collision)
-    deferred to CO-Truth Audit per discipline.
-  - F-018 (iPhone primary-nav P0) RETRACTED 2026-05-27 09:15 UTC as
-    investigator error. Bottom tab bar IS visible. Hotfix cancelled
-    before merge. Audit instrumentation discipline saved as
-    feedback_audit_instrumentation_discipline.
-  - Other audit findings (F-001..F-021 minus F-016 and F-018) still
-    in FINDINGS_LIVE.md only; not yet triaged into bug_queue. Deferred
-    until after CO-Truth Audit per Shell Integrity discipline.
+  - F-016 (Feed render error) RESOLVED 2026-05-27.
+  - F-018 (iPhone primary-nav P0) RETRACTED 2026-05-27 as investigator
+    error. Bottom tab bar IS visible.
+  - Other audit findings (F-001..F-021) still in FINDINGS_LIVE.md only;
+    not triaged into bug_queue. Deferred until after CO-Truth Map
+    remediation candidate selection (Track A).
+
+INGESTION OPERATIONAL FINDINGS (filed in DEFERRED_FINDINGS_QUEUE.md
+during 2026-05-28 first-ingest review):
+  - HIGH: ingest_full_rehearsal.py sets session.date to ingest-run
+    date, not recording date. 5/27 session got date=2026-05-28 because
+    ingest crossed midnight. Manually corrected via Firebase set; code
+    fix (derive from first chunk mtime) MUST land before 2026-06-03
+    next rehearsal to avoid recurrence.
+  - MEDIUM: Live Gig analyze branch silently picks setlists[0] with
+    no chooser. Workaround: use Band Rehearsal branch + write
+    rehearsal_plan_{date} with the intended setlist's songs (the
+    plan-prior boosts 1.5×). Long-term: add picker mirroring the
+    Band Rehearsal branch.
+  - LOW: No in-app surface lists all renders for a session. 4 renders
+    exist in R2 for the 5/27 session; UI auto-loads only one
+    (mix_default preferred, else newest). Render-picker UI is the
+    natural next ingestion-track ship.
+  - LOW (cosmetic): Render filenames bake render-time date, not
+    session canonical date. After 5/28 → 5/27 session-date fix,
+    existing renders still carry 5/28 in their filenames.
 
 PERSISTENT PRODUCTION DATA RESIDUE (unchanged from prior session):
   - 5/10 multitrack session (rsess_mt_moz3077x_5793) carries
@@ -162,31 +185,17 @@ THREE ENCODED PHILOSOPHY LINES still live in code:
   - multitrack-rehearsal.js:_mtMaybeUpdateDuration — "Truth persists
     where truth lives."
 
-ELEVEN CANONICAL MEMORIES + FOUR NEW TODAY:
-  Standing: project_musical_operational_memory, project_one_musical_truth,
-  project_session_intent_persistence, project_accompaniment_axis,
-  project_prepared_for, feedback_trust_layer_triage_rule,
-  feedback_observe_before_expand, feedback_tooling_tier_discipline,
-  feedback_github_project_sync_mandate, feedback_load_bearing_memory_promotion,
-  feedback_uat_hard_reload
-  NEW 2026-05-27: project_shell_integrity_phase — post-audit phase
-  frame. Music-cognition core = validated moat (protect). Shell
-  orchestration = next architectural frontier. CO-Truth Audit
-  precedes bug-by-bug.
-  NEW 2026-05-27: feedback_audit_instrumentation_discipline —
-  visibility via bounding-rect + viewport intersection (NOT
-  offsetParent); selector discipline; trust screenshot over DOM
-  probe; pre-merge re-verification for "unreachable" claims.
-  NEW 2026-05-27: feedback_coherence_stewardship_phase — coherence
-  stewardship ≠ feature invention; CO-Truth Audit is cartography
-  NOT design; core question is musician trust not technical
-  correctness; some divergence is intentional contextual truth.
-  NEW 2026-05-27: project_ingestion_first_architecture — Drew's
-  SD-card reconstruction confirmed ingestion-first reframe.
-  X-Live WAV chunks ARE multitrack stem containers; REAPER was
-  chunk-concat convenience, not stem-extraction necessity. ffmpeg
-  `-c copy` safe. Recording Ingestion Architecture promoted from
-  SPEC ONLY → validated necessity.
+TWELVE CANONICAL MEMORIES + ONE NEW TODAY:
+  Standing eleven from prior session unchanged.
+  NEW 2026-05-28: feedback_run_operator_workflows_via_bash — when
+  repo CLIs exist for operator workflows (ingest, deploy, etc.),
+  I run them via Bash tool while Drew watches the user-facing
+  surface. Default is NOT "type these commands." Reserved
+  dictation for interactive auth / destructive / hardware-action
+  steps only. Surfaced after Drew called out the friction of
+  walking through five terminal copy-pastes for the ingest
+  sequence when the Cockpit was already built for the
+  observability flow.
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Reverb A/B verification (Drew, gating)
@@ -236,6 +245,19 @@ MUST NEVER DRIFT (load-bearing):
     should look like a MAP, not a redesign proposal.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
+  Ship the ingestion-script date-drift fix. Small, time-bound,
+  ~30-50 LOC. MUST land before 2026-06-03 next rehearsal to avoid
+  recurrence. Approach: derive session date from first chunk's
+  os.path.getmtime() (already collected during continuity scan),
+  emit as recording_date in ingest_metadata.json, use that field
+  rather than date.today() when writing the session to Firebase.
+  Tomorrow morning Drew also verifies (a) Southern-Roots re-Analyze
+  tightened borderline matches, (b) Brian's Custom Mix exploration
+  produced an audibly better render than the unity-gain default.
+  Everything else this week is observational — let tonight's ingest
+  become known-stable in real use before adding more surfaces.
+
+ARCHIVED — Track A vs Track B sequencing (still open from 5/27):
   Drew sequences the two live tracks. Both are validated; both are
   not-yet-greenlit-for-build:
 
@@ -288,6 +310,57 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 🎚 SESSION CLOSE — 2026-05-28 16:00 UTC — First Overnight Ingest VALIDATED · Custom Mix in Real Use · Five Ships
+
+## 1. CURRENT RUNTIME STATE
+
+- **Build:** `20260528-154723` (commit `90313264` — segment duration + smart preview-slice picker)
+- **Branch:** `main` · clean working tree post-handoff commit
+- **Deployed systems:** all production surfaces stable. Modal stem-render, Modal ingest-demux, Cloudflare worker `deadcetera-proxy`, Firebase RTDB, R2 (`multitrack/deadcetera/*`)
+- **Canonical state:** see [`00_Governance/CURRENT_STATE.md`](00_Governance/CURRENT_STATE.md) — do not duplicate here
+
+**Five ships today (chronological):**
+1. `0491cb73` — ✂ Split-at-playhead segment correction (recording-analyzer.js)
+2. `3d9c450b` — Wizard handles X_LIVE/-nested SD card layout (firmware variation discovered live)
+3. `04169069` — Trust-layer guard: re-Analyze cannot blow away human edits without explicit acknowledgment
+4. *(no commit — Firebase RTDB writes)* — Southern Roots setlist promoted to `rehearsal_plan_2026-05-27`; session date drift corrected `2026-05-28 → 2026-05-27`
+5. `90313264` — Segment duration sub-line (`6m 59s` musician-language) + smart preview-slice picker (auto-picks middle of median-confirmed song when playhead lands on silence/chatter)
+
+**First overnight ingest VALIDATED end-to-end:**
+- 17 chunks (67 GB) → reconstructed `FULL_REHEARSAL.wav` (66.58 GB, sha256 locked) → R2 upload at 37.8 MB/s sustained (vs projected ~6h, completed in ~40 min) → Modal demux → 17 per-channel FLACs with exact `NN_role-member.flac` naming → Review Mode renders correctly. **The architectural ingestion-first reframe survived first real-world contact.**
+
+**New memory shipped this session:** `feedback_run_operator_workflows_via_bash.md` — when repo CLIs exist for operator workflows, I run them via Bash tool while Drew watches the user-facing surface (Cockpit, dashboard). Default is NOT "type these commands." Reserved dictation for interactive auth / destructive / hardware-action steps only. Surfaced after Drew called out walking through five terminal copy-pastes for the ingest sequence.
+
+**Brian-mix conversation resolved without code:** Brian (lead-gtr+vox) flagged the rendered auto-mix sounded "horrible" / "pumping" / "woofing." Composed thorough text for Drew explaining the per-channel multitrack capture vs unity-gain auto-mix distinction. Three paths offered: (1) Custom Mix in app, (2) Download FLACs to DAW, (3) Brian builds reusable DAW template. Honors both Brian's "mix needs to sound good" + Drew's "no in-rehearsal mixing labor" — the fix lives downstream of the rehearsal, not inside it.
+
+## 2. CURRENT PRIORITIES
+
+- **NOW:** Drew testing tonight's 5/27 ingest in Review Mode. Custom Mix tool getting its first real exercise via the Brian conversation. Southern Roots plan-prior boost active (19 songs at 1.5× weight) — re-Analyze recommended to test match improvements.
+- **NEXT:** Ingest-script date-drift code fix (DEFERRED #2 — MUST land before 2026-06-03 next rehearsal to avoid recurrence); render-picker UI (DEFERRED #1 — Drew has 4 R2 renders for tonight's session with no UI access).
+- **LATER:** Live Gig analyze setlist-picker mirror of Band Rehearsal branch (DEFERRED — pulling reference from `setlists[0]` silently); render-filename cosmetic date drift; visual treatment on Analyze button when edits exist (deferred from this session's trust-layer guard ship).
+- **DEFERRED:** All shell-integrity remediation still off-critical-path. CO-Truth Map exists (`a797cce4`); Track A vs B sequencing decision (from 2026-05-27 strategic elevation) still pending Drew.
+
+Canonical detail: [`00_Governance/CURRENT_PRIORITIES.md`](00_Governance/CURRENT_PRIORITIES.md).
+
+## 3. OPEN PRODUCT DECISIONS
+
+- **Track A (Shell Integrity remediation) vs Track B (Ingestion-First further build) sequencing** — Drew. Open from 2026-05-27. Track B partially answered itself tonight (overnight ingest worked end-to-end on first real attempt; the architecture is sound). Question now becomes "which of Track B's remaining surfaces ship next — render picker? in-app mix template builder?" vs "pivot to Track A now that Track B has demonstrated stability."
+- **Track-naming convention (`NN_role-member` vs `NN_member-role`)** — Drew. RESOLVED 2026-05-28: current `role-member` confirmed correct (DAW-clustering benefit). No code change.
+- All other decisions from prior session (reverb A/B, Custom Mix persistence A vs B, calendar Model B soft-cancel, deprecated mode removal, 5/10 corrupt durationSec) still open.
+
+## 4. OPERATIONAL RISKS
+
+- **HIGH — Ingest date drift WILL recur:** `services/glx-ingest/ingest_full_rehearsal.py` sets session date to ingest-run date (`date.today()`), not recording date. Tonight's session caught this — manually fixed via Firebase `database:set`. Fix: derive from first chunk mtime. **Must land before next overnight ingest crosses midnight again.** Filed in DEFERRED_FINDINGS_QUEUE.md.
+- **MEDIUM — Live Gig analyze branch silent setlist auto-pick:** Pulls `setlists[0]` with no chooser. Drew's 5/27 session got matched against a stale setlist on first analyze; worked around by routing through Band Rehearsal branch + writing `rehearsal_plan_2026-05-27`. Will bite any future user who picks Live Gig context.
+- **LOW — Render visibility gap:** 4 renders exist for tonight's session in R2; UI displays only the auto-loaded one (`mix_default` preferred, else newest). Bandmates downloading via `Tools → Download stems` get correct files; bandmates browsing renders see nothing. Drew workflow-blocked when wanting to compare multiple mix versions.
+- **MITIGATED — Re-Analyze destruction:** Was a HIGH trust-layer risk (Pierce/Brian/Chris/Jay can all access the app; any one of them clicking 🎯 Analyze on a curated session would destroy edits). Now guarded via `04169069` confirmation modal that surfaces exact edit count + recommends the safe authority path ("ask Drew, he can update the plan reference without re-running segmentation").
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew goes to bed.** Tomorrow morning verify (a) the Southern-Roots re-Analyze tightened the borderline matches as expected (the 47% "Possible: US Blues" type rows), and (b) Brian's Custom Mix work — when he engages — produces an audibly better render than the unity-gain default. Then queue the ingest-script date-drift fix as the next code ship (small, time-bound, ~30-50 LOC, must land before 2026-06-03 next rehearsal). Everything else is observational this week — let tonight's ingest become known-stable in real use before adding more surfaces.
 
 ---
 
