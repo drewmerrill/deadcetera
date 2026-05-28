@@ -2005,7 +2005,7 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
     }
 
     ov.innerHTML =
-        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:' + modalPadding + ';border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:' + modalPadding + ';border:1px solid rgba(255,255,255,0.08);height:92vh;display:flex;flex-direction:column;overflow:hidden">' +
           headerHtml +
           // Render-status banner — shows progress while a render is in flight,
           // or the active render's name once playing.
@@ -2068,7 +2068,7 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
           (_isMobile
             ? '<div id="mtSegmentsPanel" style="margin-top:8px;flex-shrink:0"></div>'
             : (
-                '<div id="mtSegmentsBlock" style="margin-top:8px;display:flex;flex-direction:column;min-height:0;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;flex-shrink:0">'
+                '<div id="mtSegmentsBlock" style="margin-top:8px;display:flex;flex-direction:column;min-height:120px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;flex:1 1 0">'
                 + '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0">'
                 +   '<span style="font-size:0.84em;font-weight:700;color:#cbd5e1">🎵 Segments</span>'
                 +   '<span id="mtSegmentsBlockCount" style="font-size:0.66em;color:var(--text-dim);font-weight:600"></span>'
@@ -2076,7 +2076,7 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
                 + '</div>'
                 + '<div id="mtSegmentsPanel" style="overflow-y:auto;flex:1;min-height:0"></div>'
                 + '</div>'
-                + '<div id="mtCommentsBlock" style="margin-top:10px;display:flex;flex-direction:column;min-height:0;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;flex-shrink:0">'
+                + '<div id="mtCommentsBlock" style="margin-top:10px;display:flex;flex-direction:column;min-height:120px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;flex:1 1 0">'
                 + '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0">'
                 +   '<span style="font-size:0.84em;font-weight:700;color:#cbd5e1">💬 Comments</span>'
                 +   '<span id="mtCommentsBlockCount" style="font-size:0.66em;color:var(--text-dim);font-weight:600"></span>'
@@ -2084,7 +2084,7 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
                 + '</div>'
                 + '<div id="mtCommentPanel" style="overflow-y:auto;flex:1;min-height:0"></div>'
                 + '</div>'
-                + '<div id="mtComposerArea"></div>'
+                + '<div id="mtComposerArea" style="flex-shrink:0"></div>'
               )
           ) +
         '</div>';
@@ -9168,17 +9168,25 @@ function _mtReviewApplyLayoutMode(mode) {
     var cmtBtn = document.getElementById('mtCommentsFocusBtn');
     if (!segBlock || !cmtBlock) return;  // not on desktop Review Mode
 
-    // Heights per mode. Using vh so the layout adapts to viewport size.
-    var segHeight, cmtHeight;
+    // Use flex-grow ratios to split remaining vertical space between the
+    // two blocks. The blocks each have min-height: 120px and flex-basis: 0,
+    // so neither can starve and both stay simultaneously visible regardless
+    // of weighting. Replaced earlier max-height approach (2026-05-28 PM)
+    // which didn't bound correctly inside the 92vh modal — content was
+    // overflowing the rounded panel border.
+    var segGrow, cmtGrow;
     if (mode === 'segmentsFocus') {
-        segHeight = '60vh'; cmtHeight = '20vh';
+        segGrow = '3'; cmtGrow = '1';   // 75% / 25%
     } else if (mode === 'commentsFocus') {
-        segHeight = '20vh'; cmtHeight = '60vh';
+        segGrow = '1'; cmtGrow = '3';   // 25% / 75%
     } else {
-        segHeight = '40vh'; cmtHeight = '40vh';
+        segGrow = '1'; cmtGrow = '1';   // 50% / 50%
     }
-    segBlock.style.maxHeight = segHeight;
-    cmtBlock.style.maxHeight = cmtHeight;
+    segBlock.style.flex = segGrow + ' 1 0';
+    cmtBlock.style.flex = cmtGrow + ' 1 0';
+    // Clear any leftover max-height from the earlier styling path
+    segBlock.style.maxHeight = '';
+    cmtBlock.style.maxHeight = '';
 
     // Button labels + titles narrate the meaning of clicking each button.
     // Each button moves into ITS panel's focus mode, OR back to balanced
