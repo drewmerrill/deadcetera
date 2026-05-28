@@ -8454,6 +8454,223 @@ function _mtRenderComposer() {
         + '</div>';
 }
 
+// ── @-mention parsing (v1, 2026-05-28) ─────────────────────────────
+// Drew + Pierce + the rest of the band had been writing @Pierce /
+// @Chris / @Everyone in comments under the assumption the system
+// did something with them. It didn't. v1 makes them visible
+// (styled pills) + filterable (the "My @ mentions" chip below).
+// v2 (below) adds the cross-session inbox + unread tracking.
+
+// Parse @tokens from comment text. Returns lowercased token strings.
+function _mtParseMentions(text) {
+    if (!text || typeof text !== 'string') return [];
+    var tokens = [];
+    var re = /@(\w+)/g;
+    var match;
+    while ((match = re.exec(text)) !== null) {
+        tokens.push(match[1].toLowerCase());
+    }
+    return tokens;
+}
+
+// Resolve a token to a memberKey, or 'everyone' for universal mention.
+// Returns null if the token doesn't match anything in the roster.
+function _mtResolveMentionToMember(token) {
+    if (!token) return null;
+    token = String(token).toLowerCase();
+    if (token === 'everyone' || token === 'all' || token === 'band') return 'everyone';
+    var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    if (members[token]) return token;
+    var match = null;
+    Object.keys(members).forEach(function(k) {
+        var m = members[k];
+        if (!m || !m.name) return;
+        var firstName = m.name.split(' ')[0].toLowerCase();
+        if (firstName === token) match = k;
+    });
+    return match;
+}
+
+// True iff this comment mentions the given user (directly or via
+// @Everyone). Used by both v1 filter and v2 inbox.
+function _mtCommentMentionsUser(comment, userKey) {
+    if (!comment || !comment.text || !userKey) return false;
+    var tokens = _mtParseMentions(comment.text);
+    for (var i = 0; i < tokens.length; i++) {
+        var resolved = _mtResolveMentionToMember(tokens[i]);
+        if (resolved === userKey || resolved === 'everyone') return true;
+    }
+    return false;
+}
+
+// Render comment text with @-mention tokens replaced by styled pills.
+// Resolved → indigo pill. Universal (@Everyone/@all) → green pill.
+// Unresolved → slate (dim) pill with a tooltip explaining no match.
+function _mtRenderCommentTextWithMentions(text) {
+    if (!text) return '';
+    var re = /@(\w+)/g;
+    var parts = [];
+    var lastIdx = 0;
+    var match;
+    while ((match = re.exec(text)) !== null) {
+        if (match.index > lastIdx) {
+            parts.push({ type: 'text', value: text.slice(lastIdx, match.index) });
+        }
+        parts.push({ type: 'mention', token: match[1], original: match[0] });
+        lastIdx = match.index + match[0].length;
+    }
+    if (lastIdx < text.length) {
+        parts.push({ type: 'text', value: text.slice(lastIdx) });
+    }
+    var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    return parts.map(function(p) {
+        if (p.type === 'text') return escHtml(p.value);
+        var resolved = _mtResolveMentionToMember(p.token);
+        var bg, color, border, title;
+        if (resolved === 'everyone') {
+            bg = 'rgba(34,197,94,0.15)'; color = '#86efac'; border = 'rgba(34,197,94,0.35)';
+            title = 'Mentions the whole band';
+        } else if (resolved) {
+            bg = 'rgba(99,102,241,0.18)'; color = '#a5b4fc'; border = 'rgba(99,102,241,0.4)';
+            title = 'Mentions ' + ((members[resolved] && members[resolved].name) || resolved);
+        } else {
+            bg = 'rgba(148,163,184,0.12)'; color = '#94a3b8'; border = 'rgba(148,163,184,0.25)';
+            title = 'No band member matches @' + p.token;
+        }
+        return '<span title="' + escHtml(title) + '" style="background:' + bg + ';border:1px solid ' + border + ';color:' + color + ';border-radius:4px;padding:0 4px;font-weight:600">' + escHtml(p.original) + '</span>';
+    }).join('');
+}
+
+// v1 filter toggle handler — wired from the "My @ mentions" chip.
+window._mtToggleMentionsFilter = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    p._commentFilterMentionsOnly = !p._commentFilterMentionsOnly;
+    _mtRefreshCommentPanel();
+};
+
+// v2 cross-session mentions inbox (2026-05-28). Loads ALL comments from
+// every rehearsal session, filters to those mentioning the current user
+// or @Everyone, sorts newest first, renders in a modal. Per-device
+// unread tracking via localStorage timestamp — opening the inbox
+// updates the timestamp so new mentions after that time appear as
+// unread on the badge.
+//
+// Scope: capped at the 25 most recent sessions to bound Firebase reads.
+// Older sessions remain readable via direct navigation; the inbox just
+// doesn't aggregate the full archive.
+window._mtOpenMentionsInbox = async function() {
+    var currentUserKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!currentUserKey) {
+        if (typeof showToast === 'function') showToast('Sign in first to see your mentions');
+        return;
+    }
+    var existing = document.getElementById('mtMentionsInboxModal');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'mtMentionsInboxModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:6800;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'max-width:640px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(99,102,241,0.4);color:#f1f5f9;max-height:88vh;display:flex;flex-direction:column;overflow:hidden';
+    modal.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-shrink:0">'
+        +   '<span style="font-size:1.4em">📬</span>'
+        +   '<div style="flex:1;font-weight:800;font-size:1.05em">Your @ mentions</div>'
+        +   '<button onclick="document.getElementById(\'mtMentionsInboxModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px;flex-shrink:0">Comments from any rehearsal session that mention you directly or @Everyone. Aggregated across the 25 most recent sessions.</div>'
+        + '<div id="mtMentionsInboxBody" style="overflow-y:auto;flex:1;min-height:0">'
+        +   '<div style="padding:24px;text-align:center;color:var(--text-dim);font-size:0.85em">⏳ Loading mentions across all rehearsal sessions…</div>'
+        + '</div>';
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+    // Mark "viewed at" right when opening — any mention with createdAt
+    // before this moment is considered "read." Anything newer is unread.
+    try {
+        var nowIso = new Date().toISOString();
+        localStorage.setItem('gl_mt_mentions_last_viewed_' + currentUserKey, nowIso);
+    } catch (e) {}
+    // Trigger badge recompute on the comment panel header.
+    setTimeout(function() {
+        if (typeof _mtRefreshCommentPanel === 'function') _mtRefreshCommentPanel();
+    }, 0);
+    // Now fetch sessions + their comments.
+    try {
+        var db = (typeof firebaseDB !== 'undefined') ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') {
+            document.getElementById('mtMentionsInboxBody').innerHTML = '<div style="padding:18px;color:#fca5a5">Firebase not ready.</div>';
+            return;
+        }
+        var snap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(25).once('value');
+        var sessions = snap.val() || {};
+        var sessionList = Object.keys(sessions).map(function(sid) {
+            var s = sessions[sid] || {};
+            return { sessionId: sid, date: s.date || '', venue: s.venue || '', comments: s.comments || {} };
+        });
+        // Aggregate mentions across all sessions.
+        var hits = [];
+        sessionList.forEach(function(sess) {
+            var cmap = sess.comments;
+            if (!cmap || typeof cmap !== 'object') return;
+            Object.keys(cmap).forEach(function(commentId) {
+                var c = cmap[commentId];
+                if (!c) return;
+                if (!_mtCommentMentionsUser(c, currentUserKey)) return;
+                hits.push({
+                    comment: c,
+                    sessionId: sess.sessionId,
+                    sessionDate: sess.date,
+                    sessionVenue: sess.venue,
+                });
+            });
+        });
+        // Sort by createdAt desc.
+        hits.sort(function(a, b) {
+            var ta = a.comment.createdAt ? new Date(a.comment.createdAt).getTime() : 0;
+            var tb = b.comment.createdAt ? new Date(b.comment.createdAt).getTime() : 0;
+            return tb - ta;
+        });
+        var body = document.getElementById('mtMentionsInboxBody');
+        if (!body) return;
+        if (!hits.length) {
+            body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-dim);font-size:0.85em;font-style:italic">No @ mentions of you in the last 25 sessions.</div>';
+            return;
+        }
+        var html = '';
+        hits.forEach(function(h) {
+            var c = h.comment;
+            var dateLabel = h.sessionDate
+                ? new Date(h.sessionDate + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'})
+                : (h.sessionId || 'unknown session');
+            var when = c.createdAt ? new Date(c.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+            var ts = (typeof c.timestampSec === 'number') ? _mtFmtTime(c.timestampSec) : '';
+            // Origin chip: which session
+            var venueSuffix = h.sessionVenue ? ' · ' + escHtml(h.sessionVenue) : '';
+            html += '<div style="padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px">'
+                +   '<div style="display:flex;align-items:center;gap:8px;font-size:0.7em;color:var(--text-dim);margin-bottom:5px">'
+                +     '<span style="font-weight:700;color:#a5b4fc">' + escHtml(dateLabel) + '</span>'
+                +     venueSuffix
+                +     (ts ? '<span style="font-family:ui-monospace,monospace;color:#cbd5e1;margin-left:auto">' + ts + '</span>' : '')
+                +   '</div>'
+                +   '<div style="font-size:0.86em;color:var(--text);line-height:1.4;word-wrap:break-word">'
+                +     _mtRenderCommentTextWithMentions(c.text || '(no text)')
+                +   '</div>'
+                +   (when ? '<div style="font-size:0.62em;color:var(--text-dim);margin-top:4px;font-style:italic">written ' + escHtml(when) + '</div>' : '')
+                + '</div>';
+        });
+        // Footer summary.
+        html += '<div style="margin-top:6px;font-size:0.7em;color:var(--text-dim);text-align:center;font-style:italic">' + hits.length + ' mention' + (hits.length === 1 ? '' : 's') + ' across ' + sessionList.length + ' session' + (sessionList.length === 1 ? '' : 's') + '</div>';
+        body.innerHTML = html;
+    } catch (e) {
+        console.warn('[Multitrack] mentions inbox load failed:', e);
+        var body2 = document.getElementById('mtMentionsInboxBody');
+        if (body2) body2.innerHTML = '<div style="padding:18px;color:#fca5a5">Couldn\'t load mentions: ' + escHtml(e.message || 'unknown') + '</div>';
+    }
+};
+
 function _mtRenderCommentList() {
     var p = _mtState.player;
     if (!p) return '';
@@ -8479,9 +8696,15 @@ function _mtRenderCommentList() {
           }
         : null;
 
+    // v1 "My @ mentions" filter — scopes to comments mentioning the
+    // current user OR @Everyone. Drew 2026-05-28.
+    var currentUserKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    var filterMentionsOnly = !!p._commentFilterMentionsOnly && !!currentUserKey;
+
     var filtered = comments;
     if (filterToTrack) filtered = filtered.filter(function(c) { return c.trackId === soloedTrackId; });
     if (filterMemberFn) filtered = filtered.filter(filterMemberFn);
+    if (filterMentionsOnly) filtered = filtered.filter(function(c) { return _mtCommentMentionsUser(c, currentUserKey); });
 
     // Build member dropdown from members who actually OWN tracks in this session
     var memberKeysWithTracks = {};
@@ -8495,10 +8718,41 @@ function _mtRenderCommentList() {
         memberOptions += '<option value="' + escHtml(key) + '"' + (key === filterMember ? ' selected' : '') + '>' + escHtml(name) + '</option>';
     });
 
-    var anyFilterActive = filterToTrack || !!filterMember;
+    var anyFilterActive = filterToTrack || !!filterMember || filterMentionsOnly;
     var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.06);gap:8px;flex-wrap:wrap">'
         + '<span style="font-size:0.68em;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Comments (' + filtered.length + (anyFilterActive ? ' / ' + comments.length : '') + ')</span>'
-        + '<div style="display:flex;gap:6px;align-items:center">';
+        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+    // v1 "My @ mentions" filter chip — only render when the current
+    // user is resolvable AND at least one comment mentions them or
+    // @Everyone. No point showing a filter that does nothing.
+    if (currentUserKey) {
+        var mentionCount = comments.filter(function(c) { return _mtCommentMentionsUser(c, currentUserKey); }).length;
+        if (mentionCount > 0) {
+            headerHtml += '<button onclick="_mtToggleMentionsFilter()" title="Filter to comments mentioning you or @Everyone" style="padding:2px 8px;border-radius:10px;border:1px solid ' + (filterMentionsOnly ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)') + ';background:' + (filterMentionsOnly ? 'rgba(99,102,241,0.15)' : 'none') + ';color:' + (filterMentionsOnly ? '#a5b4fc' : 'var(--text-dim)') + ';cursor:pointer;font-size:0.66em;font-weight:600;font-family:inherit">' + (filterMentionsOnly ? '✓ My @ mentions (' + mentionCount + ')' : '@ My mentions (' + mentionCount + ')') + '</button>';
+        }
+    }
+    // v2 cross-session mentions inbox launcher
+    if (currentUserKey) {
+        var unreadBadge = '';
+        try {
+            var lastViewed = localStorage.getItem('gl_mt_mentions_last_viewed_' + currentUserKey);
+            var lastViewedTime = lastViewed ? new Date(lastViewed).getTime() : 0;
+            // For unread count in THIS session — we don't load other
+            // sessions just to compute the badge (would be expensive on
+            // every render). The full unread aggregate is computed when
+            // the user opens the inbox modal. This local badge reflects
+            // the current session's contribution only.
+            var localUnreadHere = comments.filter(function(c) {
+                if (!_mtCommentMentionsUser(c, currentUserKey)) return false;
+                var ct = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+                return ct > lastViewedTime;
+            }).length;
+            if (localUnreadHere > 0) {
+                unreadBadge = '<span style="display:inline-block;background:#ef4444;color:white;border-radius:9px;padding:0 6px;font-size:0.62em;font-weight:800;margin-left:4px;min-width:14px;text-align:center">' + localUnreadHere + '</span>';
+            }
+        } catch (e) {}
+        headerHtml += '<button onclick="_mtOpenMentionsInbox()" title="See all your @-mentions across every rehearsal session" style="padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:600;font-family:inherit;display:inline-flex;align-items:center">📬 Inbox' + unreadBadge + '</button>';
+    }
     headerHtml += '<select onchange="_mtSetMemberFilter(this.value)" style="background:#1e293b;color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:2px 6px;font-size:0.7em;font-family:inherit">' + memberOptions + '</select>';
     if (soloedTrackId) {
         var soloLabel = (trackById[soloedTrackId] && trackById[soloedTrackId].label) || 'soloed track';
@@ -8552,7 +8806,7 @@ function _mtRenderCommentList() {
         return '<div class="mt-comment-row" data-comment-time="' + _cTs + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:62px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
             + '<button onclick="_mtJumpToComment(' + _cTs + ')" title="Jump to ' + _mtFmtTime(_cTs) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:right;font-weight:700;width:100%;display:block;font-variant-numeric:tabular-nums">' + _mtFmtTime(_cTs) + '</button>'
             + '<div style="min-width:0">'
-              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + _legacyBadge + '</div>'
+              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + _mtRenderCommentTextWithMentions(c.text || '') + taskBadge + _legacyBadge + '</div>'
               + '<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
                 + '<span style="font-size:0.65em;color:var(--text-dim);font-style:italic">' + escHtml(trackLabel) + '</span>'
                 + (tagsHtml ? '<span style="color:var(--text-dim);font-size:0.65em">·</span> ' + tagsHtml : '')
