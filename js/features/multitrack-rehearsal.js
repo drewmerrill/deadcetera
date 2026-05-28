@@ -6100,9 +6100,16 @@ window._mtMobileSubmitNote = async function(idx) {
         _mtRenderSegmentsPanel();
         return;
     }
+    // Phase 1 (2026-05-28): compute segment anchor so this comment
+    // survives future render switches. anchorTime is segment.startSec,
+    // so segmentId resolves cleanly and offsetWithinSegment = 0.
+    var _mtCmAnchor = _mtComputeCommentAnchor(anchorTime);
     var comment = {
         commentId: _mtGenCommentId(),
         timestampSec: anchorTime,
+        segmentId: _mtCmAnchor.segmentId,
+        offsetWithinSegment: _mtCmAnchor.offsetWithinSegment,
+        renderId: _mtCmAnchor.renderId,
         text: text,
         trackId: null,
         tags: tags,
@@ -6115,7 +6122,7 @@ window._mtMobileSubmitNote = async function(idx) {
         return;
     }
     p.comments = (p.comments || []).concat([comment]).sort(function(a, b) {
-        return (a.timestampSec || 0) - (b.timestampSec || 0);
+        return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b);
     });
     // Bug #21 (Pass 2.5) TRUST-LAYER FIX — clear the draft only AFTER Firebase
     // ack. If the save fails (handled above with early return), the draft
@@ -6870,10 +6877,10 @@ function _mtUpdateNowReviewingLabel(p, activeOrigIdx) {
                 var endSec = (typeof seg.endSec === 'number') ? seg.endSec : 0;
                 for (var ci = 0; ci < p.comments.length; ci++) {
                     var cm = p.comments[ci];
-                    if (cm && cm.investigating === true
-                            && typeof cm.timestampSec === 'number'
-                            && cm.timestampSec >= startSec
-                            && cm.timestampSec < endSec) {
+                    if (!cm || cm.investigating !== true) continue;
+                    // Phase 2: resolve via segment anchor when present.
+                    var cmAt = _mtResolveCommentTimestamp(cm);
+                    if (cmAt >= startSec && cmAt < endSec) {
                         unresolved++;
                     }
                 }
@@ -8191,11 +8198,13 @@ window._mtPromoteCommentToTask = async function(commentId) {
     var trackById = {};
     p.tracks.forEach(function(t) { trackById[t.trackId] = t; });
     var anchorTrack = comment.trackId ? trackById[comment.trackId] : null;
+    // Phase 2: resolve comment's display position via segment anchor.
+    var _displayTs = _mtResolveCommentTimestamp(comment);
     var songTitle = prompt(
         'Which song is this about? (type the title)\n\n'
         + 'Comment: "' + (comment.text || '(no text)') + '"\n'
         + 'Tags: ' + ((comment.tags || []).join(', ') || '(none)') + '\n'
-        + 'At: ' + _mtFmtTime(comment.timestampSec)
+        + 'At: ' + _mtFmtTime(_displayTs)
         + (anchorTrack ? '\nTrack: ' + anchorTrack.label : ''),
         defaultGuess
     );
@@ -8213,7 +8222,10 @@ window._mtPromoteCommentToTask = async function(commentId) {
         songTitle: canonicalTitle,
         section: null,
         sectionLabel: null,
-        timestampSec: comment.timestampSec,
+        // Phase 2: use resolved timestamp so the task anchors to the
+        // musical moment in the current render, not the raw stored
+        // value (which may be in a stale render's time domain).
+        timestampSec: _displayTs,
         trackId: comment.trackId || null,
         memberKey: anchorTrack ? (anchorTrack.memberKey || null) : null,
         noteText: comment.text || '',
@@ -8238,7 +8250,7 @@ window._mtPromoteCommentToTask = async function(commentId) {
     // write back to comments[].promotedTaskId is deferred — adds a write
     // per promotion; not worth the round-trip for visual breadcrumb only.
     comment.promotedTaskId = task.taskId;
-    if (typeof showToast === 'function') showToast('✅ Task created — ' + canonicalTitle + ' · ' + _mtFmtTime(comment.timestampSec));
+    if (typeof showToast === 'function') showToast('✅ Task created — ' + canonicalTitle + ' · ' + _mtFmtTime(_displayTs));
     _mtRefreshCommentPanel();
 };
 
@@ -8264,8 +8276,13 @@ async function _mtLoadComments(sessionId) {
             val = snap.val();
         }
         if (!val) return [];
+        // Phase 2: sort by resolved (segment-anchored) timestamp so order
+        // reflects the comment's musical position in the current render,
+        // not the raw stored value (which may be in a different render's
+        // time domain). Legacy comments without segmentId fall back to
+        // timestampSec automatically inside _mtResolveCommentTimestamp.
         return Object.values(val).sort(function(a, b) {
-            return (a.timestampSec || 0) - (b.timestampSec || 0);
+            return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b);
         });
     } catch (e) {
         console.warn('[Multitrack] load comments failed:', e.message);
@@ -8472,8 +8489,11 @@ function _mtRenderCommentList() {
         var investBtn = '<button onclick="_mtToggleInvestigating(\'' + escHtml(c.commentId) + '\')"'
             + ' title="' + (investigating ? 'Mark as resolved' : 'Mark as still investigating') + '"'
             + ' style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em;padding:0;line-height:1;opacity:' + (investigating ? '0.72' : '0.28') + ';transition:opacity 120ms">🔍</button>';
-        return '<div class="mt-comment-row" data-comment-time="' + c.timestampSec + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
-            + '<button onclick="_mtJumpToComment(' + c.timestampSec + ')" title="Jump to ' + _mtFmtTime(c.timestampSec) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(c.timestampSec) + '</button>'
+        // Phase 2: resolve via segment anchor so label, jump, and
+        // data-comment-time all map to the current render's time domain.
+        var _cTs = _mtResolveCommentTimestamp(c);
+        return '<div class="mt-comment-row" data-comment-time="' + _cTs + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
+            + '<button onclick="_mtJumpToComment(' + _cTs + ')" title="Jump to ' + _mtFmtTime(_cTs) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(_cTs) + '</button>'
             + '<div style="min-width:0">'
               + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + '</div>'
               + '<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
@@ -8540,6 +8560,100 @@ function _mtCurrentPlayhead() {
     return p.audios[0].currentTime || 0;
 }
 
+// ── Comment anchor durability (Phases 1+2 — 2026-05-28) ───────────────
+// Pierce found that comments drift across render changes because they
+// were anchored to absolute `timestampSec` in whatever audio file was
+// loaded at write time. The fix anchors comments to {segmentId,
+// offsetWithinSegment} so they survive any render switch — as long as
+// the segment list itself is durable (which it is — segments live at
+// rehearsal_sessions/{sid}/analysis, independent of render).
+//
+// SAFETY: this only works when the current render's audio time domain
+// matches segment time (i.e., the loaded render is the FULL rehearsal).
+// For songs-only / custom-clipped renders, audio.currentTime is in a
+// shorter time domain that doesn't map to segment.startSec values.
+// In those cases we skip segment anchoring (write) AND skip segment-
+// based resolution (read), falling back to raw timestampSec cleanly.
+// This means Phase 1+2 makes full-render comments durable; songs-only-
+// render comments stay legacy (no worse than before; Phase 3 will
+// migrate them via render-time-to-source-time translation).
+
+// Detect whether the currently-loaded render's time domain matches
+// the segments' time domain (true if full-rehearsal render, false if
+// songs-only or other clipped mix). Heuristic: if the audio duration
+// is notably shorter than the sum of segment durations, we're in a
+// clipped render.
+function _mtRenderTimeMatchesSegmentTime() {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments) || !p.segments.length) return false;
+    var totalSegDur = 0;
+    for (var j = 0; j < p.segments.length; j++) {
+        var sg = p.segments[j];
+        if (sg) totalSegDur += Math.max(0, (sg.endSec || 0) - (sg.startSec || 0));
+    }
+    var audio = p.audios && p.audios[0];
+    var audioDur = (audio && isFinite(audio.duration)) ? audio.duration : 0;
+    if (audioDur <= 0 || totalSegDur <= 0) return false;
+    // 0.9 threshold: a full render's audio duration should be ≥90% of
+    // the sum of segment durations (allowing for small render-fade
+    // padding). Songs-only mixes typically run 60-75% of full, well
+    // below this threshold.
+    return audioDur >= totalSegDur * 0.9;
+}
+
+// Phase 1 — compute segment anchor for a new comment at the given
+// absolute timestamp. Returns {timestampSec, renderId, segmentId,
+// offsetWithinSegment}. segmentId/offset are null when current render
+// isn't full (safety) OR when no segment contains the timestamp.
+function _mtComputeCommentAnchor(timestampSec) {
+    var p = _mtState.player;
+    var anchor = {
+        timestampSec: timestampSec,
+        renderId: (p && p.renderInfo && p.renderInfo.renderId) || null,
+        segmentId: null,
+        offsetWithinSegment: null,
+    };
+    if (!p || !Array.isArray(p.segments) || !p.segments.length) return anchor;
+    if (!_mtRenderTimeMatchesSegmentTime()) return anchor;
+    for (var i = 0; i < p.segments.length; i++) {
+        var s = p.segments[i];
+        if (!s) continue;
+        var sStart = s.startSec || 0;
+        var sEnd = s.endSec || 0;
+        if (timestampSec >= sStart && timestampSec < sEnd) {
+            anchor.segmentId = s.id || null;
+            anchor.offsetWithinSegment = timestampSec - sStart;
+            break;
+        }
+    }
+    return anchor;
+}
+
+// Phase 2 — resolve a comment's display timestamp using segment anchor
+// when possible, else fall back to raw timestampSec. Used at all display
+// sites instead of c.timestampSec so the label + jump destination
+// match the comment's musical moment in the current render.
+function _mtResolveCommentTimestamp(comment) {
+    if (!comment) return 0;
+    var p = _mtState.player;
+    // Only resolve via segment anchor when the current render's time
+    // domain matches segments. Otherwise, the resolved value would be
+    // a source-time second that doesn't correspond to a meaningful
+    // moment in the loaded render's audio.
+    if (comment.segmentId
+        && typeof comment.offsetWithinSegment === 'number'
+        && p && Array.isArray(p.segments)
+        && _mtRenderTimeMatchesSegmentTime()) {
+        for (var i = 0; i < p.segments.length; i++) {
+            var s = p.segments[i];
+            if (s && s.id === comment.segmentId) {
+                return (s.startSec || 0) + comment.offsetWithinSegment;
+            }
+        }
+    }
+    return comment.timestampSec || 0;
+}
+
 function _mtRefreshCommentPanel() {
     var panel = document.getElementById('mtCommentPanel');
     if (panel) panel.innerHTML = _mtRenderCommentList();
@@ -8562,11 +8676,14 @@ function _mtRenderSeekMarkers() {
         return;
     }
     var markers = p.comments.map(function(c) {
-        var pct = Math.max(0, Math.min(100, (c.timestampSec / dur) * 100));
+        // Phase 2: resolve via segment anchor so the dot lands at the
+        // comment's musical moment in the current render's time domain.
+        var _ts = _mtResolveCommentTimestamp(c);
+        var pct = Math.max(0, Math.min(100, (_ts / dur) * 100));
         var hasTags = c.tags && c.tags.length > 0;
         var color = hasTags ? '#fbbf24' : '#94a3b8';
-        var tipText = _mtFmtTime(c.timestampSec) + ' · ' + (c.text || '(no text)') + (c.tags && c.tags.length ? ' [' + c.tags.join(', ') + ']' : '');
-        return '<div onclick="_mtJumpToComment(' + c.timestampSec + ')" '
+        var tipText = _mtFmtTime(_ts) + ' · ' + (c.text || '(no text)') + (c.tags && c.tags.length ? ' [' + c.tags.join(', ') + ']' : '');
+        return '<div onclick="_mtJumpToComment(' + _ts + ')" '
             + 'title="' + escHtml(tipText) + '" '
             + 'style="position:absolute;left:calc(' + pct.toFixed(2) + '% - 4px);top:0;width:8px;height:8px;border-radius:50%;background:' + color + ';border:1px solid rgba(0,0,0,0.4);cursor:pointer;pointer-events:auto;box-shadow:0 0 3px rgba(0,0,0,0.5)"></div>';
     }).join('');
@@ -8580,7 +8697,9 @@ function _mtRenderSeekMarkers() {
 window._mtExportDigest = async function() {
     var p = _mtState.player;
     if (!p) return;
-    var comments = (p.comments || []).slice().sort(function(a, b) { return (a.timestampSec || 0) - (b.timestampSec || 0); });
+    // Phase 2: sort + display digest using resolved timestamps so the
+    // exported text matches what the user sees in the current render.
+    var comments = (p.comments || []).slice().sort(function(a, b) { return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b); });
     if (!comments.length) {
         if (typeof showToast === 'function') showToast('No comments to export yet');
         return;
@@ -8619,7 +8738,7 @@ window._mtExportDigest = async function() {
     lines.push('');
     comments.forEach(function(c) {
         var tagSuffix = c.tags && c.tags.length ? ' `' + c.tags.join('` `') + '`' : '';
-        lines.push('- **[' + _mtFmtTime(c.timestampSec) + ']** ' + (c.text || '(no text)') + ' — _' + trackLabel(c) + '_' + tagSuffix);
+        lines.push('- **[' + _mtFmtTime(_mtResolveCommentTimestamp(c)) + ']** ' + (c.text || '(no text)') + ' — _' + trackLabel(c) + '_' + tagSuffix);
     });
 
     // Group by tag — only includes tagged comments
@@ -8638,7 +8757,7 @@ window._mtExportDigest = async function() {
         tagKeys.forEach(function(tag) {
             lines.push('### ' + tag + ' (' + byTag[tag].length + ')');
             byTag[tag].forEach(function(c) {
-                lines.push('- **[' + _mtFmtTime(c.timestampSec) + ']** ' + (c.text || '(no text)') + ' — _' + trackLabel(c) + '_');
+                lines.push('- **[' + _mtFmtTime(_mtResolveCommentTimestamp(c)) + ']** ' + (c.text || '(no text)') + ' — _' + trackLabel(c) + '_');
             });
             lines.push('');
         });
@@ -8688,9 +8807,17 @@ window._mtAddComment = async function() {
         if (typeof showToast === 'function') showToast('Type a note or pick a tag first');
         return;
     }
+    // Phase 1 (2026-05-28): compute segment anchor at write time so this
+    // comment survives future render switches. Falls back to timestampSec-
+    // only when the loaded render isn't a full mix (e.g., songs-only).
+    var _composerPlayhead = _mtCurrentPlayhead();
+    var _composerAnchor = _mtComputeCommentAnchor(_composerPlayhead);
     var comment = {
         commentId: _mtGenCommentId(),
-        timestampSec: _mtCurrentPlayhead(),
+        timestampSec: _composerPlayhead,
+        segmentId: _composerAnchor.segmentId,
+        offsetWithinSegment: _composerAnchor.offsetWithinSegment,
+        renderId: _composerAnchor.renderId,
         text: text,
         trackId: p.anchorTrackId || null,
         tags: tags,
@@ -8703,7 +8830,7 @@ window._mtAddComment = async function() {
         return;
     }
     p.comments = (p.comments || []).concat([comment]).sort(function(a, b) {
-        return (a.timestampSec || 0) - (b.timestampSec || 0);
+        return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b);
     });
     if (input) input.value = '';
     _mtState.composerTags = {};
