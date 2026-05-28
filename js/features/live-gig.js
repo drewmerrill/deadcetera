@@ -1432,8 +1432,8 @@
           '<div style="font-size:0.65em;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;font-weight:700">FLASH EDIT</div>' +
           '<div style="font-size:1.05em;font-weight:700;color:#a5b4fc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>' +
         '</div>' +
-        '<button type="button" onclick="lgCloseChartEditor(false)" style="' + sharedBtnStyle + ';border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:#cbd5e1" title="Discard changes (Esc)">Cancel</button>' +
-        '<button type="button" onclick="lgSaveChartEdit()" style="' + sharedBtnStyle + ';border:1px solid rgba(34,197,94,0.5);background:rgba(34,197,94,0.18);color:#86efac" title="Save and return">💾 Save</button>' +
+        '<button type="button" onpointerdown="event.preventDefault();lgCloseChartEditor(false)" onclick="event.preventDefault();" style="' + sharedBtnStyle + ';border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:#cbd5e1" title="Discard changes (Esc)">Cancel</button>' +
+        '<button type="button" onpointerdown="event.preventDefault();lgSaveChartEdit()" onclick="event.preventDefault();" style="' + sharedBtnStyle + ';border:1px solid rgba(34,197,94,0.5);background:rgba(34,197,94,0.18);color:#86efac" title="Save and return">💾 Save</button>' +
       '</div>' +
       '<div style="font-size:0.7em;color:#64748b;padding:8px 2px;flex-shrink:0">Chord chart, structure, lyrics — anything you need on the floor. Use [Verse] / [Chorus] / [Bridge] markers to auto-derive structure.</div>' +
       '<textarea id="lgChartEditorText" spellcheck="false" style="flex:1;width:100%;min-height:0;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.4);color:#f1f5f9;font-family:Menlo,Consolas,monospace;font-size:1em;line-height:1.5;resize:none;outline:none" placeholder="G  C  D  G\n\n[Verse]\nA  E  D\nLyrics here..."></textarea>';
@@ -1460,19 +1460,41 @@
     var songTitle = overlay.dataset.song;
     if (!songTitle) return;
     var text = textarea.value.trim();
+    var payload = text ? { text: text } : null;
     try {
       // Same save contract as the Workbench Chart Editor — keeps every
       // legacy + modern reader consistent. Null payload deletes the chart.
+      // Truthful confirmation (Drew 2026-05-28): the underlying save chain
+      // can silently resolve with null when Firebase isn't ready (no `db`),
+      // which happens on flaky wifi at gig venues. Only show the success
+      // toast when the save actually returned the payload — anything else
+      // means the write didn't land and we should NOT pretend it did.
+      var result;
       if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
-        await GLStore.saveSongData(songTitle, 'chart', text ? { text: text } : null);
+        result = await GLStore.saveSongData(songTitle, 'chart', payload);
       } else if (typeof saveBandDataToDrive === 'function') {
-        await saveBandDataToDrive(songTitle, 'chart', text ? { text: text } : null);
+        result = await saveBandDataToDrive(songTitle, 'chart', payload);
+      } else {
+        throw new Error('No save path available');
       }
-      if (typeof showToast === 'function') showToast('✅ Chart saved');
-      lgCloseChartEditor(true);
+      // Successful Firebase write returns the payload (or `null` if the
+      // payload was null and the delete succeeded). Distinguish:
+      //   - intended-delete + null result = success (empty chart erased)
+      //   - intended-write + null result  = silent failure (no db)
+      var deleted = (payload === null);
+      var wrote = (result !== undefined && (deleted ? result === null : result !== null));
+      if (wrote) {
+        if (typeof showToast === 'function') showToast('✅ Chart saved');
+        lgCloseChartEditor(true);
+      } else {
+        if (typeof showToast === 'function') showToast('⚠ Save couldn\'t reach the server — check your connection and try again. Your text is still in the editor.');
+        // Keep the editor open + textarea populated so the user can retry
+        // without losing what they typed.
+      }
     } catch (e) {
       console.warn('[lg] chart save failed:', e);
       if (typeof showToast === 'function') showToast('Save failed: ' + (e.message || e));
+      // Keep the editor open on exception too so user retains their text.
     }
   }
 
