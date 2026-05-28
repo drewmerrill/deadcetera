@@ -10875,9 +10875,155 @@ async function _renderNotifSettings() {
                 + '<div id="smsTestResult" style="font-size:0.72em;color:var(--text-dim);margin-top:8px;font-family:ui-monospace,SF Mono,Menlo,monospace;word-break:break-all"></div>'
                 + '</div>'
             : '')
+        + '</div>'
+        // ── Band-wide SMS recipients panel (Drew 2026-05-28) ─────────────
+        // Read-only view of who's opted in to band SMS + re-invite affordance
+        // for missing members. Re-invite COPIES a pre-written message to
+        // clipboard — Drew sends through his own Messages app (no automated
+        // send to non-consenting numbers, A2P 10DLC compliant).
+        + '<div id="smsRecipientsPanel" style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">'
+        +   '<div style="font-weight:700;color:var(--text);font-size:0.95em;margin-bottom:6px">📋 Band-wide SMS recipients</div>'
+        +   '<div style="font-size:0.8em;color:var(--text-dim);line-height:1.45;margin-bottom:12px">Who in the band is currently set up to receive SMS notifications. If someone says they opted in but isn\'t shown as active here, they probably didn\'t complete the flow — use the re-invite button to send them a copy-paste message.</div>'
+        +   '<div id="smsRecipientsList" style="font-size:0.85em;color:var(--text-dim)">Loading recipients…</div>'
         + '</div>';
 
     el.innerHTML = html;
+    // Render the recipients panel async — needs Firebase read.
+    _renderSmsRecipientsPanel();
+}
+
+// Band-wide SMS opt-in status — read-only listing of every band member
+// + their opt-in state. For members not active, a "Re-invite" button
+// copies a pre-written invitation to clipboard so the sender can paste
+// it via their own Messages app. Respects A2P 10DLC consent (we never
+// auto-send SMS to non-opted-in numbers).
+async function _renderSmsRecipientsPanel() {
+    var el = document.getElementById('smsRecipientsList');
+    if (!el) return;
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') {
+        el.innerHTML = '<span style="color:#fca5a5">Firebase not ready — refresh the page.</span>';
+        return;
+    }
+    try {
+        var snap = await firebaseDB.ref(bandPath('sms_subscriptions')).once('value');
+        var subs = snap.val() || {};
+        var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var memberKeys = Object.keys(members);
+        if (!memberKeys.length) {
+            el.innerHTML = '<span style="color:var(--text-dim);font-style:italic">No band members loaded.</span>';
+            return;
+        }
+        var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+        memberKeys.sort().forEach(function(mKey) {
+            var m = members[mKey] || {};
+            var name = m.name || mKey;
+            var sub = subs[mKey];
+            var status, statusColor, statusBg, statusBorder, actionHtml = '';
+            if (sub && sub.status === 'active') {
+                status = '✓ Active';
+                statusColor = '#86efac';
+                statusBg = 'rgba(34,197,94,0.10)';
+                statusBorder = 'rgba(34,197,94,0.30)';
+            } else if (sub && sub.status === 'opted_out') {
+                status = '⏸ Stopped';
+                statusColor = '#fbbf24';
+                statusBg = 'rgba(245,158,11,0.10)';
+                statusBorder = 'rgba(245,158,11,0.30)';
+                actionHtml = '<button onclick="_smsCopyReinvite(\'' + mKey + '\')" style="padding:4px 10px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">📋 Re-invite</button>';
+            } else if (sub && sub.status === 'pending') {
+                status = '⏳ Pending';
+                statusColor = '#a5b4fc';
+                statusBg = 'rgba(99,102,241,0.10)';
+                statusBorder = 'rgba(99,102,241,0.30)';
+                actionHtml = '<button onclick="_smsCopyReinvite(\'' + mKey + '\')" style="padding:4px 10px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">📋 Re-invite</button>';
+            } else {
+                status = '✗ Not opted in';
+                statusColor = '#94a3b8';
+                statusBg = 'rgba(148,163,184,0.10)';
+                statusBorder = 'rgba(148,163,184,0.25)';
+                actionHtml = '<button onclick="_smsCopyReinvite(\'' + mKey + '\')" style="padding:4px 10px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">📋 Invite</button>';
+            }
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 11px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:6px">'
+                +   '<div style="flex:1;min-width:0">'
+                +     '<div style="font-weight:600;color:var(--text);font-size:0.86em">' + name.replace(/</g,'&lt;') + '</div>'
+                +     '<div style="font-size:0.7em;color:var(--text-dim);margin-top:1px">' + (m.role || mKey).replace(/</g,'&lt;') + '</div>'
+                +   '</div>'
+                +   '<span style="background:' + statusBg + ';border:1px solid ' + statusBorder + ';color:' + statusColor + ';border-radius:3px;padding:2px 7px;font-size:0.68em;font-weight:700">' + status + '</span>'
+                +   actionHtml
+                + '</div>';
+        });
+        html += '</div>';
+        // Summary line
+        var activeCount = memberKeys.filter(function(k) {
+            return subs[k] && subs[k].status === 'active';
+        }).length;
+        var missingCount = memberKeys.length - activeCount;
+        html += '<div style="margin-top:10px;font-size:0.74em;color:var(--text-dim);font-style:italic">' + activeCount + ' of ' + memberKeys.length + ' active · ' + (missingCount === 0 ? 'Everyone\'s in.' : (missingCount + ' to invite')) + '</div>';
+        el.innerHTML = html;
+    } catch (e) {
+        el.innerHTML = '<span style="color:#fca5a5">Couldn\'t read recipients: ' + (e.message || e) + '</span>';
+    }
+}
+
+// Copy a pre-written invitation SMS to clipboard so the user can paste
+// it into their own Messages app and send to the named member. Includes
+// the member's first name + the opt-in instructions.
+window._smsCopyReinvite = function(memberKey) {
+    var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var m = members[memberKey] || {};
+    var firstName = (m.name || memberKey).split(' ')[0];
+    var msg = 'Hey ' + firstName + ' — looks like you haven\'t finished opting in to band text notifications. Open app.groovelinx.com, go to Settings → Notifications, scroll to "SMS Notifications", enter your phone, and tap Enable SMS. You\'ll get a confirmation text — reply YES to it and you\'re set. (Reply STOP anytime to opt out.)';
+    var doneToast = function(success) {
+        if (typeof showToast === 'function') {
+            showToast(success
+                ? '📋 Invite copied — paste it in your Messages app to ' + firstName
+                : '⚠ Couldn\'t copy — long-press the text in the modal to copy manually',
+                5000);
+        }
+    };
+    // Try modern clipboard API first.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(msg).then(function() {
+            doneToast(true);
+            _smsShowReinvitePreview(firstName, msg, true);
+        }).catch(function() {
+            _smsShowReinvitePreview(firstName, msg, false);
+            doneToast(false);
+        });
+    } else {
+        _smsShowReinvitePreview(firstName, msg, false);
+        doneToast(false);
+    }
+};
+
+// Modal showing the pre-written invite so the user can verify content +
+// long-press to copy on devices where the clipboard API failed.
+function _smsShowReinvitePreview(firstName, msg, copied) {
+    var existing = document.getElementById('smsReinviteModal');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'smsReinviteModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:6500;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    overlay.innerHTML =
+        '<div style="max-width:480px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(99,102,241,0.3);color:#f1f5f9">'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        +   '<span style="font-size:1.4em">📋</span>'
+        +   '<div style="flex:1;font-weight:800;font-size:1.05em">Re-invite ' + firstName.replace(/</g,'&lt;') + '</div>'
+        +   '<button onclick="document.getElementById(\'smsReinviteModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>'
+        + '</div>'
+        + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:12px;line-height:1.5">'
+        +   (copied
+                ? 'Message copied to your clipboard. Open Messages, pick ' + firstName.replace(/</g,'&lt;') + ', and paste.'
+                : 'Couldn\'t auto-copy. Long-press the text below to copy manually, then open Messages and paste to ' + firstName.replace(/</g,'&lt;') + '.')
+        + '</div>'
+        + '<textarea readonly style="width:100%;min-height:140px;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#f1f5f9;font-family:inherit;font-size:0.86em;line-height:1.5;resize:vertical">' + msg.replace(/</g,'&lt;') + '</textarea>'
+        + '<div style="font-size:0.7em;color:var(--text-dim);margin-top:10px;line-height:1.5">We don\'t auto-send to non-opted-in numbers — that\'d violate A2P 10DLC consent rules. You send through your own Messages app and ' + firstName.replace(/</g,'&lt;') + ' opts in themselves via the link.</div>'
+        + '<button onclick="document.getElementById(\'smsReinviteModal\').remove()" style="margin-top:14px;width:100%;padding:10px;border-radius:8px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.15);color:#a5b4fc;cursor:pointer;font-size:0.9em;font-weight:700">Done</button>'
+        + '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
 }
 
 // Normalize a user-typed phone into E.164. Returns null if not parseable.
