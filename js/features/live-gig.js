@@ -68,6 +68,11 @@
       return;
     }
 
+    // Real-time chart sync across devices (2026-05-28). Each song's
+    // chart path gets a Firebase .on('value') listener so an edit on
+    // any device propagates to all others within ~1 second.
+    _lgSubscribeAllCharts();
+
     _renderStage();
     _lgApplyFont(); // restore saved font size
     _attachInputListeners();
@@ -126,7 +131,86 @@
     _closeJumpMenu();
   }
 
+  // ── Real-time chart sync (2026-05-28) ─────────────────────────────
+  // Drew reported chart edits made on MacBook weren't visible on iPad
+  // until force-refresh. Root cause: SWR cache returns stale local
+  // value on the un-edited device. The fix is cross-device live sync
+  // via Firebase RTDB .on('value') subscriptions for each song's
+  // chart path in the active setlist.
+  //
+  // Lifecycle:
+  //   initLiveGig (after _loadSetlistFromStore) → _lgSubscribeAllCharts()
+  //   lgExit                                    → _lgUnsubscribeAllCharts()
+  //
+  // Behavior on remote change:
+  //   - localStorage SWR cache is updated to match Firebase (so SWR is consistent)
+  //   - if the currently-displayed song is the one that changed AND the user
+  //     is NOT actively editing in the Flash Chart Editor overlay, repaint
+  //     the chart with the fresh content
+  //   - if the editor IS open, DO NOT overwrite the user's in-progress edit;
+  //     the cache update still happens so the next time they close + reopen
+  //     they'll see the fresh state (their own save still wins since it's
+  //     the most recent Firebase write)
+  //
+  // _lgChartSubs map: songTitle → { ref, handler } so we can clean up
+  // properly on exit (avoiding listener leaks and double-subscriptions).
+  var _lgChartSubs = {};
+
+  function _lgSubscribeAllCharts() {
+    if (!_lg.songs || !_lg.songs.length) return;
+    if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
+    if (typeof bandPath !== 'function') return;
+    var hasGLStore = (typeof GLStore !== 'undefined' && GLStore.getSongIdByTitle);
+    _lg.songs.forEach(function(song) {
+      if (!song || !song.title) return;
+      if (_lgChartSubs[song.title]) return; // already subscribed
+      var songId = hasGLStore ? GLStore.getSongIdByTitle(song.title) : null;
+      if (!songId) return; // no songId → no v2 path → cannot subscribe
+      var path = bandPath('songs_v2/' + songId + '/chart');
+      var ref = firebaseDB.ref(path);
+      var handler = function(snap) {
+        var data = snap.val();
+        // Keep the SWR localStorage cache aligned with Firebase truth
+        // so subsequent loadBandDataFromDrive calls return fresh.
+        try {
+          if (data === null) {
+            localStorage.removeItem('gl_cache_' + song.title + '_chart');
+          } else {
+            localStorage.setItem('gl_cache_' + song.title + '_chart', JSON.stringify(data));
+          }
+        } catch (e) { /* quota — non-fatal */ }
+        // If THIS song is currently displayed AND user isn't editing,
+        // re-render the chart with the fresh content.
+        var current = _lg.songs[_lg.cursor];
+        if (current && current.title === song.title) {
+          var editorOpen = !!document.getElementById('lgChartEditor');
+          if (!editorOpen) {
+            try { _loadChart(song.title); } catch (e) { console.warn('[lg] live chart repaint failed:', e); }
+          }
+        }
+      };
+      try {
+        ref.on('value', handler);
+        _lgChartSubs[song.title] = { ref: ref, handler: handler };
+      } catch (e) {
+        console.warn('[lg] chart subscribe failed for "' + song.title + '":', e);
+      }
+    });
+    var count = Object.keys(_lgChartSubs).length;
+    if (count > 0) console.log('[lg] live chart sync active for ' + count + ' songs');
+  }
+
+  function _lgUnsubscribeAllCharts() {
+    Object.keys(_lgChartSubs).forEach(function(key) {
+      var sub = _lgChartSubs[key];
+      if (!sub) return;
+      try { sub.ref.off('value', sub.handler); } catch (e) {}
+    });
+    _lgChartSubs = {};
+  }
+
   function lgExit() {
+    _lgUnsubscribeAllCharts();
     _detachInputListeners();
     _lgStopScroll();
     var overlay = document.getElementById('lgOverlay');
