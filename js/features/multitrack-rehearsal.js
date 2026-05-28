@@ -8509,13 +8509,13 @@ function _mtRenderCommentList() {
         // Phase 2: resolve via segment anchor so label, jump, and
         // data-comment-time all map to the current render's time domain.
         var _cTs = _mtResolveCommentTimestamp(c);
-        // Phase 3: ⚠ legacy anchor badge for comments without renderId
-        // provenance. The tooltip explains the situation in plain language
-        // and points to the workaround (switch renders). Phase 4 will
-        // wire this into a manual reanchor flow.
+        // Phase 3+4: ⚠ legacy anchor badge for comments without renderId
+        // provenance. Clickable — opens the manual reanchor modal (Phase 4).
+        // Tooltip explains the situation in plain language.
         var _legacyBadge = c._needsManualReanchor ? (
-            '<span title="This comment was saved before render-aware anchors. If timing looks off, switch renders or re-anchor it (manual re-anchor coming in a later update)." '
-            + 'style="display:inline-flex;align-items:center;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.62em;font-weight:700;margin-left:5px;cursor:help">⚠ legacy anchor</span>'
+            '<button onclick="_mtOpenReanchorModal(\'' + escHtml(c.commentId) + '\')" '
+            + 'title="This comment was saved before render-aware anchors. If timing looks off, click to re-anchor it to the correct song." '
+            + 'style="display:inline-flex;align-items:center;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.62em;font-weight:700;margin-left:5px;cursor:pointer;font-family:inherit">⚠ legacy anchor · click to fix</button>'
         ) : '';
         return '<div class="mt-comment-row" data-comment-time="' + _cTs + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
             + '<button onclick="_mtJumpToComment(' + _cTs + ')" title="Jump to ' + _mtFmtTime(_cTs) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(_cTs) + '</button>'
@@ -8810,6 +8810,246 @@ function _mtFlagLegacyComments(comments) {
         c._needsManualReanchor = !c.renderId;
     }
     return comments;
+}
+
+// Phase 4 — translate current playhead to a source-time anchor.
+// Used by the manual reanchor modal's "anchor at current playhead"
+// path. Handles both full-mix and songs-only render time domains.
+// Returns {segmentId, offsetWithinSegment, sourceTimestamp} or null.
+function _mtTranslatePlayheadToSourceTimeAnchor() {
+    var p = _mtState.player;
+    if (!p || !p.audios || !p.audios[0]) return null;
+    if (!Array.isArray(p.segments) || !p.segments.length) return null;
+    var playheadRenderTime = p.audios[0].currentTime || 0;
+    var renderId = (p.renderInfo && p.renderInfo.renderId) || null;
+    var classification = _mtClassifyRenderId(renderId);
+
+    if (classification === 'full' || _mtRenderTimeMatchesSegmentTime()) {
+        // Direct: find segment containing playhead in source-time
+        for (var i = 0; i < p.segments.length; i++) {
+            var s = p.segments[i];
+            if (!s) continue;
+            if (playheadRenderTime >= (s.startSec || 0) && playheadRenderTime < (s.endSec || 0)) {
+                return {
+                    segmentId: s.id,
+                    offsetWithinSegment: playheadRenderTime - (s.startSec || 0),
+                    sourceTimestamp: playheadRenderTime,
+                };
+            }
+        }
+        return null;
+    }
+
+    if (classification === 'songs-only') {
+        // Translate cumulative songs-only durations
+        var included = p.segments.filter(function(s) {
+            if (!s) return false;
+            if (_mtSegmentEffectiveKind(s) !== 'music') return false;
+            if (_mtSegmentReviewState(s) === 'excluded') return false;
+            if (s.isBetween === true) return false;
+            return true;
+        }).slice().sort(function(a, b) { return (a.startSec || 0) - (b.startSec || 0); });
+        var acc = 0;
+        for (var k = 0; k < included.length; k++) {
+            var sg = included[k];
+            var dur = Math.max(0, (sg.endSec || 0) - (sg.startSec || 0));
+            if (playheadRenderTime >= acc && playheadRenderTime < acc + dur) {
+                var offsetInSeg = playheadRenderTime - acc;
+                return {
+                    segmentId: sg.id,
+                    offsetWithinSegment: offsetInSeg,
+                    sourceTimestamp: (sg.startSec || 0) + offsetInSeg,
+                };
+            }
+            acc += dur;
+        }
+        return null;
+    }
+
+    return null;  // unknown render classification (custom-*, etc.)
+}
+
+// Phase 4 — open the manual reanchor modal for a single comment.
+// Drew 2026-05-28: manual reanchor UI is the proper correction path
+// for legacy comments without renderId provenance.
+window._mtOpenReanchorModal = function(commentId) {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.comments)) return;
+    var comment = null;
+    for (var i = 0; i < p.comments.length; i++) {
+        if (p.comments[i] && p.comments[i].commentId === commentId) {
+            comment = p.comments[i]; break;
+        }
+    }
+    if (!comment) return;
+    var existing = document.getElementById('mtReanchorModal');
+    if (existing) existing.remove();
+
+    var origTs = comment.timestampSec || 0;
+    var origLabel = _mtFmtTime(origTs);
+
+    // Music + non-excluded segments — the candidate list. Sorted by
+    // source-time so the order matches when the rehearsal actually
+    // played, which is the order the user most likely remembers.
+    var pickList = (p.segments || []).filter(function(s) {
+        if (!s) return false;
+        if (_mtSegmentEffectiveKind(s) !== 'music') return false;
+        if (_mtSegmentReviewState(s) === 'excluded') return false;
+        return true;
+    }).slice().sort(function(a, b) {
+        return (a.startSec || 0) - (b.startSec || 0);
+    });
+
+    // Try playhead anchor preview — only show "anchor here" path if it
+    // actually resolves to a segment (i.e., playhead is on a real song
+    // in a render whose time domain we can interpret).
+    var playheadAnchor = _mtTranslatePlayheadToSourceTimeAnchor();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'mtReanchorModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:6800;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'max-width:560px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(245,158,11,0.4);max-height:92vh;overflow-y:auto;box-shadow:0 25px 50px rgba(0,0,0,0.5)';
+
+    var pickRowsHtml = pickList.map(function(s) {
+        var name = _mtSegmentDisplayName(s);
+        var title = (name && name.title) || (name && name.placeholder) || 'Untitled';
+        var dur = Math.max(0, (s.endSec || 0) - (s.startSec || 0));
+        var m = Math.floor(dur / 60), sec = Math.round(dur - m * 60);
+        var durStr = (m === 0) ? (sec + 's') : (sec === 0 ? (m + 'm') : (m + 'm ' + sec + 's'));
+        var safeId = (s.id || '').replace(/'/g, "\\'");
+        return ''
+            + '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:5px;margin-bottom:4px">'
+            +   '<div style="flex:1;min-width:0">'
+            +     '<div style="font-weight:600;color:#f1f5f9;font-size:0.84em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(title) + '</div>'
+            +     '<div style="font-size:0.68em;color:var(--text-dim);margin-top:1px">' + _mtFmtTime(s.startSec || 0) + ' · ' + escHtml(durStr) + '</div>'
+            +   '</div>'
+            +   '<button onclick="_mtReanchorPickSegment(\'' + escHtml(commentId) + '\',\'' + safeId + '\')" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.45);border-radius:5px;color:#86efac;padding:5px 11px;cursor:pointer;font-size:0.78em;font-weight:700;flex-shrink:0">⚓ Anchor here</button>'
+            + '</div>';
+    }).join('');
+
+    var playheadPathHtml = '';
+    if (playheadAnchor) {
+        // Resolve the segment's display name for context.
+        var pSeg = null;
+        for (var ps = 0; ps < p.segments.length; ps++) {
+            if (p.segments[ps] && p.segments[ps].id === playheadAnchor.segmentId) {
+                pSeg = p.segments[ps]; break;
+            }
+        }
+        var pSegName = pSeg ? _mtSegmentDisplayName(pSeg) : null;
+        var pSegTitle = (pSegName && pSegName.title) || 'current segment';
+        var offsetMin = Math.floor(playheadAnchor.offsetWithinSegment / 60);
+        var offsetSec = Math.round(playheadAnchor.offsetWithinSegment - offsetMin * 60);
+        playheadPathHtml = ''
+            + '<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.22);border-radius:8px;padding:11px;margin-bottom:14px">'
+            +   '<div style="font-size:0.85em;color:#a5b4fc;font-weight:700;margin-bottom:4px">Anchor at current playhead</div>'
+            +   '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:8px;line-height:1.5">'
+            +     'You\'re playing: <strong style="color:#f1f5f9">' + escHtml(pSegTitle) + '</strong> at <strong style="color:#f1f5f9">' + offsetMin + 'm ' + offsetSec + 's</strong> into the song. Picks this exact moment as the anchor.'
+            +   '</div>'
+            +   '<button onclick="_mtReanchorUsePlayhead(\'' + escHtml(commentId) + '\')" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.45);border-radius:5px;color:#a5b4fc;padding:6px 12px;cursor:pointer;font-size:0.82em;font-weight:700">⚓ Anchor at this exact moment</button>'
+            + '</div>';
+    }
+
+    modal.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        + '<span style="font-size:1.4em">⚓</span>'
+        + '<div style="flex:1;font-weight:800;color:#f1f5f9;font-size:1.05em">Re-anchor comment</div>'
+        + '<button onclick="document.getElementById(\'mtReanchorModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>'
+        + '</div>'
+        + '<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.22);border-radius:8px;padding:11px;margin-bottom:14px">'
+        +   '<div style="font-size:0.78em;color:#fbbf24;font-weight:700;margin-bottom:5px">Comment</div>'
+        +   '<div style="font-size:0.86em;color:#f1f5f9;line-height:1.4;margin-bottom:6px;word-wrap:break-word">' + escHtml(comment.text || '(no text)') + '</div>'
+        +   '<div style="font-size:0.72em;color:var(--text-dim)">Originally saved at <strong>' + escHtml(origLabel) + '</strong> in audio. That number may have been written against a different mix than the one currently playing — pick a song below (or use current playhead) to give this comment a durable anchor.</div>'
+        + '</div>'
+        + playheadPathHtml
+        + '<div style="font-size:0.85em;color:#f1f5f9;font-weight:700;margin-bottom:6px">Or pick the song this comment was about</div>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:8px;line-height:1.5">Anchors the comment at the START of that song. You can fine-tune later by re-anchoring with the playhead exactly where you want.</div>'
+        + '<div style="max-height:300px;overflow-y:auto;padding-right:4px">' + (pickRowsHtml || '<div style="font-size:0.78em;color:var(--text-dim);font-style:italic;padding:10px;text-align:center">No music segments available yet — run 🎯 Analyze first.</div>') + '</div>'
+        + '<button onclick="document.getElementById(\'mtReanchorModal\').remove()" style="margin-top:14px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.84em">Cancel</button>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') {
+            var m2 = document.getElementById('mtReanchorModal');
+            if (m2) m2.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
+};
+
+// Phase 4 — anchor a comment to the START of a chosen segment.
+// Writes {segmentId, offsetWithinSegment=0, manuallyAnchoredAt,
+// manuallyAnchoredBy} back to Firebase + clears the _needsManualReanchor
+// flag in memory.
+window._mtReanchorPickSegment = async function(commentId, segmentId) {
+    await _mtApplyReanchor(commentId, segmentId, 0);
+};
+
+// Phase 4 — anchor a comment to current playhead position. Uses
+// _mtTranslatePlayheadToSourceTimeAnchor to handle both full and songs-
+// only render time domains.
+window._mtReanchorUsePlayhead = async function(commentId) {
+    var anchor = _mtTranslatePlayheadToSourceTimeAnchor();
+    if (!anchor) {
+        if (typeof showToast === 'function') {
+            showToast('Couldn\'t map current playhead to a song. Try picking a song instead.');
+        }
+        return;
+    }
+    await _mtApplyReanchor(commentId, anchor.segmentId, anchor.offsetWithinSegment);
+};
+
+async function _mtApplyReanchor(commentId, segmentId, offsetWithinSegment) {
+    var p = _mtState.player;
+    if (!p || !p.sessionId || !Array.isArray(p.comments)) return;
+    var comment = null;
+    for (var i = 0; i < p.comments.length; i++) {
+        if (p.comments[i] && p.comments[i].commentId === commentId) {
+            comment = p.comments[i]; break;
+        }
+    }
+    if (!comment) return;
+    // Apply locally first (optimistic) so the badge disappears and the
+    // sort order updates immediately. Revert on Firebase failure.
+    var prev = {
+        segmentId: comment.segmentId,
+        offsetWithinSegment: comment.offsetWithinSegment,
+        manuallyAnchoredAt: comment.manuallyAnchoredAt,
+        manuallyAnchoredBy: comment.manuallyAnchoredBy,
+        _needsManualReanchor: comment._needsManualReanchor,
+    };
+    comment.segmentId = segmentId;
+    comment.offsetWithinSegment = offsetWithinSegment;
+    comment.manuallyAnchoredAt = new Date().toISOString();
+    comment.manuallyAnchoredBy = (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '';
+    comment._needsManualReanchor = false;
+    // Re-sort the comments array since position may have shifted.
+    p.comments.sort(function(a, b) { return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b); });
+    if (typeof _mtRefreshCommentPanel === 'function') _mtRefreshCommentPanel();
+    // Persist. Strip the in-memory-only flag before writing.
+    var toSave = Object.assign({}, comment);
+    delete toSave._needsManualReanchor;
+    var ok = await _mtSaveComment(p.sessionId, toSave);
+    if (!ok) {
+        // Revert.
+        comment.segmentId = prev.segmentId;
+        comment.offsetWithinSegment = prev.offsetWithinSegment;
+        comment.manuallyAnchoredAt = prev.manuallyAnchoredAt;
+        comment.manuallyAnchoredBy = prev.manuallyAnchoredBy;
+        comment._needsManualReanchor = prev._needsManualReanchor;
+        p.comments.sort(function(a, b) { return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b); });
+        if (typeof _mtRefreshCommentPanel === 'function') _mtRefreshCommentPanel();
+        if (typeof showToast === 'function') showToast('⚠ Re-anchor save failed — try again');
+        return;
+    }
+    var modal = document.getElementById('mtReanchorModal');
+    if (modal) modal.remove();
+    if (typeof showToast === 'function') showToast('⚓ Comment re-anchored');
 }
 
 // Coordinate Phase 3 migration to fire after BOTH comments and segments
