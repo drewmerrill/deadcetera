@@ -3838,9 +3838,90 @@ async function _mtLoadMixPresets(sessionId) {
 //
 // Future enhancement: server-side mixdown via Modal so the full multitrack
 // signal feeds the analyzer. Tonight's single-stem approach is the bridge.
+// Modal that demands explicit acknowledgment before re-running the
+// server analyzer over a session that has user edits. Discovered need
+// 2026-05-28 when Drew realized any band member could casually click
+// 🎯 Analyze on a hand-curated rehearsal and lose hours of corrections.
+// Returns a promise resolving to true (proceed) or false (cancel).
+// Cancel is default — autofocus, Esc, and clicking outside the modal
+// all resolve false. Only the explicit "Yes, discard N edits" button
+// resolves true. Trust-layer triage: prevent data loss > LOC concern.
+function _mtConfirmDestructiveAnalyze(editCount) {
+    return new Promise(function(resolve) {
+        var existing = document.getElementById('mtAnalyzeGuard');
+        if (existing) existing.remove();
+        var overlay = document.createElement('div');
+        overlay.id = 'mtAnalyzeGuard';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px';
+        var modal = document.createElement('div');
+        modal.style.cssText = 'background:#1e293b;border:2px solid rgba(239,68,68,0.6);border-radius:12px;padding:24px;max-width:480px;color:#f1f5f9;font-family:inherit;box-shadow:0 25px 50px rgba(0,0,0,0.5)';
+        var bodyHtml = ''
+            + '<div style="font-size:1.4em;margin-bottom:8px">⚠️</div>'
+            + '<div style="font-size:1.05em;font-weight:800;margin-bottom:6px">Re-analyze will erase human edits</div>'
+            + '<div style="font-size:0.85em;color:#cbd5e1;margin-bottom:14px;line-height:1.5">'
+            +   'This rehearsal has <strong style="color:#fca5a5">' + editCount + ' segment edit'
+            +   (editCount === 1 ? '' : 's') + '</strong> '
+            +   '(renames, confirmed matches, song corrections, boundary moves). '
+            +   'Re-running analysis discards all of them and replaces the segment list with a fresh server analysis.'
+            + '</div>'
+            + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:16px;line-height:1.5">'
+            +   '<strong>If matching looks wrong:</strong> ask Drew first. He can update the setlist/plan reference '
+            +   'WITHOUT re-running segmentation, which preserves all confirmed song titles and review state.'
+            + '</div>'
+            + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+            +   '<button id="mtGuardCancel" style="padding:8px 16px;border-radius:6px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.18);color:#a5b4fc;cursor:pointer;font-weight:700">Cancel</button>'
+            +   '<button id="mtGuardConfirm" style="padding:8px 16px;border-radius:6px;border:1px solid rgba(239,68,68,0.5);background:rgba(239,68,68,0.15);color:#fca5a5;cursor:pointer;font-size:0.86em">Yes, discard ' + editCount + ' edit' + (editCount === 1 ? '' : 's') + '</button>'
+            + '</div>';
+        modal.innerHTML = bodyHtml;
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        var cleanup = function(answer) {
+            document.removeEventListener('keydown', escHandler);
+            overlay.remove();
+            resolve(answer);
+        };
+        var escHandler = function(e) {
+            if (e.key === 'Escape') cleanup(false);
+        };
+        document.addEventListener('keydown', escHandler);
+        // Click outside modal = cancel
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) cleanup(false);
+        });
+        document.getElementById('mtGuardCancel').addEventListener('click', function() { cleanup(false); });
+        document.getElementById('mtGuardConfirm').addEventListener('click', function() { cleanup(true); });
+        // Autofocus Cancel so Enter = safe default
+        setTimeout(function() {
+            var cancelBtn = document.getElementById('mtGuardCancel');
+            if (cancelBtn) cancelBtn.focus();
+        }, 50);
+    });
+}
+
 window._mtAnalyzeRehearsal = async function() {
     var p = _mtState.player;
     if (!p || !p.sessionId) return;
+
+    // ── TRUST-LAYER GUARD ─────────────────────────────────────────────
+    // multitrackSegments is the overlay node containing ONLY user edits
+    // (renames, confirmed flags, kind overrides, boundary moves). If it
+    // has any entries, a casual Analyze click would destroy curated
+    // rehearsal truth. Make the user explicitly acknowledge before
+    // proceeding. First-run (no edits yet) silently passes through.
+    try {
+        var _db = (typeof window !== 'undefined') ? window.firebaseDB : null;
+        if (_db && typeof bandPath === 'function') {
+            var editSnap = await _db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments')).once('value');
+            var edits = editSnap.val() || {};
+            var editCount = Object.keys(edits).length;
+            if (editCount > 0) {
+                var proceed = await _mtConfirmDestructiveAnalyze(editCount);
+                if (!proceed) return;
+            }
+        }
+    } catch (e) {
+        console.warn('[Multitrack] analyze edit-guard check failed (proceeding):', e && e.message);
+    }
 
     // Source priority:
     //   1. ANY rendered stereo mix — recommended. Has all instruments —
