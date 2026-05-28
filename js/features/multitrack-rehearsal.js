@@ -5106,6 +5106,11 @@ async function _mtLoadSegments(sessionId) {
             }
         });
         p.segments = segs;
+        // Phase 3: once segments are loaded, kick the migration coordinator.
+        // Idempotent — fires once per session via p._phase3MigrationDone.
+        if (p.sessionId) {
+            setTimeout(function() { _mtMaybeRunPhase3Migration(p.sessionId); }, 0);
+        }
     } catch (e) {
         console.warn('[Multitrack] segments load failed:', e && e.message);
         p.segments = [];
@@ -8281,9 +8286,21 @@ async function _mtLoadComments(sessionId) {
         // not the raw stored value (which may be in a different render's
         // time domain). Legacy comments without segmentId fall back to
         // timestampSec automatically inside _mtResolveCommentTimestamp.
-        return Object.values(val).sort(function(a, b) {
+        var loaded = Object.values(val).sort(function(a, b) {
             return _mtResolveCommentTimestamp(a) - _mtResolveCommentTimestamp(b);
         });
+        // Phase 3: flag legacy comments in memory (no Firebase write).
+        // Provenance-safe migration happens later via _mtMaybeRunPhase3Migration
+        // once both comments AND segments are loaded.
+        _mtFlagLegacyComments(loaded);
+        // Fire-and-forget: if segments are already loaded, kick off
+        // migration now. Otherwise the segment-load completion will
+        // trigger it. Either path ends up calling
+        // _mtMaybeRunPhase3Migration which is idempotent via a flag.
+        setTimeout(function() {
+            _mtMaybeRunPhase3Migration(sessionId);
+        }, 0);
+        return loaded;
     } catch (e) {
         console.warn('[Multitrack] load comments failed:', e.message);
         return [];
@@ -8492,10 +8509,18 @@ function _mtRenderCommentList() {
         // Phase 2: resolve via segment anchor so label, jump, and
         // data-comment-time all map to the current render's time domain.
         var _cTs = _mtResolveCommentTimestamp(c);
+        // Phase 3: ⚠ legacy anchor badge for comments without renderId
+        // provenance. The tooltip explains the situation in plain language
+        // and points to the workaround (switch renders). Phase 4 will
+        // wire this into a manual reanchor flow.
+        var _legacyBadge = c._needsManualReanchor ? (
+            '<span title="This comment was saved before render-aware anchors. If timing looks off, switch renders or re-anchor it (manual re-anchor coming in a later update)." '
+            + 'style="display:inline-flex;align-items:center;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.62em;font-weight:700;margin-left:5px;cursor:help">⚠ legacy anchor</span>'
+        ) : '';
         return '<div class="mt-comment-row" data-comment-time="' + _cTs + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
             + '<button onclick="_mtJumpToComment(' + _cTs + ')" title="Jump to ' + _mtFmtTime(_cTs) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(_cTs) + '</button>'
             + '<div style="min-width:0">'
-              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + '</div>'
+              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + _legacyBadge + '</div>'
               + '<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
                 + '<span style="font-size:0.65em;color:var(--text-dim);font-style:italic">' + escHtml(trackLabel) + '</span>'
                 + (tagsHtml ? '<span style="color:var(--text-dim);font-size:0.65em">·</span> ' + tagsHtml : '')
@@ -8627,6 +8652,183 @@ function _mtComputeCommentAnchor(timestampSec) {
         }
     }
     return anchor;
+}
+
+// Classify a renderId for Phase 3 migration safety.
+//   'full'        → mix_default, export-* (these are full-mix variants)
+//   'songs-only'  → mix_songs_only
+//   'unknown'     → custom-* (could be either; songsOnly checkbox dependent),
+//                   any other / missing identifier
+// Phase 3 only auto-migrates when classification is 'full' or 'songs-only'.
+// 'unknown' is left untouched per the no-false-precision principle.
+function _mtClassifyRenderId(renderId) {
+    if (!renderId) return 'unknown';
+    if (renderId === 'mix_default') return 'full';
+    if (renderId.indexOf('export-') === 0) return 'full';
+    if (renderId === 'mix_songs_only') return 'songs-only';
+    return 'unknown';
+}
+
+// Phase 3 — migrate comments with KNOWN renderId provenance to segment
+// anchors. Drew 2026-05-28 explicitly approved this narrow scope:
+//   "No auto-migration of unknown legacy comments. A wrong migration is
+//    worse than current drift because it creates false confidence."
+//
+// What we DO migrate:
+//   - comments with renderId === 'mix_default' or 'export-*' → direct
+//     source-time strategy (timestampSec lands inside a segment in
+//     source-time; anchor to that segment + offset = ts - segment.startSec)
+//   - comments with renderId === 'mix_songs_only' → songs-only translation
+//     (walk through included segments in source-time order, find which
+//     one's accumulated duration contains the timestamp, compute the
+//     source-time anchor)
+//
+// What we DO NOT migrate:
+//   - comments missing renderId (e.g., Pierce's 11 from 2026-05-28)
+//   - comments with 'custom-*' renderId (ambiguous full vs songs-only)
+//   - comments where translation produces no valid anchor
+//
+// Untouched comments get the _needsManualReanchor flag set in memory
+// (via _mtFlagLegacyComments) so the UI can surface a "⚠ legacy anchor"
+// badge. Phase 4 will add the manual reanchor handler.
+async function _mtMigrateCommentsWithKnownProvenance(sessionId, comments) {
+    if (!Array.isArray(comments) || !comments.length) return comments;
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments) || !p.segments.length) return comments;
+
+    var sessionSegs = p.segments.slice().sort(function(a, b) {
+        return (a.startSec || 0) - (b.startSec || 0);
+    });
+
+    // Pre-compute songs-only inclusion list + cumulative durations for
+    // translation strategy. Inclusion rules match the songs-only render
+    // pipeline: music segments, not excluded, not isBetween.
+    var songsOnlyIncluded = sessionSegs.filter(function(s) {
+        if (!s) return false;
+        if (_mtSegmentEffectiveKind(s) !== 'music') return false;
+        if (_mtSegmentReviewState(s) === 'excluded') return false;
+        if (s.isBetween === true) return false;
+        return true;
+    });
+    var cumDurs = [];
+    var acc = 0;
+    songsOnlyIncluded.forEach(function(s) {
+        var dur = Math.max(0, (s.endSec || 0) - (s.startSec || 0));
+        cumDurs.push({seg: s, start: acc, end: acc + dur});
+        acc += dur;
+    });
+
+    var migrations = [];
+
+    for (var i = 0; i < comments.length; i++) {
+        var c = comments[i];
+        if (!c) continue;
+        if (c.segmentId) continue;                  // already anchored
+        if (!c.renderId) continue;                  // missing provenance — skip
+        var classification = _mtClassifyRenderId(c.renderId);
+        if (classification === 'unknown') continue; // ambiguous — skip
+
+        var ts = c.timestampSec || 0;
+        if (!isFinite(ts) || ts < 0) continue;
+
+        var anchor = null;
+
+        if (classification === 'full') {
+            // Direct: find source-time segment containing the timestamp
+            for (var j = 0; j < sessionSegs.length; j++) {
+                var sg = sessionSegs[j];
+                if (!sg) continue;
+                if (ts >= (sg.startSec || 0) && ts < (sg.endSec || 0)) {
+                    anchor = {
+                        segmentId: sg.id,
+                        offsetWithinSegment: ts - (sg.startSec || 0),
+                        method: 'direct',
+                    };
+                    break;
+                }
+            }
+        } else if (classification === 'songs-only') {
+            // Translation: walk cumulative songs-only durations
+            for (var k = 0; k < cumDurs.length; k++) {
+                var entry = cumDurs[k];
+                if (ts >= entry.start && ts < entry.end) {
+                    anchor = {
+                        segmentId: entry.seg.id,
+                        offsetWithinSegment: ts - entry.start,
+                        method: 'songs-only-translation',
+                    };
+                    break;
+                }
+            }
+        }
+
+        if (anchor) {
+            migrations.push({comment: c, anchor: anchor});
+        }
+    }
+
+    if (!migrations.length) return comments;
+
+    console.log('[Multitrack] Phase 3: migrating ' + migrations.length +
+        ' provenance-known comments (' +
+        migrations.filter(function(m) { return m.anchor.method === 'direct'; }).length + ' direct, ' +
+        migrations.filter(function(m) { return m.anchor.method === 'songs-only-translation'; }).length + ' translation)'
+    );
+
+    for (var m = 0; m < migrations.length; m++) {
+        var mig = migrations[m];
+        mig.comment.segmentId = mig.anchor.segmentId;
+        mig.comment.offsetWithinSegment = mig.anchor.offsetWithinSegment;
+        mig.comment.migratedAt = new Date().toISOString();
+        mig.comment.migrationMethod = mig.anchor.method;
+        mig.comment._needsManualReanchor = false;
+        try {
+            await _mtSaveComment(sessionId, mig.comment);
+        } catch (e) {
+            console.warn('[Multitrack] Phase 3 migration write failed for ' + mig.comment.commentId + ':', e && e.message);
+        }
+    }
+
+    return comments;
+}
+
+// Phase 3 — flag legacy comments in memory only (NOT written to Firebase).
+// Drew: "Preserve Pierce's existing comments exactly as-is."
+// Comments without segmentId AND without renderId provenance get
+// `_needsManualReanchor: true` so the UI can render the ⚠ badge.
+// The flag is in-memory only — never written to Firebase — so the
+// stored data stays untouched.
+function _mtFlagLegacyComments(comments) {
+    if (!Array.isArray(comments)) return comments;
+    for (var i = 0; i < comments.length; i++) {
+        var c = comments[i];
+        if (!c) continue;
+        if (c.segmentId) {
+            c._needsManualReanchor = false;
+            continue;
+        }
+        c._needsManualReanchor = !c.renderId;
+    }
+    return comments;
+}
+
+// Coordinate Phase 3 migration to fire after BOTH comments and segments
+// have loaded. Called from comments-load and segments-load completion
+// hooks; guards with a flag so we only run once per session load.
+async function _mtMaybeRunPhase3Migration(sessionId) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p._phase3MigrationDone) return;
+    if (!Array.isArray(p.comments) || !Array.isArray(p.segments) || !p.segments.length) return;
+    p._phase3MigrationDone = true;
+    try {
+        await _mtMigrateCommentsWithKnownProvenance(sessionId, p.comments);
+        // Re-flag in case migration moved any comments out of "legacy" state.
+        _mtFlagLegacyComments(p.comments);
+        if (typeof _mtRefreshCommentPanel === 'function') _mtRefreshCommentPanel();
+    } catch (e) {
+        console.warn('[Multitrack] Phase 3 migration coordinator failed:', e && e.message);
+    }
 }
 
 // Phase 2 — resolve a comment's display timestamp using segment anchor

@@ -2390,3 +2390,40 @@ Future contributors should not "fix" these without checking back.
     is in Firebase `bands/{slug}/rehearsal_sessions/{sid}/tracks/`.
   - **Discovered:** 2026-05-28 · Brian Hillman first-real-DAW pull
   - **Status:** open
+
+- **Finding:** Calendar two-way sync reports "73 updated, 0 added,
+  0 deleted" on every sync even when Google returned 0-1 actual
+  changes. `saveBandArrayDataSafe` (firebase-service.js:670-672) DOES
+  byte-compare records and skips unchanged writes — so the 73 count
+  means 73 records produced a different serialized form vs what's
+  stored. Suspected causes (not yet confirmed):
+  (a) `_sanitizeForFirebase` mutates `undefined` → `null` on every
+      pass, creating non-stored-side diffs;
+  (b) Phase 2 pull processing reclassifies all events (type field,
+      freebusy flags) regardless of whether Google sent a change;
+  (c) JSON key ordering differences between local reconstruction
+      and Firebase's storage.
+  Cost: Firebase write quota burn (73 writes when 1 needed). NOT
+  data destruction — events stay intact (verified 2026-05-28:
+  126 events, types preserved, no dup, 119 unique googleEventIds).
+  But the alarming log message correctly worried Drew.
+  - **Why deferred:** Diagnosis-only tonight; fix needs careful
+    audit of the Phase 2 processing path to find what mutates
+    events without changing meaningful content. Estimated 1-3h
+    of focused work. Not blocking.
+  - **Trigger:** Next Firebase quota concern, OR if write rate
+    becomes user-visible (e.g., paid plan with usage alerts).
+  - **Fix shape:** Audit Phase 2 normalization — either (1) make
+    in-memory records match Firebase's stored form before save,
+    or (2) diff only meaningful fields (title/date/start/end/
+    type/gigId) in saveBandArrayDataSafe instead of full JSON
+    serialization equality, or (3) add a per-record changedAt
+    timestamp that ONLY updates on meaningful change and use it
+    as the equality check.
+  - **Improve logging in the meantime:** Change the log message
+    from "73 updated" (which implies content change) to "73 written
+    (X content-changed)" so the user can see the difference
+    between churn and real change. ~5 LOC, ship anytime.
+  - **Discovered:** 2026-05-28 · Drew's "scares me" report after
+    seeing post-edit sync log
+  - **Status:** open
