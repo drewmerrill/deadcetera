@@ -2251,3 +2251,78 @@ Future contributors should not "fix" these without checking back.
   - **Discovered:** 2026-05-19 · build `20260519-184759` · while
     fixing readiness picker
   - **Status:** open
+
+- **Finding:** Live Gig analyze context silently auto-picks `setlists[0]`
+  with no chooser (`recording-analyzer.js:2767-2769`). User got matched
+  against an old setlist on first analyze of the 5/27 rehearsal because
+  the freshest setlist happened to not be index 0. The 🥁 Band Rehearsal
+  branch DOES offer a picker (current planner queue / past sessions /
+  no plan); 🎤 Live Gig should mirror that.
+  - **Why deferred:** Surfaced live during the first overnight ingest
+    review session 2026-05-28; needed to ship the workaround verbally
+    (re-analyze as Band Rehearsal) rather than block on a code patch
+    at 11 PM during active user testing.
+  - **Trigger:** Next Live Gig analyze that runs against the wrong
+    setlist, OR next focused pass on Review Mode UX coherence.
+  - **Discovered:** 2026-05-28 · post-3d9c450b first-ingest review
+  - **Status:** open
+
+- **Finding:** Ingest script (`services/glx-ingest/ingest_full_rehearsal.py`)
+  sets the rehearsal session's `date` field to the ingest-run date, not the
+  recording date. When the band finishes rehearsal at 11 PM and the ingest
+  pipeline kicks off + finalizes past midnight, the resulting session
+  shows up dated for the FOLLOWING day. Surfaced 2026-05-28: the 5/27
+  rehearsal session was written with `date: "2026-05-28"`. This breaks the
+  analyzer's plan-prior lookup (it reads `rehearsal_plan_${sessionDate}`)
+  AND breaks Review Mode / History UI labels.
+  - **Why deferred:** Manually corrected the data for the 5/27 session
+    via Firebase database:set 2026-05-28 (date field + rehearsal_plan
+    write). The code fix (derive session date from first chunk's mtime,
+    not from ingest-run wall clock) needs to land before the NEXT
+    overnight ingest to prevent recurrence.
+  - **Trigger:** Next overnight ingest that crosses midnight (likely the
+    2026-06-03 rehearsal if Drew records again next week and the ingest
+    runs after midnight). Also: any audit pass on the ingest pipeline.
+  - **Fix:** Use first chunk's `os.path.getmtime()` (already collected
+    during the WAV continuity scan) to derive `recording_date` in
+    `ingest_metadata.json`, then use that field rather than `date.today()`
+    when writing the session to Firebase.
+  - **Discovered:** 2026-05-28 · post-3d9c450b first-ingest review
+  - **Status:** open
+
+- **Finding:** No in-app surface lists all rendered mixes for a multitrack
+  session. The Mix tool RENDERS new ones, the player auto-loads ONE
+  (mix_default preferred, else newest), SMS/Export/Isolate-stems all act
+  on the currently-loaded render. But the user has no way to see what
+  renders exist for a session OR to switch the active render. Drew
+  surfaced this 2026-05-28 after realizing his 5/27 session already had
+  4 renders in R2 (mix_default + export-* + custom-*-songs + a preview)
+  that he had no UI to discover or load. Cost: zero — they're in R2
+  fine; storage isn't the problem. Visibility is the problem.
+  - **Why deferred:** Pierce in the app at the time of discovery; no
+    commits per Drew's request. Also a natural next-ship after the
+    render-pipeline work; not a trust-layer bug, just a missing surface.
+  - **Trigger:** Next focused multitrack UX pass, OR the moment Drew (or
+    another bandleader) renders ≥2 mixes per session and the "which one
+    am I sending to the band?" question becomes recurring friction.
+  - **Likely shape:** Tools → 🎵 Renders dropdown listing all completed
+    renders for the session with renderId, filename, size, modified
+    date. Click loads that render. ~100-150 LOC, mirrors the existing
+    `/multitrack/render/status` worker response.
+  - **Discovered:** 2026-05-28 · post-04169069 first-songs-only-render
+    review
+  - **Status:** open
+
+- **Finding:** Render filenames bake the date at render time, not from
+  the session's canonical date field. After the 2026-05-28 date drift
+  fix (session date corrected 5/28 → 5/27), the existing renders still
+  carry their original filenames ("rehearsal-mix-2026-05-28.mp3" for
+  what's actually the 5/27 session). Cosmetic, not functional — the
+  R2 path stays sessionId-keyed regardless.
+  - **Why deferred:** Cosmetic. Renaming files in R2 means uploading
+    new objects + cleaning up old ones; not worth the operational risk
+    for a label-only fix. Future renders use the canonical date already.
+  - **Trigger:** Cosmetic cleanup pass, OR if Drew finds the mixed
+    dates in the future render-picker UI confusing.
+  - **Discovered:** 2026-05-28
+  - **Status:** open

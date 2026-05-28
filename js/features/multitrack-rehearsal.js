@@ -2950,24 +2950,104 @@ window._mtCustomMixRender = async function() {
 // to a full ~2-5 min render. If playhead is at 0 or beyond duration,
 // defaults to 30s starting at the first analyzed music segment (or 30s
 // from rehearsal start if no segments).
+// Find a representative 30-second slice for preview. Heuristic:
+//   1. Filter to music segments only (skip silence/chatter/transitions)
+//   2. Require duration >= 90s (real songs, not 15-second false detections)
+//   3. Prefer segments where Drew confirmed the match (reviewState ===
+//      'confirmed') — those carry his explicit "yes this is a song" stamp
+//   4. Among the pool, pick the MEDIAN-DURATION segment. Not longest
+//      (often a long jam with sparse parts), not shortest (often an
+//      atypical short song). Median = the most "average representative"
+//      segment, by Drew's own definition of what got into this set.
+//   5. Return the middle 30 seconds (avoid intro fade-in and outro tail-
+//      off, where vocals and full band most reliably overlap).
+// Returns { start, duration, segmentTitle } or null if nothing qualifies.
+function _mtFindRepresentativePreviewSlice(p) {
+    if (!p || !Array.isArray(p.segments) || !p.segments.length) return null;
+    var musicSegs = p.segments.filter(function(s) {
+        var d = (s.endSec || 0) - (s.startSec || 0);
+        return _mtSegmentEffectiveKind(s) === 'music' && d >= 90;
+    });
+    if (!musicSegs.length) return null;
+    var confirmed = musicSegs.filter(function(s) {
+        return _mtSegmentReviewState(s) === 'confirmed';
+    });
+    var pool = confirmed.length ? confirmed : musicSegs;
+    pool.sort(function(a, b) {
+        return ((a.endSec - a.startSec) - (b.endSec - b.startSec));
+    });
+    var seg = pool[Math.floor(pool.length / 2)];
+    var segDur = seg.endSec - seg.startSec;
+    var sliceDuration = 30;
+    var sliceStart = seg.startSec + (segDur - sliceDuration) / 2;
+    // Skip first 5s (count-in / intro fade) and last 5s (outro tail).
+    sliceStart = Math.max(seg.startSec + 5, sliceStart);
+    sliceStart = Math.min(seg.endSec - sliceDuration - 5, sliceStart);
+    var name = _mtSegmentDisplayName(seg);
+    return {
+        start: sliceStart,
+        duration: sliceDuration,
+        segmentTitle: (name && name.title) || 'song',
+    };
+}
+
 window._mtCustomMixPreview = async function() {
     var p = _mtState.player;
     if (!p || !p.sessionId) return;
     var renderBtn = document.getElementById('mtCmxRenderBtn');
     var previewBtn = document.getElementById('mtCmxPreviewBtn');
 
-    // Decide preview slice start.
+    // ── Decide preview slice start ────────────────────────────────────
+    // Drew 2026-05-28: "When I preview 30s, sometimes it picks silence
+    // or one person talking — I can't truly judge the mix. Is there a
+    // way to sort to a section where EVERYONE is playing and there is
+    // singing?"
+    //
+    // Three cases:
+    //   (a) Playhead is on a real music segment (≥30s long) — respect
+    //       Drew's explicit choice. He scrubbed to that moment for a reason.
+    //   (b) Playhead is on silence/chatter/very-short-transition — auto-
+    //       pick a representative full-band moment instead. Heuristic:
+    //       middle of the MEDIAN-DURATION confirmed song. Median = "most
+    //       representative" (not the longest jam, not the shortest snippet).
+    //       Middle of segment = avoids intro fade-in and outro tail-off,
+    //       which is where vocals + full band most reliably overlap.
+    //   (c) No qualifying music segments at all — fall back to old
+    //       behavior (first music segment or 30s in).
     var playhead = (typeof _mtCurrentPlayheadSec === 'function') ? _mtCurrentPlayheadSec() : 0;
     var dur = (p.audios && p.audios[0] && p.audios[0].duration) || 0;
-    var sliceStart = playhead;
-    if (!playhead || playhead < 1) {
-        // Default: first music segment, or 30s in.
-        var firstMusic = (Array.isArray(p.segments) ? p.segments : []).find(function(s) {
-            return _mtSegmentEffectiveKind(s) === 'music';
-        });
-        sliceStart = firstMusic ? firstMusic.startSec : 30;
-    }
     var sliceDuration = 30;
+    var sliceStart;
+    var smartPickInfo = null;  // { segmentTitle, reason } when auto-pick fires
+
+    // Is the user's current playhead on a meaningful music segment?
+    var playheadSeg = null;
+    if (playhead >= 1 && Array.isArray(p.segments)) {
+        playheadSeg = p.segments.find(function(s) {
+            return playhead >= (s.startSec || 0) && playhead < (s.endSec || 0);
+        });
+    }
+    var playheadIsOnRealSong = !!playheadSeg
+        && _mtSegmentEffectiveKind(playheadSeg) === 'music'
+        && ((playheadSeg.endSec || 0) - (playheadSeg.startSec || 0)) >= 30;
+
+    if (playheadIsOnRealSong) {
+        // (a) Respect Drew's explicit scrub choice.
+        sliceStart = playhead;
+    } else {
+        // (b) Auto-pick a representative full-band moment.
+        smartPickInfo = _mtFindRepresentativePreviewSlice(p);
+        if (smartPickInfo) {
+            sliceStart = smartPickInfo.start;
+            sliceDuration = smartPickInfo.duration;
+        } else {
+            // (c) No qualifying songs — old fallback.
+            var firstMusic = (Array.isArray(p.segments) ? p.segments : []).find(function(s) {
+                return _mtSegmentEffectiveKind(s) === 'music';
+            });
+            sliceStart = firstMusic ? firstMusic.startSec : 30;
+        }
+    }
     if (dur > 0 && sliceStart + sliceDuration > dur) {
         sliceStart = Math.max(0, dur - sliceDuration);
     }
@@ -2986,9 +3066,15 @@ window._mtCustomMixPreview = async function() {
         if (status) {
             var startLbl = _mtFmtTimeShort(sliceStart);
             var endLbl = _mtFmtTimeShort(sliceStart + sliceDuration);
+            // Transparency: when we auto-picked, tell Drew WHERE the slice
+            // came from. Builds trust + makes it easy to scrub elsewhere
+            // if he wants a different reference point.
+            var autoPickedHtml = smartPickInfo ? (
+                '<div style="font-size:0.72em;color:#86efac;opacity:0.85;margin-top:1px;font-weight:400">🎯 Auto-picked: middle of <em>' + escHtml(smartPickInfo.segmentTitle) + '</em> (representative full-band moment). Scrub to a specific spot + click 🔊 Preview again to override.</div>'
+            ) : '';
             status.innerHTML =
                 '<div style="padding:10px 12px;border:1px solid rgba(34,197,94,0.3);border-radius:8px;background:rgba(34,197,94,0.07);font-size:0.82em">'
-                + '<div style="font-weight:700;color:#86efac;margin-bottom:6px">🔊 Preview ready — ' + escHtml(startLbl) + ' to ' + escHtml(endLbl) + '</div>'
+                + '<div style="font-weight:700;color:#86efac;margin-bottom:6px">🔊 Preview ready — ' + escHtml(startLbl) + ' to ' + escHtml(endLbl) + autoPickedHtml + '</div>'
                 + '<audio controls autoplay src="' + escHtml(checkJson.publicUrl) + '" style="width:100%;margin-top:4px"></audio>'
                 + '<div style="margin-top:6px;font-size:0.78em;color:var(--text-dim)">Adjust sliders + 🔊 Preview again to compare, or 🎬 Render Mix to commit.</div>'
                 + '</div>';
@@ -5094,7 +5180,24 @@ function _mtRenderSegmentRow(s, idx, p) {
     return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:' + rowPad + ';border-bottom:1px solid rgba(255,255,255,0.04);font-size:' + rowFontSz + ';background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
         + '<div style="background:' + leftStripeColor + ';width:4px;height:' + stripeH + 'px;border-radius:2px"></div>'
         + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em;opacity:' + kindOpa + '">' + meta.emoji + '</div>'
-        + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em;opacity:' + kindOpa + '">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
+        + (function() {
+            // Duration sub-line under the start/end timestamps. Uses
+            // "musician language" form (8m 36s) to match the mobile
+            // row's _humanDuration formatting — see line ~4950 comment
+            // re: Drew's musician-language principle. Added 2026-05-28
+            // after Drew asked: "we often ask how long a song is and
+            // it is hard to always do the math."
+            var _dur = Math.max(0, endSec - startSec);
+            var _m = Math.floor(_dur / 60);
+            var _s = Math.round(_dur - _m * 60);
+            var _durStr = (_m === 0) ? (_s + 's')
+                        : (_s === 0) ? (_m + 'm')
+                        : (_m + 'm ' + _s + 's');
+            return '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em;opacity:' + kindOpa + ';line-height:1.2">'
+                + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec)
+                + '<div title="Segment duration" style="font-size:0.78em;opacity:0.72;margin-top:1px;font-family:inherit">' + _durStr + '</div>'
+                + '</div>';
+        })()
         + '<canvas id="' + canvasId + '" width="78" height="' + (isSilence ? 12 : (isChatter ? 16 : 20)) + '" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px;opacity:' + (isSilence ? '0.5' : (isChatter ? '0.7' : '1')) + '"></canvas>'
         + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
         + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:' + (isSong ? '0.95em' : '0.88em') + ';padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px;' + titleStyle + '">'
