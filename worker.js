@@ -195,6 +195,14 @@ export default {
     // page to short-circuit the Modal build when the user re-visits.
     if (path === '/multitrack/zip/status' && request.method === 'GET')
       return handleMultitrackZipStatus(request, env);
+    // Multitrack song-clip — bundle all 17 stems clipped to ONE song's
+    // segment range. For DAW workflows where someone wants to mix or
+    // practice along to a single song without pulling the full 12 GB
+    // session zip. ~200-400 MB per song typical.
+    if (path === '/multitrack/song-clip/start' && request.method === 'POST')
+      return handleMultitrackSongClipStart(request, env);
+    if (path === '/multitrack/song-clip/check' && request.method === 'POST')
+      return handleMultitrackSongClipCheck(request, env);
     // Multitrack render — server-side mixdown of stems into one stereo
     // stream. Solves the 17-streams-on-6-connections playback architecture
     // problem (see audits/MULTITRACK_BROWSER_PLAYBACK_AUDIT.md). All three
@@ -2180,6 +2188,109 @@ async function handleMultitrackZipCheck(request, env) {
   var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
     var modalRes = await fetch(zipUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'check',
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// ── Multitrack song-clip (Modal proxy) ────────────────────────────────────
+// Bundle all 17 per-channel stems clipped to ONE song's segment range.
+// Body shape (start):
+//   { bandSlug, sessionId, startSec, endSec, songLabel }
+// Returns: { success, call_id, bandSlug, sessionId, songLabel }
+//
+// Body shape (check):
+//   { call_id }
+// Returns: { status: 'processing' } OR { status: 'done', publicUrl, ... }
+
+async function handleMultitrackSongClipStart(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('multitrack_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var modalUrl = env.MULTITRACK_SONG_CLIP_URL;
+  if (!modalUrl) {
+    return cors(jsonError('multitrack_not_configured: MULTITRACK_SONG_CLIP_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var bandSlug    = String(body.bandSlug    || '').trim();
+  var sessionId   = String(body.sessionId   || '').trim();
+  var songLabel   = String(body.songLabel   || '').trim();
+  var sessionDate = String(body.sessionDate || '').trim();
+  var segmentId   = String(body.segmentId   || '').trim();
+  var startSec    = Number(body.startSec);
+  var endSec      = Number(body.endSec);
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+  if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return cors(jsonError('bad_clip_range', 400));
+  if (endSec - startSec <= 0.5 || endSec - startSec > 7200)   return cors(jsonError('bad_clip_range', 400));
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 60000);
+  try {
+    var modalRes = await fetch(modalUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'start',
+        bandSlug: bandSlug,
+        sessionId: sessionId,
+        startSec: startSec,
+        endSec: endSec,
+        songLabel: songLabel,
+        sessionDate: sessionDate,
+        segmentId: segmentId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+async function handleMultitrackSongClipCheck(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('multitrack_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var modalUrl = env.MULTITRACK_SONG_CLIP_URL;
+  if (!modalUrl) {
+    return cors(jsonError('multitrack_not_configured: MULTITRACK_SONG_CLIP_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var callId = String(body.call_id || body.callId || '').trim();
+  if (!callId) return cors(jsonError('missing_call_id', 400));
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+  try {
+    var modalRes = await fetch(modalUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

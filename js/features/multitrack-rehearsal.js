@@ -3834,10 +3834,21 @@ window._mtOpenDownloadStemsModal = async function() {
         +   '</div>'
         +   '<div id="mtDlZipStatus" style="font-size:0.78em;color:var(--text-dim);margin-top:6px;display:none"></div>'
         + '</div>'
+        // ── Single-song stems — clip all 17 channels to one song's
+        // segment range. Best for DAW work on a specific song. Drew
+        // 2026-05-28: "what I REALLY want is the ability to ship stems
+        // for just one song... not just one instrument/vocal."
+        + '<div style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.25);border-radius:8px;padding:14px;margin-bottom:14px">'
+        +   '<div style="font-weight:700;color:#c4b5fd;font-size:0.95em;margin-bottom:4px">🎵 One-song stems — all instruments, just one song</div>'
+        +   '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px;line-height:1.5">Clips all ' + tracks.length + ' channels to a single song\'s range, packages them as a small ZIP. Best for DAW work on a specific song — ~150-300 MB instead of ' + totalGb + ' GB. ffmpeg lossless clip; takes ~30-90 sec to build.</div>'
+        +   '<div id="mtSongStemsList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto">'
+        +     _mtRenderSongStemsList()
+        +   '</div>'
+        + '</div>'
         // ── Per-track individual downloads — fast path for "I just need MY tracks"
         + '<div>'
-        +   '<div style="font-weight:700;color:#f1f5f9;font-size:0.92em;margin-bottom:4px">Individual tracks</div>'
-        +   '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px;line-height:1.5">Click any track to download just that FLAC. Useful if you\'re on a slow connection and only need your own stems. Each track is ~600 MB.</div>'
+        +   '<div style="font-weight:700;color:#f1f5f9;font-size:0.92em;margin-bottom:4px">Individual tracks (full rehearsal)</div>'
+        +   '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px;line-height:1.5">Click any track to download just that FLAC at full rehearsal length. Useful for one-instrument cross-song review. Each track is ~600 MB.</div>'
         +   '<div style="display:flex;flex-direction:column;gap:5px">'
         +   tracks.map(function(t) {
                 var sz = t.stemBytes ? (t.stemBytes / (1024*1024)).toFixed(0) + ' MB' : '?';
@@ -3879,6 +3890,204 @@ window._mtTrackDownloadClicked = function(filename) {
     if (typeof showToast === 'function') {
         showToast('📥 Downloading ' + filename + ' — check your browser\'s download tray.');
     }
+};
+
+// Render the per-song row list inside the Download Stems modal. Pulls
+// confirmed/music segments from the player state. Each row shows the
+// song name, duration, and a download button that triggers the
+// clip-and-zip flow against the Modal song-clip endpoint.
+function _mtRenderSongStemsList() {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments) || !p.segments.length) {
+        return '<div style="padding:10px;font-size:0.78em;color:var(--text-dim);text-align:center;font-style:italic">No segments analyzed yet. Run 🎯 Analyze first.</div>';
+    }
+    // Filter to music segments — silence/chatter/transitions don't
+    // make useful song bundles. Don't require confirmed (let users
+    // grab unconfirmed candidates too — they can rename if needed).
+    var songSegs = p.segments.filter(function(s) {
+        return _mtSegmentEffectiveKind(s) === 'music'
+            && _mtSegmentReviewState(s) !== 'excluded';
+    });
+    if (!songSegs.length) {
+        return '<div style="padding:10px;font-size:0.78em;color:var(--text-dim);text-align:center;font-style:italic">No song segments to clip yet. Confirm some songs first.</div>';
+    }
+    return songSegs.map(function(s, i) {
+        var name = _mtSegmentDisplayName(s);
+        var title = (name && name.title) || (name && name.placeholder) || 'Untitled song';
+        var dur = Math.max(0, (s.endSec || 0) - (s.startSec || 0));
+        var m = Math.floor(dur / 60), sec = Math.round(dur - m * 60);
+        var durStr = (m === 0) ? (sec + 's') : (sec === 0 ? (m + 'm') : (m + 'm ' + sec + 's'));
+        var safeId = (s.id || ('seg-' + i)).replace(/[^a-zA-Z0-9_-]/g, '_');
+        var safeTitle = title.replace(/'/g, "\\'");
+        var safeSegId = (s.id || '').replace(/'/g, "\\'");
+        var startStr = _mtFmtTimeShort(s.startSec || 0);
+        var endStr = _mtFmtTimeShort(s.endSec || 0);
+        return ''
+            + '<div id="mtSongStemsRow_' + safeId + '" style="display:flex;align-items:center;gap:10px;padding:8px 11px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px">'
+            + '<div style="flex:1;min-width:0">'
+            +   '<div style="font-weight:600;color:#f1f5f9;font-size:0.86em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(title) + '</div>'
+            +   '<div style="font-size:0.7em;color:var(--text-dim);margin-top:1px">' + escHtml(startStr) + '–' + escHtml(endStr) + ' · ' + escHtml(durStr) + '</div>'
+            +   '<div id="mtSongStemsStatus_' + safeId + '" style="font-size:0.72em;color:var(--text-dim);margin-top:3px;display:none"></div>'
+            + '</div>'
+            + '<button id="mtSongStemsBtn_' + safeId + '" onclick="_mtStartSongStemsClip(\'' + safeId + '\',' + (s.startSec || 0).toFixed(3) + ',' + (s.endSec || 0).toFixed(3) + ',\'' + safeTitle + '\',\'' + safeSegId + '\')" style="background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);border-radius:5px;color:#c4b5fd;padding:6px 12px;cursor:pointer;font-size:0.78em;font-weight:700;flex-shrink:0">📦 Stems</button>'
+            + '</div>';
+    }).join('');
+}
+
+// Start a song-stems clip job: POST /multitrack/song-clip/start, poll
+// every 3 sec until done, then trigger browser download. Status surfaces
+// inline in the per-song row (no separate modal — keeps the user inside
+// the Download Stems modal so they can grab multiple songs in sequence).
+// Phased status narration per ChatGPT spec 2026-05-28:
+//   "✓ Segment range verified → ✓ Tracks found → ✓ Clipping → ✓ ZIP ready"
+// avoids infrastructure language (no R2/Modal/ffmpeg leakage).
+window._mtStartSongStemsClip = async function(rowKey, startSec, endSec, songLabel, segmentId) {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    // segmentId is optional — pre-2026-05-28 callers may not pass it.
+    // The Modal endpoint accepts empty string as "no segment ID" which
+    // means cache-by-range-only (less precise but still correct).
+    segmentId = segmentId || '';
+    var btn = document.getElementById('mtSongStemsBtn_' + rowKey);
+    var status = document.getElementById('mtSongStemsStatus_' + rowKey);
+    function setStatus(html, color) {
+        if (!status) return;
+        status.style.display = 'block';
+        status.innerHTML = '<span style="color:' + (color || 'var(--text-dim)') + '">' + html + '</span>';
+    }
+    function resetBtn() {
+        if (btn) { btn.disabled = false; btn.textContent = '📦 Stems'; }
+    }
+    // Phased narrative — each new phase appends a "✓ done" line for
+    // the prior so the user sees the chain build, like a checklist.
+    // No infrastructure language; "tracks" not "FLACs," "preparing"
+    // not "spawning Modal call."
+    var phaseLines = [];
+    function addPhase(line, isDone, color) {
+        if (isDone) phaseLines.push('<div style="color:' + (color || '#86efac') + '">' + line + '</div>');
+        else phaseLines.push('<div style="color:var(--text-dim)">' + line + '</div>');
+        setStatus(phaseLines.join(''));
+    }
+    function replaceLastPhase(line, isDone, color) {
+        if (phaseLines.length) phaseLines.pop();
+        addPhase(line, isDone, color);
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+    addPhase('⏳ Preparing ' + songLabel + ' stems…');
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var sessionDate = (p.session && p.session.date) || '';
+    try {
+        var startRes = await fetch(workerBase + '/multitrack/song-clip/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bandSlug: slug,
+                sessionId: p.sessionId,
+                startSec: startSec,
+                endSec: endSec,
+                songLabel: songLabel,
+                sessionDate: sessionDate,
+                segmentId: segmentId,
+            })
+        });
+        var startJson = await startRes.json();
+        if (!startRes.ok || !startJson || !startJson.success || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+        }
+        replaceLastPhase('✓ Segment range verified');
+        addPhase('⏳ Finding tracks for ' + songLabel + '…');
+        var callId = startJson.call_id;
+        var sawClipping = false;
+        // Poll. Each ffmpeg-clip is fast (~1-2s per FLAC) so total wall-
+        // clock is typically 30-90s. Cap at ~5 min for safety.
+        for (var attempt = 0; attempt < 60; attempt++) {
+            await new Promise(function(r) { setTimeout(r, 3000); });
+            // After ~6s of polling we're past the "find tracks" phase
+            // and into actual ffmpeg clipping. Update the narration.
+            if (!sawClipping && attempt >= 1) {
+                replaceLastPhase('✓ 17 tracks found');
+                addPhase('⏳ Clipping stems to ' + songLabel + ' range…');
+                sawClipping = true;
+            }
+            var checkRes = await fetch(workerBase + '/multitrack/song-clip/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId })
+            });
+            var checkJson = await checkRes.json();
+            if (checkJson && (checkJson.status === 'done' || checkJson.state === 'done')) {
+                var url = checkJson.publicUrl || checkJson.url;
+                if (!url) throw new Error('clip ready but no URL returned');
+                var sizeMb = checkJson.zipSize ? (checkJson.zipSize / (1024*1024)).toFixed(1) + ' MB' : '';
+                // Replace last phase + add closer
+                replaceLastPhase('✓ Stems clipped');
+                addPhase('✓ ZIP ready' + (sizeMb ? ' (' + sizeMb + ')' : '') + ' — downloading now');
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = (checkJson.zipFilename || ((checkJson.songSafe || 'song') + '-stems.zip'));
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function() { document.body.removeChild(a); }, 100);
+                if (btn) btn.textContent = '✓ Done';
+                if (typeof showToast === 'function') showToast('📥 ' + songLabel + ' stems downloading');
+                return;
+            }
+            if (checkJson && (checkJson.status === 'error' || checkJson.state === 'error')) {
+                throw new Error(checkJson.error || 'modal_error');
+            }
+        }
+        throw new Error('timed_out');
+    } catch (e) {
+        console.warn('[Multitrack] song stems clip failed:', e);
+        // Friendly error message per ChatGPT spec — no raw stack traces.
+        // Reassures the user that nothing about the original rehearsal
+        // was harmed (source FLACs are read-only, segments untouched).
+        var friendly = 'Couldn\'t build this song bundle yet. The original rehearsal is safe.';
+        if (e && e.message && e.message.indexOf('not_configured') >= 0) {
+            friendly = 'Song-stems service not deployed yet. The original rehearsal is safe.';
+        } else if (e && e.message === 'timed_out') {
+            friendly = 'Took longer than expected. The original rehearsal is safe — try again in a moment.';
+        }
+        setStatus('<div style="color:#fca5a5">✗ ' + friendly + '</div>');
+        resetBtn();
+    }
+};
+
+// Per-segment shortcut button — Drew + ChatGPT 2026-05-28: "this feature
+// should feel tied to the current song segment, not buried only in the
+// global Tools menu." Same Tools → 📦 Download stems modal opens, but
+// the song-stems section is auto-scrolled into view and the specific
+// segment's row is highlighted + flashed so the user sees the call-to-
+// action they expected. Implementation hands off to the existing modal
+// open + section; nothing duplicated.
+window._mtJumpToSongStemsForSegment = async function(segIdx) {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments) || !p.segments[segIdx]) return;
+    var targetSeg = p.segments[segIdx];
+    var safeId = (targetSeg.id || ('seg-' + segIdx)).replace(/[^a-zA-Z0-9_-]/g, '_');
+    // Open the modal if not already open.
+    if (!document.getElementById('mtDownloadStemsModal')) {
+        await window._mtOpenDownloadStemsModal();
+    }
+    // Modal renders synchronously above — give the DOM one paint to settle.
+    setTimeout(function() {
+        var row = document.getElementById('mtSongStemsRow_' + safeId);
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Brief pulse highlight so the user spots the row.
+            var origBg = row.style.background;
+            var origBorder = row.style.border;
+            row.style.transition = 'background 240ms, border-color 240ms';
+            row.style.background = 'rgba(168,85,247,0.18)';
+            row.style.border = '1px solid rgba(168,85,247,0.6)';
+            setTimeout(function() {
+                row.style.background = origBg || 'rgba(255,255,255,0.03)';
+                row.style.border = origBorder || '1px solid rgba(255,255,255,0.06)';
+            }, 1200);
+        }
+    }, 80);
 };
 
 // Bandwidth probe — fetch the first 10 MB of an audio file from R2 via
@@ -5413,6 +5622,13 @@ function _mtRenderSegmentRow(s, idx, p) {
     // the user has already opted into the advanced action surface.
     var moreOpen = (p._moreOpenIdx === idx);
     var activeMarkers = _mtSegmentMarkers(s);
+    // Per-segment 📦 Song stems action — discoverable from the row
+    // itself (per ChatGPT spec 2026-05-28: "should feel tied to the
+    // current song segment"). Only shown for music segments; silence
+    // and chatter don't make useful song-stem bundles. Lives in the
+    // ⋯ more panel so the collapsed row stays clean.
+    var showSongStems = (_mtSegmentEffectiveKind(s) === 'music')
+                     && (_mtSegmentReviewState(s) !== 'excluded');
     var markerPanelHtml = moreOpen ? (
         '<div style="grid-column:1/-1;padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px dashed rgba(255,255,255,0.06);display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.74em">'
         + '<span style="color:var(--text-dim);font-weight:700;margin-right:4px">Mark:</span>'
@@ -5425,6 +5641,13 @@ function _mtRenderSegmentRow(s, idx, p) {
                 + 'style="background:' + bg + ';border:1px solid ' + border + ';border-radius:4px;color:' + color + ';padding:2px 8px;cursor:pointer;font-size:0.85em;font-family:inherit">'
                 + def.emoji + '</button>';
         }).join('')
+        + (showSongStems ? (
+            '<span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">'
+            + '<button onclick="_mtJumpToSongStemsForSegment(' + idx + ')" title="Download all 17 stems clipped to just this song’s range, as a DAW-friendly ZIP." '
+            + 'style="background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);border-radius:4px;color:#c4b5fd;padding:3px 10px;cursor:pointer;font-size:0.86em;font-weight:700;font-family:inherit">'
+            + '📦 Song stems</button>'
+            + '</span>'
+        ) : '')
         + '</div>'
     ) : '';
 
