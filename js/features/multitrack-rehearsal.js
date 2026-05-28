@@ -2051,23 +2051,51 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
           // Single rendered audio — only created when we have a URL. While
           // waiting for the render, this slot is empty and play() is a no-op.
           '<audio id="mtReviewAudio" preload="metadata" crossorigin="anonymous"' + (renderUrl ? (' src="' + escHtml(renderUrl) + '"') : '') + '></audio>' +
-          // Segments panel — server-precomputed waveforms + analyzer
-          // results. Rehearsal navigation intelligence, not a DAW.
-          '<div id="mtSegmentsPanel" style="margin-top:8px;flex-shrink:0"></div>' +
-          // Bug #22 (Pass 2.5) — desktop session composer + comments panel
-          // are HIDDEN on mobile. Mobile note flow routes entirely through the
-          // Pass 2 contextual composer inside the focused segment row.
-          // Side effects: closes F08 (empty-comments real estate) +
-          // F15 (mobile keyboard copy) + F20 (composerTags cross-contamination)
-          // + F30 (17-track dropdown overflow). On desktop both surfaces stay
-          // canonical exactly as before.
+          // Segments + Comments panels — desktop wraps them in independently
+          // scrollable blocks with layout-mode weighting (Drew 2026-05-28:
+          // "comments are becoming inaccessible because segments monopolize
+          // vertical space. Implement independent scroll regions + explicit
+          // max-heights. Lightweight weighting/collapse, NOT tabs. Segments
+          // and Comments remain conceptually simultaneous.")
+          //
+          // Three weighting modes via per-panel ⤢ Focus / ⤡ Balance buttons:
+          //   - balanced (default)      → 40vh each
+          //   - segments focus          → segments 60vh, comments 20vh
+          //   - comments focus          → segments 20vh, comments 60vh
+          //
+          // Mobile keeps the existing stacked-vertical flow (comments hidden
+          // in Review Mode, accessed via the per-segment note composer).
           (_isMobile
-            ? ''
-            : ('<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:160px"></div>' +
-               '<div id="mtComposerArea"></div>')
+            ? '<div id="mtSegmentsPanel" style="margin-top:8px;flex-shrink:0"></div>'
+            : (
+                '<div id="mtSegmentsBlock" style="margin-top:8px;display:flex;flex-direction:column;min-height:0;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;flex-shrink:0">'
+                + '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0">'
+                +   '<span style="font-size:0.84em;font-weight:700;color:#cbd5e1">🎵 Segments</span>'
+                +   '<span id="mtSegmentsBlockCount" style="font-size:0.66em;color:var(--text-dim);font-weight:600"></span>'
+                +   '<button id="mtSegmentsFocusBtn" onclick="_mtReviewToggleFocus(\'segments\')" title="" style="margin-left:auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;color:var(--text-dim);padding:2px 8px;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">⤢ Focus</button>'
+                + '</div>'
+                + '<div id="mtSegmentsPanel" style="overflow-y:auto;flex:1;min-height:0"></div>'
+                + '</div>'
+                + '<div id="mtCommentsBlock" style="margin-top:10px;display:flex;flex-direction:column;min-height:0;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;flex-shrink:0">'
+                + '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0">'
+                +   '<span style="font-size:0.84em;font-weight:700;color:#cbd5e1">💬 Comments</span>'
+                +   '<span id="mtCommentsBlockCount" style="font-size:0.66em;color:var(--text-dim);font-weight:600"></span>'
+                +   '<button id="mtCommentsFocusBtn" onclick="_mtReviewToggleFocus(\'comments\')" title="" style="margin-left:auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;color:var(--text-dim);padding:2px 8px;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">⤢ Focus</button>'
+                + '</div>'
+                + '<div id="mtCommentPanel" style="overflow-y:auto;flex:1;min-height:0"></div>'
+                + '</div>'
+                + '<div id="mtComposerArea"></div>'
+              )
           ) +
         '</div>';
     document.body.appendChild(ov);
+    // Apply persisted layout mode for the new Segments/Comments blocks
+    // (desktop only — mobile keeps the legacy stacked flow). Lookup goes
+    // localStorage → 'balanced' default. Runs after the DOM is mounted
+    // so the block elements exist for the styler.
+    if (!_isMobile && typeof _mtReviewApplyLayoutMode === 'function') {
+        _mtReviewApplyLayoutMode(_mtReviewReadStoredLayoutMode());
+    }
     // Intentionally NOT wiring backdrop-click-to-close. The player runs
     // multi-minute server-side workflows (auto-render on session open,
     // 📤 Export Mix, 📦 Stems zip) — an accidental click on the dim
@@ -6485,6 +6513,10 @@ function _mtRenderSegmentsPanel() {
     var p = _mtState.player;
     var host = document.getElementById('mtSegmentsPanel');
     if (!p || !host) return;
+    // Update count chip in the desktop block header (2026-05-28 layout work).
+    if (typeof _mtReviewRefreshBlockCounts === 'function') {
+        _mtReviewRefreshBlockCounts();
+    }
     // Preserve scroll position across re-renders. Drew (UAT 2026-05-24):
     // "Everytime I type a replacement song and save or change anything in a
     // song, it goes all the way back up to the top song." Every handler
@@ -9102,6 +9134,113 @@ function _mtRefreshCommentPanel() {
     var composerArea = document.getElementById('mtComposerArea');
     if (composerArea) composerArea.innerHTML = _mtRenderComposer();
     _mtRenderSeekMarkers();
+    // Update count chips in the panel headers (added 2026-05-28 with the
+    // independently-scrollable blocks).
+    _mtReviewRefreshBlockCounts();
+}
+
+// Independently-scrollable panels: weight toggle (Drew 2026-05-28).
+// Three modes:
+//   'balanced'       — segments 40vh, comments 40vh (default)
+//   'segmentsFocus'  — segments 60vh, comments 20vh
+//   'commentsFocus'  — segments 20vh, comments 60vh
+// Comments never drop below 20vh (Drew: "segments never able to starve
+// comments completely"). Mode persists per-user via localStorage so the
+// chosen weighting survives reload/deploy/navigation.
+var _MT_LAYOUT_LS_KEY = 'gl_mt_review_layout_mode';
+
+function _mtReviewReadStoredLayoutMode() {
+    try {
+        var v = localStorage.getItem(_MT_LAYOUT_LS_KEY);
+        if (v === 'segmentsFocus' || v === 'commentsFocus' || v === 'balanced') return v;
+    } catch (e) {}
+    return 'balanced';
+}
+
+function _mtReviewWriteStoredLayoutMode(mode) {
+    try { localStorage.setItem(_MT_LAYOUT_LS_KEY, mode); } catch (e) {}
+}
+
+function _mtReviewApplyLayoutMode(mode) {
+    var segBlock = document.getElementById('mtSegmentsBlock');
+    var cmtBlock = document.getElementById('mtCommentsBlock');
+    var segBtn = document.getElementById('mtSegmentsFocusBtn');
+    var cmtBtn = document.getElementById('mtCommentsFocusBtn');
+    if (!segBlock || !cmtBlock) return;  // not on desktop Review Mode
+
+    // Heights per mode. Using vh so the layout adapts to viewport size.
+    var segHeight, cmtHeight;
+    if (mode === 'segmentsFocus') {
+        segHeight = '60vh'; cmtHeight = '20vh';
+    } else if (mode === 'commentsFocus') {
+        segHeight = '20vh'; cmtHeight = '60vh';
+    } else {
+        segHeight = '40vh'; cmtHeight = '40vh';
+    }
+    segBlock.style.maxHeight = segHeight;
+    cmtBlock.style.maxHeight = cmtHeight;
+
+    // Button labels + titles narrate the meaning of clicking each button.
+    // Each button moves into ITS panel's focus mode, OR back to balanced
+    // when its panel is already focused.
+    if (segBtn) {
+        if (mode === 'segmentsFocus') {
+            segBtn.textContent = '⤡ Balance';
+            segBtn.title = 'Restore balanced split between Segments and Comments';
+        } else {
+            segBtn.textContent = '⤢ Focus';
+            segBtn.title = 'Expand Segments and shrink Comments (comments stay visible)';
+        }
+    }
+    if (cmtBtn) {
+        if (mode === 'commentsFocus') {
+            cmtBtn.textContent = '⤡ Balance';
+            cmtBtn.title = 'Restore balanced split between Segments and Comments';
+        } else {
+            cmtBtn.textContent = '⤢ Focus';
+            cmtBtn.title = 'Expand Comments and shrink Segments (segments stay visible)';
+        }
+    }
+
+    // Track mode on the player so other code (digest, refresh) can read it.
+    if (_mtState.player) _mtState.player._reviewLayoutMode = mode;
+}
+
+// Click handler — wires from the per-panel ⤢/⤡ buttons.
+window._mtReviewToggleFocus = function(target) {
+    var cur = (_mtState.player && _mtState.player._reviewLayoutMode) || _mtReviewReadStoredLayoutMode();
+    var next;
+    if (target === 'segments') {
+        next = (cur === 'segmentsFocus') ? 'balanced' : 'segmentsFocus';
+    } else if (target === 'comments') {
+        next = (cur === 'commentsFocus') ? 'balanced' : 'commentsFocus';
+    } else {
+        next = 'balanced';
+    }
+    _mtReviewWriteStoredLayoutMode(next);
+    _mtReviewApplyLayoutMode(next);
+};
+
+// Refresh the small count chips next to each block header so the user
+// knows how many segments / comments are in each panel without scrolling.
+function _mtReviewRefreshBlockCounts() {
+    var p = _mtState.player;
+    if (!p) return;
+    var segCountEl = document.getElementById('mtSegmentsBlockCount');
+    var cmtCountEl = document.getElementById('mtCommentsBlockCount');
+    if (segCountEl) {
+        var n = Array.isArray(p.segments) ? p.segments.length : 0;
+        segCountEl.textContent = n ? ('· ' + n) : '';
+    }
+    if (cmtCountEl) {
+        var nc = Array.isArray(p.comments) ? p.comments.length : 0;
+        var legacy = Array.isArray(p.comments)
+            ? p.comments.filter(function(c) { return c && c._needsManualReanchor; }).length
+            : 0;
+        cmtCountEl.textContent = nc
+            ? ('· ' + nc + (legacy > 0 ? (' · ' + legacy + ' need re-anchor') : ''))
+            : '';
+    }
 }
 
 // Phase B+: render comment markers on the master seek bar. Each comment is
