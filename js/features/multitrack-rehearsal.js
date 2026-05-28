@@ -8549,8 +8549,8 @@ function _mtRenderCommentList() {
             + 'title="This comment was saved before render-aware anchors. If timing looks off, click to re-anchor it to the correct song." '
             + 'style="display:inline-flex;align-items:center;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.62em;font-weight:700;margin-left:5px;cursor:pointer;font-family:inherit">⚠ legacy anchor · click to fix</button>'
         ) : '';
-        return '<div class="mt-comment-row" data-comment-time="' + _cTs + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
-            + '<button onclick="_mtJumpToComment(' + _cTs + ')" title="Jump to ' + _mtFmtTime(_cTs) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(_cTs) + '</button>'
+        return '<div class="mt-comment-row" data-comment-time="' + _cTs + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:62px 1fr auto 22px 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
+            + '<button onclick="_mtJumpToComment(' + _cTs + ')" title="Jump to ' + _mtFmtTime(_cTs) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:right;font-weight:700;width:100%;display:block;font-variant-numeric:tabular-nums">' + _mtFmtTime(_cTs) + '</button>'
             + '<div style="min-width:0">'
               + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + _legacyBadge + '</div>'
               + '<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
