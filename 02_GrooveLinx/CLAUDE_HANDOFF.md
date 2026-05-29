@@ -6,17 +6,25 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-29 12:30 UTC (Chatter transcription pipeline LIVE end-to-end · Phase B song-mp3 endpoint shipped · 5/27 chatter pass validated 20 real turns) · App build still: `20260528-225150` (today was 100% backend — Modal + worker.js + specs; no frontend changes, no `/glx-deploy` needed) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS + ONE NEW BACKEND CAPABILITY** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) NEW: Hybrid Song-Clip Architecture (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint LIVE · Phase C UI surface UNSPECCED · Phases D/E/F open). **Today's headline:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-29 13:24 UTC (Phase C "Our Takes" v1 SHIPPED + Phase B on-confirm wiring complete — hybrid song-clip architecture is now end-to-end musician-facing) · App build: `20260529-132423` (commit `07a7c60d`) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS + HYBRID SONG-CLIP ARCHITECTURE FULLY DEPLOYED** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) Hybrid Song-Clip Architecture — **PHASES A, B, C ALL LIVE END-TO-END** (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint + on-confirm wiring LIVE · Phase C dual-home UI (Review Mode inline 🎚 Audition + Song DNA Our Takes card) LIVE; Phases D/E/F open). **Today's afternoon headline:** Phase C v1 SHIPPED. Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm and surface in TWO dual-home contexts — inline in Review Mode (session-scoped) + Our Takes card in Song DNA Listen lens (cross-session aggregated by songId). **Storage is segmentId-keyed** per Drew's required correction (multi-take per rehearsal is first-class — silent skip on second take was unacceptable). Eight new GLStore helpers, ~927 LOC. **Earlier today:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx app build still 20260528-225150 (yesterday's frontend),
-branch main, live on app.groovelinx.com. Today (2026-05-29) was 100%
-backend: Modal services + Cloudflare worker + specs. No /glx-deploy
-ritual needed — no frontend code touched. Latest commit fe9f3eb8.
+GrooveLinx app build 20260529-132423 (commit 07a7c60d), branch main,
+live on app.groovelinx.com. Today (2026-05-29) shipped: morning was
+backend (chatter pipeline + Phase B endpoint); afternoon was Phase C
+v1 frontend (Review Mode inline Audition + Song DNA Our Takes card).
 
-MILESTONE: Chatter transcription pipeline LIVE end-to-end.
+MILESTONE: Hybrid song-clip architecture is END-TO-END musician-facing.
+Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm. Two
+dual-home contexts: inline 🎚 Audition in Review Mode (session-scoped,
+post-confirm-only) + 🎚 Our Takes card in Song DNA → Listen lens
+(cross-session aggregated by songId). Storage is segmentId-keyed (Drew
+correction) — multi-take per rehearsal is first-class. Spec:
+02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md.
+
+EARLIER MILESTONE: Chatter transcription pipeline LIVE end-to-end.
 faster-whisper-large-v3 on A10G GPU via Modal app
 groovelinx-multitrack-song-clip (three function families behind one
 action-dispatcher webhook, staying under Starter 8-webhook cap).
@@ -39,16 +47,32 @@ Cloudflare worker deadcetera-proxy redeployed (version
   - Full report: 02_GrooveLinx/notes/chatter_pass_2026_05_27.md
 
 HYBRID SONG-CLIP ARCHITECTURE — STATE BY PHASE:
-  - Phase A (spike): DONE. Sugaree clipped 192 + 256 kbps; Drew's
-    listening test locked 192 as canonical (`11d52a37`).
-  - Phase B (per-song MP3 endpoint): SHIPPED today. Endpoint live
-    at /multitrack/song-mp3/{start,check}. Zero frontend surface.
-  - Phase C (Song DNA → Our Takes UI surface): UNSPECCED. Open
-    product decision — where it lives (Song DNA drawer? Review
-    Mode tab? Library card row?) + row UX + storage shape.
+  - Phase A (spike): DONE. Sugaree 192 + 256 kbps test; 192 locked
+    (`11d52a37`).
+  - Phase B (per-song MP3 endpoint + on-confirm wiring): SHIPPED.
+    Endpoint live at /multitrack/song-mp3/{start,check}; client-side
+    on-confirm trigger wired in _mtSegmentConfirm (07a7c60d).
+  - Phase C (Our Takes UI surfaces): SHIPPED v1. Dual-home:
+    Review Mode per-segment inline 🎚 Audition button + Song DNA
+    → Listen lens 🎚 Our Takes card with cross-session aggregation.
+    Storage segmentId-keyed (Drew correction) so multi-take per
+    rehearsal is first-class.
   - Phase D (direct share links app.groovelinx.com/clip/<id>): OPEN.
   - Phase E (background clip cache cleanup, R2 sweep): OPEN.
   - Phase F (per-song Isolate Mode): OPEN.
+
+DATA MODEL (segmentId-keyed, Drew correction 2026-05-29):
+  Firebase: bands/{slug}/rehearsal_sessions/{sid}/song_clips/{segmentId}
+            bands/{slug}/song_clip_state_v1/{segmentId}
+  R2:       multitrack/{slug}/{sid}/song-clips/{songSafe}-{hash}/clip-192k.mp3
+  Aggregation by songId is a QUERY, not a storage shape. Multiple
+  confirmed takes of the same song in the same rehearsal are
+  first-class. The principle: A take is a segment.
+
+EIGHT NEW GLSTORE HELPERS (groovelinx_store.js):
+  computeBoundaryHash, getSongClipForSegment, getSongClipsForSession,
+  getSongClipsForSong, saveSongClip, deleteSongClip, getSongClipState,
+  toggleSongClipFavorite, recordSongClipPlay.
 
 PHASE: COHERENCE STEWARDSHIP — the project is no longer in
 feature-invention mode. Target = coherent lived operational reality,
@@ -305,29 +329,28 @@ MUST NEVER DRIFT (load-bearing):
     should look like a MAP, not a redesign proposal.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Spec the Phase C "Our Takes" surface BEFORE writing any frontend
-  code. ~1-page spec answering three questions: (a) WHERE the
-  gallery lives — Song DNA drawer? Review Mode tab? Library card
-  row? — Pierce-synthesis frame says widen Drew's existing
-  rehearsal-review flow, do NOT add a fifth chandelier; (b) the
-  row UX (date · per-song confidence · audition button · favorite
-  toggle); (c) storage shape — likely Firebase
-  bands/{slug}/song_clips_v1/{songId}/{rehearsalDate} +
-  R2 multitrack/{slug}/song_clips/{songId}/{rehearsalDate}.mp3.
-  Phase B endpoint exists and costs nothing to leave dormant
-  while the product decision lands. After spec lands, Phase C
-  frontend ships as a single PR.
+  Run the multi-take smoke test. Drew opens any multitrack session
+  that has (or can have) two confirmed segments of the same song.
+  Sequence: confirm Take 1 → wait ~15s for "Clipping… → Audition"
+  state transition → confirm Take 2 (same songId, different
+  segmentId) → open Song DNA drawer for that song → Listen tab →
+  verify "🎚 Our Takes" card shows BOTH takes as separate rows
+  with "Take 1" / "Take 2" labels in startSec-asc order → tap
+  each Audition button and confirm independent inline playback.
 
-  If Drew prefers to defer Phase C and instead audibly validate
-  Phase B: a one-button "🎚 Clip this song" affordance on the
-  Song DNA drawer (using existing 5/27 multitrack) is the minimum
-  viable surface — separate ~30 LOC ship that doesn't preempt
-  Phase C architectural decisions.
+  If no existing session has a natural 2-take song, easiest setup
+  is to use _mtSegmentSplit on any long confirmed Sugaree segment
+  (5/27 has one) to create two song-internal segments, set both
+  to "Sugaree" title, ✓ Confirm both.
+
+  If multi-take labeling works → Phase C v1 end-to-end validated,
+  no further code needed for v1. Phase D becomes the next ship
+  candidate (or backlog if Drew prefers to observe before expand).
 
 ARCHIVED — Prior session's "ship ingestion date-drift fix" still
   open (MUST land before 2026-06-03 next rehearsal). Did not ship
-  this session because today's work was Modal/worker/specs only.
-  Tomorrow's session candidate if Phase C spec lands cleanly.
+  this session because focus was on Phase C. Next session
+  candidate once smoke test confirms Phase C v1 holds.
 
 ARCHIVED — Track A vs Track B sequencing (still open from 5/27):
   Drew sequences the two live tracks. Both are validated; both are
@@ -382,6 +405,86 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 🎚 SESSION CLOSE — 2026-05-29 13:24 UTC — Phase C "Our Takes" v1 SHIPPED + Phase B On-Confirm Wiring Complete (segmentId-keyed)
+
+## 1. CURRENT RUNTIME STATE
+
+- **App build:** `20260529-132423` (commit `07a7c60d` — Phase C v1)
+- **Branch:** `main` · clean working tree post-handoff commit
+- **Latest commit:** `07a7c60d` — feat(song-clips): Phase C v1 + Phase B on-confirm wiring (segmentId-keyed)
+- **Atomic 4-source build bump verified:** NEW=154/154 + OLD=0/0 in both index.html + index-dev.html; meta tags, version.json, service-worker.js CACHE_NAME all at `20260529-132423`.
+- **Modal app live:** `groovelinx-multitrack-song-clip` — three function families behind one webhook (clip_song stem-zip · clip_song_to_mp3 Phase B · transcribe_segment chatter).
+- **Cloudflare worker:** `deadcetera-proxy` (Version `733d5628`) — `/multitrack/song-mp3/{start,check}` + `/multitrack/chatter/{start,check}` routes live.
+- **Two new Firebase paths now in use:** `bands/{slug}/rehearsal_sessions/{sid}/song_clips/{segmentId}` (clip metadata) + `bands/{slug}/song_clip_state_v1/{segmentId}` (per-clip favorite/play state). **R2 path:** `multitrack/{slug}/{sid}/song-clips/{songSafe}-{boundaryHash}/clip-192k.mp3`.
+- **Canonical state:** see [`00_Governance/CURRENT_STATE.md`](00_Governance/CURRENT_STATE.md) — do not duplicate here.
+
+**What shipped this session:**
+1. `de521e36` — Spec corrected: storage model from songId-keyed to segmentId-keyed (Drew correction). Multi-take per rehearsal is first-class. Aggregation by songId is a query, not a storage shape. Pinned product principle: "A take is a segment. A song can have many takes. A rehearsal can contain more than one take of the same song. Do not flatten that reality for implementation convenience."
+2. `07a7c60d` — Phase C v1 + Phase B on-confirm wiring. ~927 LOC delta across 7 files.
+
+**Eight new GLStore helpers** (groovelinx_store.js):
+- `computeBoundaryHash(segmentId, startSec, endSec, bitrate)` — Web Crypto SHA-256 8-char hex matching Modal-side range_hash algorithm
+- `getSongClipForSegment(sid, segmentId)` — single clip lookup, segmentId-keyed
+- `getSongClipsForSession(sid)` — all clips for a rehearsal
+- `getSongClipsForSong(songId)` — cross-session aggregation; takeNumber + isMultiTake derived from `(sessionId, songId, startSec asc)`; takeKind = `full` (`durationSec >= 180`) or `partial`; sort: favorites → date desc → startSec asc
+- `saveSongClip / deleteSongClip` — segmentId-keyed metadata writes
+- `getSongClipState / toggleSongClipFavorite / recordSongClipPlay` — per-clip UI state
+
+**Phase B on-confirm wiring** (multitrack-rehearsal.js):
+- `_mtSegmentConfirm` now fires `_mtTriggerSongClip` on transitions to confirmed for music + !isBetween + songId-resolvable segments
+- Non-blocking: confirm UI doesn't wait on Modal
+- Idempotency on `(segmentId, boundaryHash)` — re-confirm after boundary edit regenerates; same boundary skips
+- `_mtLoadSegments` hydrates `seg._clipUrl` from Firebase on open
+
+**Review Mode inline 🎚 Audition** (multitrack-rehearsal.js):
+- Per-row button between ✓ Confirm and ⊘ Exclude
+- Four states: ready (tap to open inline player) · clipping (disabled spinner) · error (retry) · eligible-but-no-clip (backfill path; tap triggers lazy materialization)
+- One player active at a time
+
+**Song DNA → Listen lens 🎚 Our Takes card** (song-detail.js):
+- New card between Best Shot and All Versions sections
+- Cross-session aggregation via `GLStore.getSongClipsForSong`
+- Row UX: ⭐ favorite, 📅 date · Take N, ⏱ duration, ◐/◑ Full/Partial, ✓ confidence color, 🎵 Audition
+- "Take N" suffix only when multi-take in same rehearsal
+- Favorite toggle re-renders the lens
+
+## 2. CURRENT PRIORITIES
+
+- **NOW:** Multi-take smoke test pending — find a song that was played 2+ times in any existing multitrack session, confirm both segments, verify both clips appear separately in Our Takes with correct Take 1 / Take 2 labeling.
+- **NEXT:** Phase D (direct share links — `app.groovelinx.com/clip/<id>`) and Phase E (R2 cache cleanup sweep). Both upstream-spec'd, neither scoped or specced as ship-able.
+- **LATER:** Phase F (per-song Isolate Mode) per upstream spec. Chatter transcript sidecar on takes (deferred until analyzer speech-classifier finding lands). `songAssignmentGuess` / `speakerCandidate` UI surfacing (still gated on noise reduction — per spec open question).
+- **DEFERRED:** Shell Integrity remediation still off-critical-path. Track A vs Track B sequencing decision (from 2026-05-27) still pending Drew. Three chatter-pipeline deferred findings from 2026-05-29 still in queue.
+
+Canonical detail: [`00_Governance/CURRENT_PRIORITIES.md`](00_Governance/CURRENT_PRIORITIES.md).
+
+## 3. OPEN PRODUCT DECISIONS
+
+- **Full/Partial heuristic refinement** — Drew. v1 uses `durationSec >= 180` as the only rule. Optional refinement: `confidence < 0.7` → "Partial" regardless of duration. Open: stick with duration-only, or layer in confidence override?
+- **Take-number stability after segment edit** — Drew. Take numbers are derived at query time, so editing Take 2's boundaries (which can reorder startSec) auto-renumbers. Open: acceptable, or freeze take number at first-confirm time?
+- **`songAssignmentGuess` / `speakerCandidate` UI surfacing** — Drew. Noisy in v1. Hide entirely vs surface as italic "best guess" with easy-correction UX. Per `feedback_ground_truth_over_theater` don't decorate noise as confidence.
+- All prior open decisions from 2026-05-28 + 2026-05-29 morning still standing.
+
+## 4. OPERATIONAL RISKS
+
+- **MEDIUM — On-confirm Modal cost compounds with use:** Every ✓ Confirm on a music segment now spawns a Modal job (~$0.005 per clip). For a 30-segment rehearsal where the band confirms 25 songs, that's ~$0.13 per rehearsal × 2 rehearsals/week = ~$13/year per band. Acceptable economics. But future Pierce-synthesis priority "auto-confirm" (if it ever ships) would materially increase this and needs cost-gating.
+- **MEDIUM — No Phase E cache cleanup yet:** Per-song MP3s accumulate in R2 indefinitely. Re-confirming after boundary edits creates new `boundaryHash` paths without deleting the old (Phase E sweep later). Storage cost still cheap.
+- **LOW — Backfill path uses lazy-on-audition for old confirms:** Segments confirmed before this ship don't have clips; tapping 🎚 Audition triggers generation on demand. This technically deviates from the spec's "post-confirm only" gate (the materialization is triggered by audition tap, not confirm). Justification: the user explicitly tapping the audition button IS a deliberate ask, equivalent to a re-confirm; backfill is bounded (only affects pre-existing confirms, not new ones). Note for transparency.
+- **LOW — songId resolution skip for free-text titles:** If a segment's title was typed freely (not picked from autocomplete) and no catalog match exists, the on-confirm clip job skips with a console warning. The clip never materializes for that take. Affected segments are rare (band catalog covers most plays); fix is to use canonical song autocomplete.
+- **MITIGATED (unchanged) — Cloudflare bot challenge:** still applies to any future operator script; documented in CLAUDE_HANDOFF restart prompt.
+- **HIGH (unchanged) — Ingest date drift:** still MUST land before 2026-06-03 next rehearsal. Not touched this session.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Run the multi-take smoke test.** Drew opens any multitrack session that has (or can have) two confirmed segments of the same song. Sequence: (a) confirm Take 1, wait ~15s for "Clipping… → Audition" state transition, (b) confirm Take 2 (same songId, different segmentId), (c) open Song DNA drawer for that song → Listen tab, (d) verify the "🎚 Our Takes" card shows BOTH takes as separate rows with "Take 1" / "Take 2" labels and chronologically-ordered (startSec asc), (e) tap each Audition button and confirm independent inline playback.
+
+If no existing session has a natural 2-take song, the easiest setup is: in 5/27 session, use `_mtSegmentSplit` on any long confirmed Sugaree segment to create two song-internal segments, set both to "Sugaree" title, ✓ Confirm both. The split-at-playhead primitive landed `0491cb73`; this should be a clean ~2-minute test.
+
+If multi-take labeling works → Phase C is end-to-end validated, no further code needed for v1.
+
+If multi-take labeling does NOT work → most likely failure is in `getSongClipsForSong`'s within-session grouping or take-number derivation; quick debug via console.
 
 ---
 
