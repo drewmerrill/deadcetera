@@ -30,26 +30,24 @@ import modal
 
 app = modal.App("groovelinx-chatter-transcription")
 
-# Whisper-large + ffmpeg + boto3. The whisper Python package pulls in
-# PyTorch which is heavy (~3 GB) but Modal caches the image once built.
+# Whisper-large via faster-whisper (CTranslate2 reimplementation).
 #
-# Version pin notes (2026-05-29):
-# - openai-whisper==20231117 fails to build on modern pip because its
-#   setup.py imports pkg_resources which build-isolation hides. Use a
-#   newer release that ships proper pyproject.toml metadata.
-# - torch 2.4 ships with CUDA 12.4 wheels that match Modal's A10G driver.
+# Why faster-whisper instead of openai-whisper (2026-05-29):
+# - openai-whisper distributes as source tar.gz, requires building via
+#   setup.py which imports pkg_resources. Modern pip's build-isolation
+#   prevents pre-installed setuptools from being visible to the build.
+#   Tried 20231117 and 20240930 — both fail with ModuleNotFoundError.
+# - faster-whisper ships as wheels (no build step), uses CTranslate2 for
+#   inference (~4x faster on CPU, similar on GPU with lower VRAM use).
+# - Same whisper-large-v3 model weights, same transcription quality.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
-    # Setuptools first satisfies any residual pkg_resources expectations
-    # from older transitive deps. Then the heavy ML stack.
-    .pip_install(["setuptools>=68.0", "wheel"])
     .pip_install(
         [
             "boto3==1.34.0",
             "fastapi[standard]",
-            "openai-whisper==20240930",
-            "torch==2.4.0",
+            "faster-whisper==1.0.3",
         ]
     )
 )
@@ -85,20 +83,20 @@ def transcribe_segment(
     endSec: float,
     songCatalog: list = None,  # band's song titles for content-based song-assignment hint
 ):
-    """Transcribe one speech segment via Whisper-large.
+    """Transcribe one speech segment via faster-whisper (large-v3).
 
     Workflow:
       1. List per-channel FLACs for the session. Identify vocal stems
          (channels 01-04 by filename convention `01_vocal-*.flac`).
       2. ffmpeg-extract the [startSec, endSec) slice from each vocal
          stem, mix to mono with light gain compensation.
-      3. Run Whisper-large on the mono input.
+      3. Run faster-whisper large-v3 on the mono input.
       4. Return verbatim transcript + duration + best-guess speaker
          attribution if one channel clearly dominates + best-guess
          song assignment based on transcript content (substring match
          against songCatalog).
     """
-    import whisper
+    from faster_whisper import WhisperModel
     import boto3
 
     endpoint = os.environ["R2_ENDPOINT"]
@@ -237,18 +235,32 @@ def transcribe_segment(
         except Exception as e:
             print(f"[chatter] speaker attribution probe failed: {e}")
 
-        # ─── Run Whisper-large ───────────────────────────────────────
-        print(f"[chatter] loading whisper-large…")
-        model = whisper.load_model("large", device="cuda")
+        # ─── Run faster-whisper large-v3 ────────────────────────────
+        print(f"[chatter] loading faster-whisper large-v3…")
+        # float16 on GPU is the speed/quality sweet spot for A10G.
+        # The model auto-downloads on first use; persistent volume caches
+        # it for subsequent calls.
+        model = WhisperModel(
+            "large-v3",
+            device="cuda",
+            compute_type="float16",
+            download_root="/root/.cache/whisper",
+        )
         print(f"[chatter] transcribing {duration:.1f}s of audio…")
-        result = model.transcribe(
+        segments_iter, info = model.transcribe(
             mixed_path,
             language="en",
             condition_on_previous_text=False,
-            verbose=False,
+            beam_size=5,
+            vad_filter=False,
         )
-        transcript = (result.get("text") or "").strip()
-        language = result.get("language") or "en"
+        # faster-whisper returns an iterator of segments; collect into one
+        # transcript string. Iterating drives the actual inference.
+        segment_texts = []
+        for seg in segments_iter:
+            segment_texts.append(seg.text)
+        transcript = " ".join(t.strip() for t in segment_texts).strip()
+        language = info.language or "en"
         print(f"[chatter] transcript: {transcript[:140]!r}")
 
         # ─── Song-assignment best guess from transcript content ──────
