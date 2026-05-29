@@ -192,6 +192,20 @@ Specifically:
 
 ---
 
+## Phase A spike completed (2026-05-29 04:30 UTC)
+
+Spike ran against Sugaree from 5/27 (seg_068_split_, 15:03 duration, source-time 43:32–58:35). Master MP3 was 320 kbps so re-encoded cleanly to both targets from the same source.
+
+| | 192 kbps | 256 kbps |
+|---|---|---|
+| File size | 21.7 MB | 28.9 MB |
+| Generation time | ~10 sec | ~11 sec |
+| Drew listening verdict | **CHOSEN** | rejected — quality difference not meaningful enough for the +33% payload |
+
+**Locked decision: 192 kbps stereo MP3 standard for all per-song clips.** No user-selectable bitrate in v1. A "High Quality" toggle promoting individual songs to 256 kbps is filed as future v2 consideration — ship only if real demand surfaces.
+
+---
+
 ## Three Drew questions answered (2026-05-29)
 
 After greenlighting the hybrid, Drew raised three questions worth pinning to the spec as design contracts:
