@@ -2406,12 +2406,15 @@ async function handleMultitrackSongMp3Check(request, env) {
 }
 
 // ── Chatter transcription (Modal proxy, 2026-05-29) ───────────────────────
-// Whisper-large on speech-classified segments. Separate Modal app.
-// Requires MULTITRACK_CHATTER_URL secret.
+// Whisper-large via faster-whisper. CONSOLIDATED into the same Modal app
+// as the song-clip endpoints to stay under the Modal Starter 8-webhook
+// cap. Targets MULTITRACK_SONG_CLIP_URL (not a separate chatter URL) with
+// action='transcribe_start' / 'transcribe_check' on the existing
+// dispatcher.
 async function handleMultitrackChatterStart(request, env) {
   if (!env.STEMS_SHARED_SECRET) return cors(jsonError('chatter_not_configured: STEMS_SHARED_SECRET required', 500));
-  var modalUrl = env.MULTITRACK_CHATTER_URL;
-  if (!modalUrl) return cors(jsonError('chatter_not_configured: MULTITRACK_CHATTER_URL secret required', 500));
+  var modalUrl = env.MULTITRACK_SONG_CLIP_URL;
+  if (!modalUrl) return cors(jsonError('chatter_not_configured: MULTITRACK_SONG_CLIP_URL secret required', 500));
   var body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   var bandSlug    = String(body.bandSlug    || '').trim();
@@ -2431,7 +2434,7 @@ async function handleMultitrackChatterStart(request, env) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'start',
+        action: 'transcribe_start',
         bandSlug: bandSlug, sessionId: sessionId, segmentId: segmentId,
         startSec: startSec, endSec: endSec,
         songCatalog: songCatalog,
@@ -2454,8 +2457,8 @@ async function handleMultitrackChatterStart(request, env) {
 
 async function handleMultitrackChatterCheck(request, env) {
   if (!env.STEMS_SHARED_SECRET) return cors(jsonError('chatter_not_configured: STEMS_SHARED_SECRET required', 500));
-  var modalUrl = env.MULTITRACK_CHATTER_URL;
-  if (!modalUrl) return cors(jsonError('chatter_not_configured: MULTITRACK_CHATTER_URL secret required', 500));
+  var modalUrl = env.MULTITRACK_SONG_CLIP_URL;
+  if (!modalUrl) return cors(jsonError('chatter_not_configured: MULTITRACK_SONG_CLIP_URL secret required', 500));
   var body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   var callId = String(body.call_id || body.callId || '').trim();
@@ -2466,7 +2469,7 @@ async function handleMultitrackChatterCheck(request, env) {
     var modalRes = await fetch(modalUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'check', call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      body: JSON.stringify({ action: 'transcribe_check', call_id: callId, token: env.STEMS_SHARED_SECRET }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);

@@ -47,11 +47,27 @@ import modal
 
 app = modal.App("groovelinx-multitrack-song-clip")
 
-# debian_slim + ffmpeg keeps the image lean (~250 MB).
+# debian_slim + ffmpeg + faster-whisper. The chatter-transcription work
+# was originally a separate Modal app but consolidated here 2026-05-29
+# after Drew hit the Modal Starter 8-webhook cap. One app, one webhook
+# dispatcher, three function families (stem-zip clip, song-mp3 clip,
+# chatter transcription). CPU functions share the image without using
+# GPU; the transcribe_segment function requests GPU per-call.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
-    .pip_install(["boto3==1.34.0", "fastapi[standard]"])
+    .pip_install([
+        "boto3==1.34.0",
+        "fastapi[standard]",
+        "faster-whisper==1.0.3",
+    ])
+)
+
+# Persistent volume for Whisper model weights — same pattern as the
+# original chatter-transcription app. ~3 GB large-v3 model only
+# downloads once.
+whisper_volume = modal.Volume.from_name(
+    "groovelinx-whisper-cache", create_if_missing=True
 )
 
 
@@ -440,6 +456,207 @@ def clip_song_to_mp3(
             pass
 
 
+# ── Chatter transcription (2026-05-29, consolidated into this app) ──
+#
+# Whisper-large-v3 via faster-whisper (CTranslate2). GPU function in
+# the same Modal app to stay under the Starter 8-webhook cap. Reads
+# vocal stems (channels 01-04 — drew/brian/chris/pierce), ffmpeg-
+# slices each to the segment range, mixes to mono 16 kHz, runs Whisper,
+# returns verbatim transcript + best-guess speaker attribution + best-
+# guess song assignment from substring match against the band catalog.
+@app.function(
+    image=image,
+    gpu="a10g",  # ~$1.10/hr; ~10x realtime for faster-whisper large-v3
+    timeout=900,  # 15 min cap per segment
+    cpu=2.0,
+    memory=8192,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+    volumes={"/root/.cache/whisper": whisper_volume},
+)
+def transcribe_segment(
+    bandSlug: str,
+    sessionId: str,
+    segmentId: str,
+    startSec: float,
+    endSec: float,
+    songCatalog: list = None,
+):
+    """Transcribe one speech segment via faster-whisper (large-v3).
+
+    Workflow: list per-channel FLACs, identify vocal stems (channels
+    01-04 by filename convention), ffmpeg-extract the segment range
+    from each, mix to mono 16 kHz, run faster-whisper, attribute
+    speaker (best-effort by which vocal channel was loudest), guess
+    song from transcript-substring against songCatalog.
+    """
+    from faster_whisper import WhisperModel
+    import boto3
+
+    endpoint = os.environ["R2_ENDPOINT"]
+    access_key = os.environ["R2_ACCESS_KEY_ID"]
+    secret_key = os.environ["R2_SECRET_ACCESS_KEY"]
+    bucket = os.environ.get("R2_BUCKET", "groovelinx-stems")
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name="auto",
+    )
+
+    duration = float(endSec) - float(startSec)
+    if duration <= 0 or duration > 60 * 30:
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"bad segment range: start={startSec} end={endSec} duration={duration}",
+        }
+
+    prefix = f"multitrack/{bandSlug}/{sessionId}/"
+    paginator = s3.get_paginator("list_objects_v2")
+    vocal_stems = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            tail = key[len(prefix):]
+            if "/" in tail:
+                continue
+            if not tail.lower().endswith(".flac"):
+                continue
+            m = re.match(r"^(\d+)_vocal-([a-z0-9_-]+)\.flac$", tail, re.IGNORECASE)
+            if not m:
+                continue
+            vocal_stems.append({
+                "key": key, "tail": tail,
+                "channelIndex": int(m.group(1)),
+                "member": m.group(2),
+            })
+    vocal_stems.sort(key=lambda v: v["channelIndex"])
+
+    if not vocal_stems:
+        return {
+            "success": False, "status": "error",
+            "error": f"no vocal stems found under {prefix}",
+        }
+
+    work_dir = tempfile.mkdtemp(prefix="gl_chatter_")
+    slices = []
+    try:
+        for stem in vocal_stems:
+            local_src = os.path.join(work_dir, stem["tail"])
+            local_slice = os.path.join(work_dir, f"slice_{stem['channelIndex']:02d}.wav")
+            print(f"[chatter] downloading {stem['tail']}")
+            s3.download_file(bucket, stem["key"], local_src)
+            cmd = [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", f"{float(startSec):.3f}",
+                "-i", local_src,
+                "-t", f"{duration:.3f}",
+                "-ac", "1",
+                "-ar", "16000",
+                local_slice,
+            ]
+            proc = subprocess.run(cmd, capture_output=True)
+            if proc.returncode != 0:
+                err = proc.stderr.decode("utf-8", errors="replace")[:300]
+                print(f"[chatter] skip {stem['tail']}: {err}")
+                continue
+            slices.append({"member": stem["member"], "path": local_slice})
+            try: os.remove(local_src)
+            except Exception: pass
+
+        if not slices:
+            return {
+                "success": False, "status": "error",
+                "error": "no vocal slices produced",
+            }
+
+        mixed_path = os.path.join(work_dir, "mixed.wav")
+        amix_cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        for sl in slices:
+            amix_cmd.extend(["-i", sl["path"]])
+        if len(slices) == 1:
+            amix_cmd.extend(["-c:a", "copy", mixed_path])
+        else:
+            amix_cmd.extend([
+                "-filter_complex", f"amix=inputs={len(slices)}:normalize=1",
+                "-ac", "1", "-ar", "16000", mixed_path,
+            ])
+        proc = subprocess.run(amix_cmd, capture_output=True)
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", errors="replace")[:300]
+            return {"success": False, "status": "error", "error": f"mix failed: {err}"}
+
+        # Speaker attribution heuristic
+        speaker_candidate = None
+        try:
+            energies = []
+            for sl in slices:
+                probe = subprocess.run(
+                    ["ffmpeg", "-hide_banner", "-i", sl["path"],
+                     "-filter:a", "volumedetect", "-f", "null", "-"],
+                    capture_output=True, text=True,
+                )
+                m = re.search(r"mean_volume:\s*(-?[\d.]+)\s*dB", probe.stderr or "")
+                if m:
+                    energies.append({"member": sl["member"], "db": float(m.group(1))})
+            if energies:
+                energies.sort(key=lambda e: e["db"], reverse=True)
+                if len(energies) >= 2 and (energies[0]["db"] - energies[1]["db"]) >= 6.0:
+                    speaker_candidate = energies[0]["member"]
+                elif len(energies) == 1:
+                    speaker_candidate = energies[0]["member"]
+        except Exception as e:
+            print(f"[chatter] speaker attribution probe failed: {e}")
+
+        print(f"[chatter] loading faster-whisper large-v3…")
+        model = WhisperModel(
+            "large-v3", device="cuda", compute_type="float16",
+            download_root="/root/.cache/whisper",
+        )
+        print(f"[chatter] transcribing {duration:.1f}s of audio…")
+        segments_iter, info = model.transcribe(
+            mixed_path, language="en",
+            condition_on_previous_text=False,
+            beam_size=5, vad_filter=False,
+        )
+        segment_texts = [seg.text for seg in segments_iter]
+        transcript = " ".join(t.strip() for t in segment_texts).strip()
+        language = info.language or "en"
+        print(f"[chatter] transcript: {transcript[:140]!r}")
+
+        song_match = None
+        if songCatalog and transcript:
+            text_lower = transcript.lower()
+            for song_title in songCatalog:
+                if not song_title:
+                    continue
+                if str(song_title).lower() in text_lower:
+                    song_match = song_title
+                    break
+
+        return {
+            "success": True,
+            "status": "done",
+            "bandSlug": bandSlug,
+            "sessionId": sessionId,
+            "segmentId": segmentId,
+            "startSec": startSec,
+            "endSec": endSec,
+            "durationSec": duration,
+            "transcript": transcript,
+            "language": language,
+            "speakerCandidate": speaker_candidate,
+            "songAssignmentGuess": song_match,
+            "songAssignmentMethod": "content-match" if song_match else None,
+            "modelVersion": "faster-whisper-large-v3",
+        }
+    finally:
+        try: shutil.rmtree(work_dir)
+        except Exception: pass
+
+
 @app.function(
     image=image,
     timeout=120,
@@ -588,7 +805,61 @@ def clip_endpoint(item: dict):
             return {"success": False, "error": f"call_failed: {e}"}
         return result
 
+    # Chatter transcription actions (consolidated 2026-05-29)
+    if action == "transcribe_start":
+        band_slug = str(item.get("bandSlug", "")).strip()
+        session_id = str(item.get("sessionId", "")).strip()
+        segment_id = str(item.get("segmentId", "")).strip()
+        song_catalog = item.get("songCatalog", []) or []
+        if not isinstance(song_catalog, list):
+            return {"success": False, "error": "songCatalog must be an array"}
+        try:
+            start_sec = float(item.get("startSec", 0))
+            end_sec = float(item.get("endSec", 0))
+        except Exception:
+            return {"success": False, "error": "startSec/endSec must be numbers"}
+        if not band_slug or not session_id:
+            return {"success": False, "error": "missing bandSlug or sessionId"}
+        if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", band_slug):
+            return {"success": False, "error": "bad_band_slug"}
+        if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", session_id):
+            return {"success": False, "error": "bad_session_id"}
+        if end_sec - start_sec <= 0.5 or end_sec - start_sec > 60 * 30:
+            return {"success": False, "error": "bad_segment_range"}
+        try:
+            call = transcribe_segment.spawn(
+                band_slug, session_id, segment_id,
+                start_sec, end_sec, song_catalog,
+            )
+            return {
+                "success": True,
+                "call_id": call.object_id,
+                "bandSlug": band_slug,
+                "sessionId": session_id,
+                "segmentId": segment_id,
+            }
+        except Exception as e:
+            return {"success": False, "error": f"spawn_failed: {e}"}
+
+    if action == "transcribe_check":
+        call_id = item.get("call_id", "")
+        if not call_id:
+            return {"success": False, "error": "missing call_id"}
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+        except Exception as e:
+            return {"success": False, "error": f"bad_call_id: {e}"}
+        try:
+            result = call.get(timeout=0)
+        except modal.exception.OutputExpiredError:
+            return {"success": False, "error": "output_expired"}
+        except TimeoutError:
+            return {"success": True, "status": "processing"}
+        except Exception as e:
+            return {"success": False, "error": f"call_failed: {e}"}
+        return result
+
     return {
         "success": False,
-        "error": f"bad_action: {action!r} (expected 'start', 'check', 'start_mp3', or 'check_mp3')",
+        "error": f"bad_action: {action!r} (expected 'start', 'check', 'start_mp3', 'check_mp3', 'transcribe_start', or 'transcribe_check')",
     }
