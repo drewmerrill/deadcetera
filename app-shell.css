@@ -21,7 +21,14 @@ body{font-family:'Inter',-apple-system,sans-serif;font-size:15px;background:var(
 a{color:var(--accent-light);}
 
 /* ===== TOPBAR ===== */
-.topbar{position:sticky;top:0;z-index:1000;background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid var(--border);padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);}
+/* Bug #30 fix 2026-05-29: padding-top:env(safe-area-inset-top) so the iOS
+   status bar (notch / Dynamic Island) doesn't overlap the topbar's content.
+   viewport-fit=cover (set in index.html) is what makes env() return real
+   values; without padding-top, content sits at y=0 under the status bar.
+   This is the site-wide fix — every page that renders below this sticky
+   topbar inherits the safe area automatically. min-height keeps the visible
+   content area at the original 56px after the inset is added. */
+.topbar{position:sticky;top:0;z-index:1000;background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid var(--border);padding:env(safe-area-inset-top,0) 16px 0;min-height:56px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);box-sizing:border-box;}
 .topbar-left{display:flex;align-items:center;gap:12px;}
 .hamburger{background:none;border:none;color:var(--text);cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;transition:background 0.15s;}
 .hamburger:hover{background:rgba(255,255,255,0.08);}
@@ -446,7 +453,8 @@ footer p{color:var(--text-dim)!important;}
 
 @media(max-width:500px){
     .form-grid{grid-template-columns:1fr;}
-    .topbar{padding:0 10px;}
+    /* Bug #30 fix 2026-05-29: preserve safe-area-top in narrow-mobile override. */
+    .topbar{padding:env(safe-area-inset-top,0) 10px 0;}
     .card-grid{grid-template-columns:repeat(2,1fr);}
 }
 
@@ -546,7 +554,8 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
     #songDropdown { max-height: 40vh !important; }
 
     /* Topbar: tighten */
-    .topbar { padding: 0 8px !important; }
+    /* Bug #30 fix 2026-05-29: preserve safe-area-top in @640 override. */
+    .topbar { padding: env(safe-area-inset-top,0) 8px 0 !important; }
     .topbar-brand { font-size: 1em !important; }
     .topbar-btn { padding: 5px 8px !important; font-size: 0.72em !important; }
 

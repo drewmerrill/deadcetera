@@ -1932,8 +1932,20 @@ window._mtToggleToolsMenu = function(mode) {
             + 'z-index:6000;overflow:hidden;max-height:70vh;overflow-y:auto;'
             + 'padding-bottom:env(safe-area-inset-bottom, 8px)';
     } else {
-        menu.style.cssText = 'position:fixed;top:' + Math.round(rect.bottom + 6) + 'px;left:' + Math.round(rect.left) + 'px;'
-            + 'min-width:280px;max-width:340px;background:#0f172a;border:1px solid rgba(99,102,241,0.35);border-radius:8px;'
+        // Bug #29 fix 2026-05-29: clamp horizontal position so the dropdown
+        // never overflows the viewport's right edge. Pre-fix used raw
+        // rect.left, which on Plus/Pro Max iPhones (414-430 portrait) or
+        // mobile landscape (>640 threshold) renders desktop dropdown with
+        // 340px max-width pushed past viewport right edge — labels clip and
+        // user can't read full menu item text.
+        var menuW = 340;     // matches max-width below
+        var margin = 8;
+        var vw = (typeof window !== 'undefined' && window.innerWidth)
+            ? window.innerWidth : 800;
+        var maxLeft = Math.max(margin, vw - menuW - margin);
+        var leftPx = Math.max(margin, Math.min(Math.round(rect.left), maxLeft));
+        menu.style.cssText = 'position:fixed;top:' + Math.round(rect.bottom + 6) + 'px;left:' + leftPx + 'px;'
+            + 'min-width:280px;max-width:' + menuW + 'px;background:#0f172a;border:1px solid rgba(99,102,241,0.35);border-radius:8px;'
             + 'box-shadow:0 12px 36px rgba(0,0,0,0.55);z-index:6000;overflow:hidden';
     }
     menu.innerHTML = itemsHtml;

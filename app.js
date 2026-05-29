@@ -7909,7 +7909,12 @@ async function showAdminPanel() {
     // Show loading state immediately
     const loadingPanel = document.createElement('div');
     loadingPanel.id = 'adminPanel';
-    loadingPanel.style.cssText = `position:fixed;top:0;right:0;width:min(420px,100vw);height:100vh;background:#1a1a2e;color:#e0e0e0;z-index:10000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;`;
+    // Bug #28 fix 2026-05-29: padding-top:env(safe-area-inset-top) so the
+    // panel content (including the sticky ✕ close button below) renders below
+    // the iOS status bar on notched iPhones. Without it, the X button at
+    // position:sticky;top:0 sits behind the status bar, making the panel
+    // appear to have no exit affordance.
+    loadingPanel.style.cssText = `position:fixed;top:0;right:0;width:min(420px,100vw);height:100vh;background:#1a1a2e;color:#e0e0e0;z-index:10000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;padding-top:env(safe-area-inset-top, 0px);box-sizing:border-box;`;
     loadingPanel.innerHTML = `<div style="text-align:center"><div style="font-size:2em;margin-bottom:12px">⏳</div><div style="color:#667eea">Loading activity from Firebase...</div></div>`;
     document.body.appendChild(loadingPanel);
 
@@ -7926,11 +7931,15 @@ async function showAdminPanel() {
     
     const panel = document.createElement('div');
     panel.id = 'adminPanel';
+    // Bug #28 fix 2026-05-29: padding-top:env(safe-area-inset-top) so the
+    // sticky ✕ close button is visible below the iOS status bar.
     panel.style.cssText = `
         position: fixed; top: 0; right: 0; width: min(420px, 100vw); height: 100vh;
         background: #1a1a2e; color: #e0e0e0; z-index: 10000;
         box-shadow: -4px 0 20px rgba(0,0,0,0.5); overflow-y: auto;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        padding-top: env(safe-area-inset-top, 0px);
+        box-sizing: border-box;
     `;
     
     // Build stats
