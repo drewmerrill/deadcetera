@@ -32,15 +32,24 @@ app = modal.App("groovelinx-chatter-transcription")
 
 # Whisper-large + ffmpeg + boto3. The whisper Python package pulls in
 # PyTorch which is heavy (~3 GB) but Modal caches the image once built.
+#
+# Version pin notes (2026-05-29):
+# - openai-whisper==20231117 fails to build on modern pip because its
+#   setup.py imports pkg_resources which build-isolation hides. Use a
+#   newer release that ships proper pyproject.toml metadata.
+# - torch 2.4 ships with CUDA 12.4 wheels that match Modal's A10G driver.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
+    # Setuptools first satisfies any residual pkg_resources expectations
+    # from older transitive deps. Then the heavy ML stack.
+    .pip_install(["setuptools>=68.0", "wheel"])
     .pip_install(
         [
             "boto3==1.34.0",
             "fastapi[standard]",
-            "openai-whisper==20231117",
-            "torch==2.1.0",
+            "openai-whisper==20240930",
+            "torch==2.4.0",
         ]
     )
 )
