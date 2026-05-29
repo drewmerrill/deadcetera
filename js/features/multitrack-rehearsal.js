@@ -5134,6 +5134,27 @@ async function _mtLoadSegments(sessionId) {
             }
         });
         p.segments = segs;
+        // Phase B+C 2026-05-29: hydrate per-segment clip URLs from Firebase
+        // so the 🎚 Audition affordance can render without re-fetching on
+        // every panel render. segmentId-keyed lookup. Errors are swallowed
+        // — clip absence just means audition button shows generation state.
+        try {
+            if (typeof GLStore !== 'undefined' && GLStore.getSongClipsForSession) {
+                var clips = await GLStore.getSongClipsForSession(p.sessionId);
+                var clipBySeg = {};
+                clips.forEach(function(c) { if (c && c.segmentId) clipBySeg[c.segmentId] = c; });
+                segs.forEach(function(s) {
+                    var c = clipBySeg[s.id];
+                    if (c) {
+                        s._clipUrl = c.publicUrl || null;
+                        s._clipBoundaryHash = c.boundaryHash || null;
+                        s._clipReady = !!(c.publicUrl || c.r2Key);
+                    }
+                });
+            }
+        } catch (clipErr) {
+            console.warn('[Multitrack] clip hydration skipped:', clipErr && clipErr.message);
+        }
         // Phase 3: once segments are loaded, kick the migration coordinator.
         // Idempotent — fires once per session via p._phase3MigrationDone.
         if (p.sessionId) {
@@ -5807,8 +5828,10 @@ function _mtRenderSegmentRow(s, idx, p) {
                 : '<button onclick="event.stopPropagation();_mtMobileToggleRename(' + idx + ')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:6px 10px;cursor:pointer;font-size:0.82em;font-family:inherit">✏ Rename</button>'
             )
             + '<button onclick="event.stopPropagation();_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — tap to unconfirm' : 'Confirm') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:5px;color:' + confirmColor + ';padding:6px 12px;cursor:pointer;font-size:0.86em;font-family:inherit">✓ Confirm</button>'
+            + _mtAuditionButtonHtml(seg, idx)
             + '<button onclick="event.stopPropagation();_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — tap to unflag' : 'Exclude from songs-only mix') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:5px;color:' + excludeColor + ';padding:6px 12px;cursor:pointer;font-size:0.86em;font-family:inherit">⊘ Exclude</button>'
-            + '</div>';
+            + '</div>'
+            + _mtAuditionPlayerHtml(seg, idx);
 
         var focusedMarkerGridHtml =
             '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.78em">'
@@ -7081,9 +7104,254 @@ window._mtSegmentConfirm = async function(idx) {
     } catch (e) {
         console.warn('[Multitrack] fingerprint update failed (segment state still saved):', e && e.message);
     }
+
+    // Phase B completion 2026-05-29 — on-confirm song-clip job.
+    // Trigger discipline (per spec): kind==='music' + isBetween===false +
+    // transitioning TO confirmed. Storage is segmentId-keyed so multi-take
+    // per rehearsal is first-class (Drew correction 2026-05-29).
+    // Fired non-blocking — the user doesn't wait on Modal.
+    if (next === 'confirmed' && seg.kind === 'music' && !seg.isBetween) {
+        _mtTriggerSongClip(seg, p.sessionId).catch(function(e) {
+            console.warn('[song-clip] trigger failed:', e && e.message);
+        });
+    }
+
     _mtRenderSegmentsPanel();
     _mtRenderSegmentMarkers();
 };
+
+// Phase C 2026-05-29 — inline 🎚 Audition affordance.
+// Renders only for music+confirmed+!isBetween segments per spec. Three
+// states: clip ready (plays inline), clipping (disabled spinner), no clip
+// yet (tap triggers generation — backfill path for pre-existing confirms).
+function _mtAuditionButtonHtml(seg, idx) {
+    if (!seg || seg.kind !== 'music' || seg.isBetween) return '';
+    var rs = _mtSegmentReviewState(seg);
+    if (rs !== 'confirmed') return '';
+    var pending = !!seg._clipPending;
+    var ready   = !!seg._clipUrl;
+    var error   = !!seg._clipError;
+    var label, title, bg, border, color, handler;
+    if (pending) {
+        label = '🎚 Clipping…';
+        title = 'Materializing per-song MP3 — usually under 15 seconds';
+        bg = 'rgba(99,102,241,0.15)';
+        border = 'rgba(99,102,241,0.30)';
+        color = 'rgba(165,180,252,0.8)';
+        handler = '';
+    } else if (error) {
+        label = '🎚 Retry clip';
+        title = 'Clip generation failed: ' + (seg._clipError || 'unknown');
+        bg = 'rgba(239,68,68,0.15)';
+        border = 'rgba(239,68,68,0.35)';
+        color = '#fca5a5';
+        handler = 'onclick="event.stopPropagation();_mtAuditionTap(' + idx + ')"';
+    } else if (ready) {
+        var open = !!seg._auditionOpen;
+        label = open ? '🎚 Stop' : '🎚 Audition';
+        title = open ? 'Stop inline audition' : 'Audition this take inline';
+        bg = open ? 'rgba(99,102,241,0.30)' : 'rgba(99,102,241,0.18)';
+        border = open ? 'rgba(99,102,241,0.55)' : 'rgba(99,102,241,0.40)';
+        color = '#a5b4fc';
+        handler = 'onclick="event.stopPropagation();_mtAuditionTap(' + idx + ')"';
+    } else {
+        // Eligible but no clip yet (backfill: segment was confirmed before
+        // Phase B wiring shipped). Tap materializes the clip lazily.
+        label = '🎚 Audition';
+        title = 'Materialize + audition (~10s on first tap)';
+        bg = 'rgba(99,102,241,0.10)';
+        border = 'rgba(99,102,241,0.30)';
+        color = 'rgba(165,180,252,0.85)';
+        handler = 'onclick="event.stopPropagation();_mtAuditionTap(' + idx + ')"';
+    }
+    return '<button ' + handler + ' title="' + escHtml(title) + '" '
+        + 'style="background:' + bg + ';border:1px solid ' + border + ';border-radius:5px;color:' + color + ';padding:6px 12px;cursor:' + (pending ? 'default' : 'pointer') + ';font-size:0.86em;font-family:inherit"'
+        + (pending ? ' disabled' : '')
+        + '>' + label + '</button>';
+}
+
+function _mtAuditionPlayerHtml(seg, idx) {
+    if (!seg || !seg._auditionOpen || !seg._clipUrl) return '';
+    return '<div style="margin-top:8px;padding:8px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25);border-radius:6px">'
+        + '<audio id="mtAuditionAudio_' + idx + '" controls autoplay preload="auto" '
+        + 'src="' + escHtml(seg._clipUrl) + '" '
+        + 'onplay="_mtAuditionRecordPlay(\'' + escHtml(seg.id) + '\')" '
+        + 'style="width:100%;height:36px"></audio>'
+        + '<div style="font-size:0.7em;color:var(--text-dim);margin-top:4px">192 kbps · '
+        + (typeof seg.durationSec === 'number' ? Math.round(seg.endSec - seg.startSec) + 's' : 'clip')
+        + '</div>'
+        + '</div>';
+}
+
+// Audition handler — closes any other open audition player, opens this one,
+// and lazily triggers clip generation if not yet materialized.
+window._mtAuditionTap = async function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    var seg = p.segments && p.segments[idx];
+    if (!seg) return;
+    // If clip exists, toggle inline player open/closed.
+    if (seg._clipUrl) {
+        // Close other open auditions first (one player at a time).
+        (p.segments || []).forEach(function(s, j) {
+            if (j !== idx && s && s._auditionOpen) {
+                s._auditionOpen = false;
+            }
+        });
+        seg._auditionOpen = !seg._auditionOpen;
+        _mtRenderSegmentsPanel();
+        return;
+    }
+    // No clip yet — backfill path. Fire generation.
+    if (seg._clipPending) return; // already in flight
+    seg._clipError = null;
+    try {
+        await _mtTriggerSongClip(seg, p.sessionId);
+        // On success, _mtTriggerSongClip set seg._clipUrl; auto-open player.
+        if (seg._clipUrl) {
+            (p.segments || []).forEach(function(s, j) {
+                if (j !== idx && s && s._auditionOpen) s._auditionOpen = false;
+            });
+            seg._auditionOpen = true;
+            _mtRenderSegmentsPanel();
+        }
+    } catch (e) {
+        // _mtTriggerSongClip already set seg._clipError + re-rendered.
+    }
+};
+
+// Lightweight play telemetry — increments playCount + lastPlayedAt on the
+// per-clip UI state record so Our Takes can surface most-played takes.
+window._mtAuditionRecordPlay = function(segmentId) {
+    if (typeof GLStore !== 'undefined' && GLStore.recordSongClipPlay) {
+        GLStore.recordSongClipPlay(segmentId);
+    }
+};
+
+// Phase B completion 2026-05-29 — on-confirm song-clip job.
+// Materializes a 192 kbps stereo MP3 of the segment via the Modal endpoint,
+// then writes segmentId-keyed metadata to Firebase via GLStore.saveSongClip.
+// Idempotent on (segmentId, boundaryHash) — if metadata already exists with
+// matching hash, skips the Modal job. Different boundaryHash (user edited
+// boundaries since last confirm) → regenerate.
+// Spec: 02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md
+async function _mtTriggerSongClip(seg, sessionId) {
+    if (!seg || !sessionId) return;
+    if (typeof GLStore === 'undefined' || !GLStore.saveSongClip) {
+        console.warn('[song-clip] GLStore helpers not available; skipping clip job');
+        return;
+    }
+    var p = _mtState.player;
+    if (!p) return;
+    var bandSlug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var songTitle = String(seg.songTitle || seg.label || '').trim();
+    if (!songTitle) {
+        console.warn('[song-clip] no songTitle on seg', seg.id, '— skipping');
+        return;
+    }
+    var songId = seg.songId || (GLStore.getSongIdByTitle ? GLStore.getSongIdByTitle(songTitle) : null);
+    if (!songId) {
+        // Free-text song without a catalog match. Skip — songId-less clips
+        // can't be aggregated cross-session, defeats the purpose.
+        console.warn('[song-clip] no canonical songId for', songTitle, '— skipping');
+        return;
+    }
+
+    var bitrate = 192;
+    var boundaryHash = await GLStore.computeBoundaryHash(seg.id, seg.startSec, seg.endSec, bitrate);
+
+    // Idempotency: skip if metadata already exists with matching boundaryHash.
+    var existing = await GLStore.getSongClipForSegment(sessionId, seg.id);
+    if (existing && existing.boundaryHash === boundaryHash && existing.r2Key) {
+        return;
+    }
+
+    // Mark UI as clipping so the row can show a spinner via reviewState
+    // gating in _mtRenderSegmentsPanel.
+    seg._clipPending = true;
+    _mtRenderSegmentsPanel();
+
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var sessionDate = (p.sessionData && p.sessionData.date) || '';
+
+    try {
+        var startRes = await fetch(workerBase + '/multitrack/song-mp3/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bandSlug: bandSlug,
+                sessionId: sessionId,
+                segmentId: seg.id,
+                startSec: seg.startSec,
+                endSec: seg.endSec,
+                songLabel: songTitle,
+                sessionDate: sessionDate,
+                bitrate: bitrate,
+            }),
+        });
+        var startJson = await startRes.json();
+        if (!startJson || !startJson.success || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || 'song-mp3 start failed');
+        }
+        var callId = startJson.call_id;
+
+        // Poll every 5s for up to 5 minutes. Cold start typically ~10s;
+        // warm path under 5s.
+        var result = null;
+        for (var i = 0; i < 60; i++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            var checkRes = await fetch(workerBase + '/multitrack/song-mp3/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ callId: callId }),
+            });
+            var checkJson = await checkRes.json();
+            if (checkJson && checkJson.status === 'done') {
+                result = checkJson;
+                break;
+            }
+            if (checkJson && (checkJson.status === 'error' || checkJson.success === false)) {
+                throw new Error((checkJson && checkJson.error) || 'song-mp3 check failed');
+            }
+        }
+        if (!result) throw new Error('song-mp3 timeout (5 min)');
+
+        // Refresh segment in case the user changed something while waiting.
+        var liveSeg = (p.segments || []).find(function(s) { return s && s.id === seg.id; }) || seg;
+
+        var clipData = {
+            segmentId: seg.id,
+            songId: songId,
+            songTitle: songTitle,
+            startSec: liveSeg.startSec,
+            endSec: liveSeg.endSec,
+            durationSec: result.durationSec || (liveSeg.endSec - liveSeg.startSec),
+            boundaryHash: boundaryHash,
+            r2Key: result.clipKey || null,
+            publicUrl: result.publicUrl || null,
+            bitrate: bitrate,
+            confidence: liveSeg.confidence || null,
+            reviewState: 'confirmed',
+            humanEdited: !!liveSeg.humanEdited,
+            generatedAt: new Date().toISOString(),
+            generatedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : null,
+        };
+        await GLStore.saveSongClip(sessionId, seg.id, clipData);
+
+        liveSeg._clipPending = false;
+        liveSeg._clipReady = true;
+        liveSeg._clipUrl = result.publicUrl;
+        _mtRenderSegmentsPanel();
+    } catch (e) {
+        seg._clipPending = false;
+        seg._clipError = (e && e.message) || 'clip failed';
+        _mtRenderSegmentsPanel();
+        // Don't toast — the failure is asynchronous and not user-blocking.
+        // Surface in console + per-row state for retry from the segment row.
+        console.warn('[song-clip] generation failed for', seg.id, '—', seg._clipError);
+        throw e;
+    }
+}
 
 window._mtSegmentToggleBetween = async function(idx) {
     var p = _mtState.player;

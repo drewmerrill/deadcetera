@@ -741,6 +741,207 @@
     };
   }
 
+  // ── Song Clips (segmentId-keyed, Phase B+C 2026-05-29) ───────────────────
+  // Per-segment MP3 clips materialized on confirm. Storage:
+  //   bands/{slug}/rehearsal_sessions/{sid}/song_clips/{segmentId}  — clip metadata
+  //   bands/{slug}/song_clip_state_v1/{segmentId}                   — per-clip UI state
+  // Spec: 02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md
+  // Product principle (Drew 2026-05-29): "A take is a segment. A song can
+  // have many takes. A rehearsal can contain more than one take of the same
+  // song." Aggregation by songId is a QUERY, not a storage shape.
+
+  async function _hashHex8(input) {
+    // Web Crypto SHA-256, hex-encoded, truncated to 8 chars. Matches the
+    // Modal-side range_hash convention so client + server stay in sync.
+    var enc = new TextEncoder().encode(input);
+    var buf = await crypto.subtle.digest('SHA-256', enc);
+    var arr = Array.from(new Uint8Array(buf));
+    return arr.slice(0, 4).map(function(b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  function computeBoundaryHash(segmentId, startSec, endSec, bitrate) {
+    // SAME algorithm Modal uses: sha256("{segmentId}|{startSec:.3f}-{endSec:.3f}|{bitrate}")
+    // Returns a Promise<string> of the 8-char hex prefix.
+    var b = bitrate || 192;
+    var input = segmentId + '|' + Number(startSec).toFixed(3) + '-' + Number(endSec).toFixed(3) + '|' + b;
+    return _hashHex8(input);
+  }
+
+  function _clipsRef(sessionId, segmentId) {
+    var sub = 'rehearsal_sessions/' + sessionId + '/song_clips';
+    if (segmentId) sub += '/' + segmentId;
+    return _bp(sub);
+  }
+
+  function _clipStateRef(segmentId) {
+    return _bp('song_clip_state_v1/' + segmentId);
+  }
+
+  async function getSongClipForSegment(sessionId, segmentId) {
+    if (!sessionId || !segmentId) return null;
+    var db = _db(); if (!db) return null;
+    try {
+      var snap = await db.ref(_clipsRef(sessionId, segmentId)).once('value');
+      return snap.val() || null;
+    } catch (e) {
+      console.warn('[song-clips] getSongClipForSegment failed:', e && e.message);
+      return null;
+    }
+  }
+
+  async function getSongClipsForSession(sessionId) {
+    if (!sessionId) return [];
+    var db = _db(); if (!db) return [];
+    try {
+      var snap = await db.ref(_clipsRef(sessionId, null)).once('value');
+      var v = snap.val() || {};
+      return Object.keys(v).map(function(segId) { return v[segId]; });
+    } catch (e) {
+      console.warn('[song-clips] getSongClipsForSession failed:', e && e.message);
+      return [];
+    }
+  }
+
+  async function saveSongClip(sessionId, segmentId, clipData) {
+    if (!sessionId || !segmentId || !clipData) return false;
+    var db = _db(); if (!db) return false;
+    try {
+      await db.ref(_clipsRef(sessionId, segmentId)).set(clipData);
+      emit('songClipSaved', { sessionId: sessionId, segmentId: segmentId, songId: clipData.songId });
+      return true;
+    } catch (e) {
+      console.warn('[song-clips] saveSongClip failed:', e && e.message);
+      return false;
+    }
+  }
+
+  async function deleteSongClip(sessionId, segmentId) {
+    if (!sessionId || !segmentId) return false;
+    var db = _db(); if (!db) return false;
+    try {
+      await db.ref(_clipsRef(sessionId, segmentId)).remove();
+      emit('songClipDeleted', { sessionId: sessionId, segmentId: segmentId });
+      return true;
+    } catch (e) {
+      console.warn('[song-clips] deleteSongClip failed:', e && e.message);
+      return false;
+    }
+  }
+
+  async function getSongClipState(segmentId) {
+    if (!segmentId) return null;
+    var db = _db(); if (!db) return null;
+    try {
+      var snap = await db.ref(_clipStateRef(segmentId)).once('value');
+      return snap.val() || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function toggleSongClipFavorite(segmentId) {
+    if (!segmentId) return false;
+    var db = _db(); if (!db) return false;
+    try {
+      var ref = db.ref(_clipStateRef(segmentId));
+      var snap = await ref.once('value');
+      var cur = snap.val() || {};
+      var next = !cur.favorite;
+      await ref.update({ favorite: next, updatedAt: _now() });
+      emit('songClipStateChanged', { segmentId: segmentId, favorite: next });
+      return next;
+    } catch (e) {
+      console.warn('[song-clips] toggleSongClipFavorite failed:', e && e.message);
+      return false;
+    }
+  }
+
+  async function recordSongClipPlay(segmentId) {
+    if (!segmentId) return;
+    var db = _db(); if (!db) return;
+    try {
+      var ref = db.ref(_clipStateRef(segmentId));
+      var snap = await ref.once('value');
+      var cur = snap.val() || {};
+      await ref.update({
+        lastPlayedAt: _now(),
+        playCount: (Number(cur.playCount) || 0) + 1,
+      });
+    } catch (e) {}
+  }
+
+  // Cross-session aggregation by songId. Iterates all multitrack sessions,
+  // collects segmentId-keyed clip records matching the songId, joins per-clip
+  // favorite/play state, sorts: favorites first → date desc → within-session
+  // startSec asc. Returns enriched take records with sessionId + sessionDate
+  // + favorite + lastPlayedAt + takeNumber + isMultiTake + takeKind.
+  async function getSongClipsForSong(songId) {
+    if (!songId) return [];
+    var db = _db(); if (!db) return [];
+    try {
+      var sessSnap = await db.ref(_bp('rehearsal_sessions'))
+        .orderByChild('type').equalTo('multitrack').once('value');
+      var raw = [];
+      sessSnap.forEach(function(s) {
+        var sv = s.val() || {};
+        var clips = sv.song_clips || {};
+        Object.keys(clips).forEach(function(segId) {
+          var c = clips[segId];
+          if (c && c.songId === songId) {
+            raw.push(Object.assign({}, c, {
+              sessionId: s.key,
+              sessionDate: sv.date || null,
+            }));
+          }
+        });
+      });
+      // Per-clip UI state lookup, one read per segmentId.
+      var states = await Promise.all(raw.map(function(t) {
+        return getSongClipState(t.segmentId);
+      }));
+      var enriched = raw.map(function(t, i) {
+        var st = states[i] || {};
+        return Object.assign({}, t, {
+          favorite: !!st.favorite,
+          lastPlayedAt: st.lastPlayedAt || null,
+          playCount: st.playCount || 0,
+        });
+      });
+      // Derive take number within (sessionId, songId) by startSec.
+      var bySession = {};
+      enriched.forEach(function(t) {
+        if (!bySession[t.sessionId]) bySession[t.sessionId] = [];
+        bySession[t.sessionId].push(t);
+      });
+      Object.keys(bySession).forEach(function(sid) {
+        var takes = bySession[sid].slice().sort(function(a, b) { return a.startSec - b.startSec; });
+        var multi = (takes.length > 1);
+        takes.forEach(function(t, idx) {
+          t.takeNumber = idx + 1;
+          t.isMultiTake = multi;
+        });
+      });
+      // Full / Partial heuristic (v1: durationSec >= 180 = Full).
+      enriched.forEach(function(t) {
+        t.takeKind = (Number(t.durationSec) >= 180) ? 'full' : 'partial';
+      });
+      // Sort: favorites first → sessionDate desc → startSec asc within session.
+      enriched.sort(function(a, b) {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        var da = a.sessionDate || '';
+        var db_ = b.sessionDate || '';
+        if (da !== db_) return da > db_ ? -1 : 1;
+        return a.startSec - b.startSec;
+      });
+      return enriched;
+    } catch (e) {
+      console.warn('[song-clips] getSongClipsForSong failed:', e && e.message);
+      return [];
+    }
+  }
+
   // ── Rehearsals ────────────────────────────────────────────────────────────
 
   /**
@@ -956,6 +1157,18 @@
     // Current Timeline (review state)
     setCurrentTimeline:                setCurrentTimeline,
     getCurrentTimeline:                getCurrentTimeline,
+
+    // Song Clips — segmentId-keyed v1 (Phase B+C 2026-05-29)
+    // Spec: 02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md
+    computeBoundaryHash:               computeBoundaryHash,
+    getSongClipForSegment:             getSongClipForSegment,
+    getSongClipsForSession:            getSongClipsForSession,
+    getSongClipsForSong:               getSongClipsForSong,
+    saveSongClip:                      saveSongClip,
+    deleteSongClip:                    deleteSongClip,
+    getSongClipState:                  getSongClipState,
+    toggleSongClipFavorite:            toggleSongClipFavorite,
+    recordSongClipPlay:                recordSongClipPlay,
 
     // Rehearsal Intelligence + Attempt Intelligence + Dashboard Workflow —
     // extracted 2026-05-08 (P1.1 phase 16) into js/core/gl-rehearsal-intel.js.

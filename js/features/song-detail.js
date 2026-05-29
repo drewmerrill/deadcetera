@@ -5073,6 +5073,14 @@ async function _sdPopulateListenLens(title) {
     // refs is var-hoisted from inside the try; defensive fallback covers the
     // case where the load threw and refs never got assigned.
     var allVersionsHTML = _sdRenderAllVersionsList(title, (typeof refs !== 'undefined' && refs) ? refs : []);
+
+    // Phase C 2026-05-29 — 🎚 Our Takes section. Cross-session aggregation
+    // of per-segment MP3 clips materialized via on-confirm Phase B wiring.
+    // Storage is segmentId-keyed (Drew correction); aggregation by songId
+    // happens here via GLStore.getSongClipsForSong.
+    // Spec: 02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md
+    var ourTakesHTML = await _sdRenderOurTakesSection(title);
+
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
         '<div class="sd-card"><div class="sd-card-title">🔍 Find a Version</div>'+
@@ -5080,9 +5088,130 @@ async function _sdPopulateListenLens(title) {
         '<button class="btn btn-primary" onclick="launchVersionHub()" style="width:100%;padding:13px;font-size:0.95em;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Open Version Hub</button></div>'+
         '<div class="sd-card"><div class="sd-card-title">⭐ North Star <span class="sd-title-badge">Reference</span></div>'+nsHTML+'</div>'+
         '<div class="sd-card"><div class="sd-card-title">🏆 Best Shot <span class="sd-title-badge sd-title-badge--gold">Our Recording</span></div>'+bsHTML+'</div>'+
+        ourTakesHTML+
         '<div class="sd-card"><div class="sd-card-title">🗳 All Versions <span class="sd-title-badge">Band Vote</span></div>'+allVersionsHTML+'</div>'+
         '</div>';
 }
+
+// Phase C 2026-05-29 — 🎚 Our Takes section in the Listen lens.
+// Cross-session aggregation of confirmed per-segment clips. Sort:
+// favorites first → date desc → within-session startSec asc. Multi-take
+// in same rehearsal surfaces as "Take 1 / Take 2" labels.
+// Spec: 02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md
+async function _sdRenderOurTakesSection(title) {
+    if (typeof GLStore === 'undefined' || !GLStore.getSongClipsForSong) return '';
+    var songId = GLStore.getSongIdByTitle ? GLStore.getSongIdByTitle(title) : null;
+    if (!songId) {
+        // No canonical songId means no cross-session aggregation key.
+        // Skip the section silently — surfacing "0 takes" for an unmatched
+        // song would just confuse.
+        return '';
+    }
+    var takes;
+    try {
+        takes = await GLStore.getSongClipsForSong(songId);
+    } catch (e) {
+        console.warn('[song-detail] Our Takes load failed:', e && e.message);
+        return '';
+    }
+    if (!Array.isArray(takes) || !takes.length) {
+        return '<div class="sd-card"><div class="sd-card-title">🎚 Our Takes <span class="sd-title-badge">Rehearsals</span></div>'+
+            '<div style="color:var(--text-dim);font-size:0.85em;padding:8px 4px">No takes yet — confirm song segments in Review Mode to materialize them here.</div>'+
+            '</div>';
+    }
+    var rows = takes.map(function(t) { return _sdRenderTakeRow(t); }).join('');
+    return '<div class="sd-card"><div class="sd-card-title">🎚 Our Takes <span class="sd-title-badge">'+takes.length+' rehearsal'+(takes.length===1?'':'s')+'</span></div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+rows+'</div>'+
+        '</div>';
+}
+
+function _sdFmtDate(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+function _sdFmtDuration(sec) {
+    sec = Number(sec) || 0;
+    if (sec < 60) return Math.round(sec) + 's';
+    var m = Math.floor(sec / 60);
+    var s = Math.round(sec - m * 60);
+    return m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+}
+
+function _sdRenderTakeRow(take) {
+    var dateLabel = _sdFmtDate(take.sessionDate || take.generatedAt);
+    var takeLabel = take.isMultiTake ? (' · Take ' + take.takeNumber) : '';
+    var durLabel = _sdFmtDuration(take.durationSec);
+    var kindIcon = take.takeKind === 'full' ? '◐' : '◑';
+    var kindLabel = take.takeKind === 'full' ? 'Full' : 'Partial';
+    var conf = (typeof take.confidence === 'number') ? take.confidence : null;
+    var confColor = '#94a3b8';
+    if (conf !== null) {
+        if (conf >= 0.9) confColor = '#86efac';
+        else if (conf >= 0.7) confColor = '#fcd34d';
+        else confColor = '#94a3b8';
+    }
+    var confLabel = conf !== null ? ('✓ ' + conf.toFixed(2)) : '';
+    var favIcon = take.favorite ? '⭐' : '☆';
+    var favColor = take.favorite ? '#fcd34d' : 'rgba(255,255,255,0.25)';
+    var safeSeg = String(take.segmentId || '').replace(/'/g, "\\'");
+    var hasUrl = !!take.publicUrl;
+    var auditionBtn = hasUrl
+        ? '<button onclick="_sdTakeAuditionToggle(\'' + safeSeg + '\')" title="Audition this take" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.40);border-radius:5px;color:#a5b4fc;padding:5px 11px;cursor:pointer;font-size:0.82em;font-weight:700;flex-shrink:0">🎵 Audition</button>'
+        : '<span style="color:var(--text-dim);font-size:0.72em;padding:5px 11px">No audio</span>';
+    return '<div id="sd-take-row-' + safeSeg + '" style="background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:9px 10px">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<button onclick="_sdTakeFavoriteToggle(\'' + safeSeg + '\')" title="Favorite this take" style="background:transparent;border:none;color:' + favColor + ';font-size:1.05em;cursor:pointer;padding:0;line-height:1">' + favIcon + '</button>'+
+        '<span style="font-weight:700;font-size:0.84em;color:var(--text)">📅 ' + _sdEsc(dateLabel) + _sdEsc(takeLabel) + '</span>'+
+        '<span style="color:var(--text-dim);font-size:0.78em">⏱ ' + _sdEsc(durLabel) + '</span>'+
+        '<span style="color:var(--text-dim);font-size:0.78em" title="' + kindLabel + '">' + kindIcon + ' ' + kindLabel + '</span>'+
+        (confLabel ? '<span style="color:' + confColor + ';font-size:0.78em">' + confLabel + '</span>' : '')+
+        '<span style="flex:1"></span>'+
+        auditionBtn+
+        '</div>'+
+        '<div id="sd-take-player-' + safeSeg + '" style="display:none;margin-top:8px"></div>'+
+        '</div>';
+}
+
+window._sdTakeAuditionToggle = function(segmentId) {
+    var rows = document.querySelectorAll('[id^="sd-take-player-"]');
+    var thisPlayer = document.getElementById('sd-take-player-' + segmentId);
+    var open = thisPlayer && thisPlayer.style.display !== 'none';
+    // Close all players (one open at a time).
+    rows.forEach(function(el) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+    });
+    if (open) return; // tapping the open one just closes it
+    if (!thisPlayer) return;
+    // Find the take object in the rendered DOM context. Since we don't keep
+    // the takes array around after render, we need to re-fetch the clip's
+    // publicUrl via GLStore. This is a small cost (one Firebase read).
+    if (typeof GLStore === 'undefined' || !GLStore.getSongClipsForSong) return;
+    var title = _sdCurrentSong;
+    var songId = GLStore.getSongIdByTitle ? GLStore.getSongIdByTitle(title) : null;
+    if (!songId) return;
+    GLStore.getSongClipsForSong(songId).then(function(takes) {
+        var take = (takes || []).find(function(t) { return t.segmentId === segmentId; });
+        if (!take || !take.publicUrl) return;
+        thisPlayer.innerHTML = '<audio controls autoplay preload="auto" src="' + _sdEsc(take.publicUrl) + '" '
+            + 'onplay="(typeof GLStore!==\'undefined\'&&GLStore.recordSongClipPlay)?GLStore.recordSongClipPlay(\'' + segmentId.replace(/'/g, "\\'") + '\'):null" '
+            + 'style="width:100%;height:36px"></audio>';
+        thisPlayer.style.display = 'block';
+    });
+};
+
+window._sdTakeFavoriteToggle = function(segmentId) {
+    if (typeof GLStore === 'undefined' || !GLStore.toggleSongClipFavorite) return;
+    GLStore.toggleSongClipFavorite(segmentId).then(function() {
+        // Re-render the Listen lens so the favorite-sort kicks in.
+        if (typeof _sdPopulateListenLensPublic === 'function' && _sdCurrentSong) {
+            _sdPopulateListenLensPublic(_sdCurrentSong);
+        }
+    });
+};
 
 // ── Learn Lens ────────────────────────────────────────────────────────────────
 // Build per-user lesson key (same pattern as rehearsal-mode.js _rmLessonKey)
