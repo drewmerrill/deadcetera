@@ -1,6 +1,39 @@
 # GrooveLinx — Current Priorities
 
-Last Updated: 2026-05-26 (post Pass 2.5 strategic direction)
+Last Updated: 2026-05-29 (post Pierce-bandmate-feedback synthesis)
+
+## 📍 2026-05-29 — Pierce Synthesis Re-Frames the Priorities
+
+Pierce was the first real user besides Drew to use Rehearsal Review as intended — listening between calls, pausing to comment, jumping back, returning later. That validation is the highest-signal product input we've had to date. His synthesis (saved in memory as `project_pierce_synthesis_2026-05-29`) reorders the active priority list:
+
+**Core frame everything is downstream of:** *"GrooveLinx wins when it helps the band improve without making music feel like homework."*
+
+**Killer line that should sit near every roadmap decision:** *"The app has many chandeliers but still needs a better front door."*
+
+**Six immediate priorities (Pierce ordering):**
+
+1. **Comments anchoring safety** — largely shipped today via Phases 1-4 (2026-05-28). Trust-layer durability of musical-moment annotation.
+2. **Member tagging as ATTENTION** — gentler than the v3 notification scoping had been. Tagging means "look at this" by default, NOT "you are assigned work." Task ownership is the explicit "Practice this" promotion path; mentions are ambient attention.
+3. **Song DNA → Our Takes** — new surface. Songs are the core rollup object. Versions taxonomy: Our Takes · Best Shot · North Star · Lessons/Inspiration.
+4. **Partial / full take labels** — new metadata field on segments so partials can be preserved but excluded from stats when needed.
+5. **Direct share links** — URL-driven entry to a specific rehearsal review or song take. For low-adoption members (Chris-style), don't push the whole app — point them at the exact moment.
+6. **Preserve full rehearsal AND song-take access** — BOTH, not either-or. Don't erase messy truth.
+
+**Architecture question to evaluate, NOT solve same-day:** master-long-MP3-plus-markers vs generated per-song MP3 clips. Hybrid likely correct. Details in `02_GrooveLinx/DEFERRED_FINDINGS_QUEUE.md`.
+
+**Explicit don't-do list (load-bearing):**
+
+- harmony AI rabbit holes
+- Melodyne integration
+- DAW replacement
+- perfect mix/master workflow
+- broad AI companion behavior
+- complex Chris onboarding
+- excessive feature expansion
+
+---
+
+## Phase: Workflow Refinement + Operational Intelligence (UNCHANGED — still the active phase)
 
 ## Phase: Workflow Refinement + Operational Intelligence
 

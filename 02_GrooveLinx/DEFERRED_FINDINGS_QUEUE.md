@@ -2427,3 +2427,157 @@ Future contributors should not "fix" these without checking back.
   - **Discovered:** 2026-05-28 · Drew's "scares me" report after
     seeing post-edit sync log
   - **Status:** open
+
+- **Finding:** Three distinct audio playback failure modes observed
+  by Drew 2026-05-28 PM while playing the 5/27 rehearsal in his GMC
+  Sierra via CarPlay over LTE:
+  (1) Glitching every ~3 seconds — likely streaming buffer underrun
+      from LTE bandwidth dips against direct R2 MP3 streaming via
+      HTTP range requests.
+  (2) Stuck note repeating after pause — iOS Safari audio element
+      decoder state corruption; `audio.pause()` didn't actually halt
+      output. Required app close to clear.
+  (3) Time advanced but no audio through CarPlay speaker — iOS
+      audio session disconnect (Siri / phone call dismiss / CarPlay
+      route change). audio element kept "playing" but output went
+      nowhere. Page has no native API to detect this.
+  - **Why deferred:** Real-world CarPlay+iOS+streaming bugs are
+    notoriously hard to debug without instrumentation; building
+    blind fixes risks regressing other surfaces. Need observation
+    data first before wiring mitigations.
+  - **Trigger:** Next 2-3 car sessions where Drew (or any
+    bandmate) reports a repeat occurrence with context (time,
+    song, what happened in car). Then Tier 2 instrumentation
+    becomes the next ship.
+  - **Tier 2 instrumentation shape (when ready):** Add audio
+    element event listeners (error/stalled/waiting/playing/pause/
+    ended/emptied/suspend) + networkState/readyState/currentTime
+    transitions, persist to localStorage during playback, surface
+    via a `GLAudioLog.dump()` console helper after the trip.
+    ~50 LOC.
+  - **Tier 3 mitigations per symptom (after Tier 2 data):**
+    (a) Offline-download MP3 cache to eliminate streaming variable.
+    (b) "Audio reset" button + auto-recovery on stuck-state
+        detection (destroy + recreate audio element).
+    (c) CarPlay-session-loss heartbeat using Web Audio API
+        getOutputTimestamp() vs HTMLAudioElement currentTime to
+        detect routing loss; surface "Lost audio output — tap
+        to recover" banner.
+  - **Long-term architectural direction (NOT tonight):** HLS
+    adaptive bitrate streaming (Modal endpoint to transcode
+    MP3 → HLS, worker to serve segments, MediaSource API in
+    browser). Much more resilient to network fluctuation but
+    significant build.
+  - **Discovered:** 2026-05-28 PM · GMC Sierra CarPlay car session
+  - **Status:** open (Tier 1 observation log mode)
+
+- **Finding:** Live Gig Mode Flash Chart Editor — Save and Cancel
+  buttons use `onclick` instead of `onpointerdown`. The code's own
+  comment block at live-gig.js:1340-1344 documents that they should
+  be `onpointerdown` because iPad soft keyboard's tap-dismiss eats
+  the click event before it can fire on the button, causing iPad-
+  originated edits to silently fail (no save, no error, no toast).
+  Drew first reported + fixed this 2026-05-11; the fix appears to
+  have been reverted (or never landed) since the comment block
+  references it but the implementation uses onclick.
+  - **Why deferred:** Surfaced while tracing 2026-05-28 cross-device
+    sync bug. Drew approved Option 3 (real-time subs) only; the
+    iPad button-eat is a distinct surface and a distinct bug. The
+    real-time sync mitigates the SYMPTOM ("my edits aren't showing
+    up") for cross-device, but if an iPad-originated save never
+    fires Firebase at all, there's nothing to sync.
+  - **Trigger:** Next time Drew (or any bandmate) reports an iPad
+    chart edit not landing in Firebase OR a focused look at Live
+    Gig UI before a gig.
+  - **Fix shape:** Change `onclick="lgSaveChartEdit()"` to
+    `onpointerdown="lgSaveChartEdit(); event.preventDefault();"`
+    on both Save (line 1352) and Cancel (line 1351). Wrap the
+    preventDefault to suppress any subsequent click that the
+    pointer event might generate. ~10 LOC.
+  - **Additional consideration:** lgSaveChartEdit fires the
+    "✅ Chart saved" toast unconditionally after the await — which
+    means on flaky wifi at a gig venue, the toast can lie (Firebase
+    write silently returned null due to no `db`). Worth adding a
+    truthful-confirmation check: only toast success if the save
+    actually returned non-null data. ~5 additional LOC.
+  - **Discovered:** 2026-05-28 · while diagnosing the cross-device
+    chart sync issue
+  - **Status:** open
+
+- **Finding:** `@-mentions` in multitrack rehearsal comments do nothing.
+  Drew + Pierce + Chris + Brian have all adopted the convention of
+  writing @Pierce / @Chris / @Brian / @drew / @Everyone in their
+  comments under the apparent assumption that the system handles
+  them — notifies the mentioned member, surfaces in an inbox, allows
+  filtering, etc. Confirmed 2026-05-28: zero @-mention parsing in
+  comment storage, notification fanout (GLPush/GLSms), or display
+  layer. They're plain text. Recipients never know they were
+  mentioned. There's no "comments where I was @-mentioned" view.
+  - **Why this matters:** trust-layer issue, similar in shape to the
+    Pierce comment-drift bug — users believe the system does X, the
+    system does Y (or nothing), captured signals are lost. Eleven of
+    Pierce's eleven legacy comments contain @-mentions; each one was
+    an attempt to address a specific bandmate that the system never
+    delivered. Drew today: "What do the @names do in the comments?
+    Do they actually go to someone? If so, where?"
+  - **Why deferred:** Larger product question than a quick fix. Needs
+    a real workflow decision: do @-mentions trigger push? SMS? Just
+    a "mentions inbox" view? Filtering on the current comments
+    panel? Each option has different cost + behavior implications.
+  - **Trigger:** Drew (or any bandleader) explicitly asking for one
+    of the above behaviors, OR confirmation that the band's
+    expectation is bound enough to commit to a single model.
+  - **v1 shape (smallest, most useful):** parse comments for
+    `@(memberKey|name|Everyone)` tokens at display time → render
+    each as a styled pill. Add a "💬 My @ mentions" filter chip
+    to the comments panel that scopes the list to comments
+    mentioning the current user OR @Everyone. NO automatic
+    notifications yet — those open up a whole class of "rehearsal
+    comments hitting band phones at 11 PM" problems. Estimated
+    ~80 LOC.
+  - **v2 shape (subscribed surface):** add a "mentions" badge in
+    the persistent shell (top of app / next to bell icon) showing
+    unread @-mention count for current user, pulled from comments
+    across all sessions. Click → mentions inbox. ~150 LOC.
+  - **v3 shape (notification):** opt-in notification preference for
+    "ping me when @-mentioned." Could route through GLPush (push)
+    AND/OR GLSms (text). Quiet hours window so it doesn't fire at
+    3 AM. ~200 LOC + a real notif preference UI.
+  - **Discovered:** 2026-05-28 PM · Drew's "what do the @names do"
+    question
+  - **Status:** open
+
+- **Finding:** Major product-direction synthesis from Pierce's
+  bandmate feedback. Pierce used Rehearsal Review as intended
+  (listen between calls, pause, comment, jump back, return later) —
+  the first real product-market validation we've had. Pierce
+  proposed Song DNA Versions taxonomy (Our Takes · Best Shot ·
+  North Star · Lessons/Inspiration), surfaced the partial-vs-full
+  take label gap, and named the core architectural question:
+  master-long-MP3-plus-markers vs generated per-song MP3 clips.
+  Full synthesis saved to memory as project_pierce_synthesis_2026-05-29.
+  - **Architecture question to evaluate** (NOT solve same day):
+    Hybrid likely correct — preserve full rehearsal render +
+    preserve source FLAC stems + GENERATE/CACHE song-take MP3s for
+    confirmed song segments. Tradeoff axes to evaluate: storage
+    cost (per-song clips add ~30% to render storage), playback
+    performance (mobile loads way faster on per-song MP3), comment
+    anchoring (per-song clips simplify anchoring per Pierce's point
+    but complicate cross-song timeline navigation), Song DNA access
+    (per-song surfaces benefit), mobile UX (huge improvement from
+    per-song), cache invalidation (per-song clips invalidate
+    independently — cheaper), source-of-truth risk (must NOT drop
+    full rehearsal as canonical).
+  - **Why deferred:** Architecture decision needs careful tradeoff
+    mapping + likely a small spike (build one song-clip extraction,
+    measure playback perf, compare comment-anchor UX) before
+    committing. Estimated 1-2 sessions of evaluation + design.
+  - **Six immediate priorities (from Pierce synthesis), ordered:**
+    (1) Comments anchoring safety (largely shipped Phases 1-4)
+    (2) Member tagging as ATTENTION (gentler than v3 was scoped)
+    (3) Song DNA → Our Takes (new surface)
+    (4) Partial/full take labels (new metadata field)
+    (5) Direct share links to rehearsal review / song take
+    (6) Preserve full rehearsal + song-take access (both)
+  - **Discovered:** 2026-05-29 · Pierce bandmate feedback synthesis
+  - **Status:** open · highest-signal product input to date
