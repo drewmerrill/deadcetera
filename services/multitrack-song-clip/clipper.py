@@ -205,14 +205,21 @@ def clip_song(
             s3.download_file(bucket, src["key"], local_src)
             total_in_bytes += src["size"]
             # ffmpeg -ss before -i = fast input seek (frame-accurate for
-            # FLAC since FLAC frames are seek-points); -c copy = no re-
-            # encode, lossless trim. -t = duration in seconds.
+            # FLAC since FLAC frames are seek-points); -c:a flac re-encodes
+            # losslessly. We do NOT use `-c copy` because stream-copy
+            # carries the source's STREAMINFO total_samples field through
+            # unchanged — DAWs read STREAMINFO and present the clip as
+            # 3-hour-long even though only the song's frames are present
+            # (Pierce REAPER import bug 2026-05-29). Lossless re-encode
+            # rewrites STREAMINFO with the correct sample count. Costs
+            # ~3-5s extra per channel; well within the user's ZIP wait.
             cmd = [
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                 "-ss", f"{float(startSec):.3f}",
                 "-i", local_src,
                 "-t", f"{duration:.3f}",
-                "-c", "copy",
+                "-c:a", "flac",
+                "-compression_level", "5",
                 local_clip,
             ]
             print(f"[song-clip] ffmpeg-clip {src['tail']}: [{startSec:.1f}, {endSec:.1f})")

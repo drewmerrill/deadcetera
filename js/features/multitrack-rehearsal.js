@@ -1827,8 +1827,17 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
             _mtRefreshCommentPanel();
             // Auto-tick the composer playhead label every second so it doesn't
             // look stale while the user pauses/scrubs before adding a note.
+            //
+            // CarPlay / iOS stabilization (2026-05-29): the interval callback
+            // short-circuits when document.hidden so we don't churn the DOM
+            // while CarPlay is foregrounded. _mtHighlightActiveComment has
+            // its own hidden guard too — belt-and-suspenders.
             if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
             _mtState.player._timeTicker = setInterval(function() {
+                if (typeof document !== 'undefined' && document.hidden) {
+                    if (window._mtDebugPlayback) console.log('[mt-debug] timeTicker skipped (hidden)');
+                    return;
+                }
                 var t = _mtCurrentPlayhead();
                 var el = document.getElementById('mtComposerTime');
                 if (el) el.textContent = _mtFmtTime(t);
@@ -2199,7 +2208,12 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
             _mtState.player.comments = comments;
             _mtRefreshCommentPanel();
             if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
+            // CarPlay / iOS stabilization (2026-05-29) — see ticker A above.
             _mtState.player._timeTicker = setInterval(function() {
+                if (typeof document !== 'undefined' && document.hidden) {
+                    if (window._mtDebugPlayback) console.log('[mt-debug] timeTicker skipped (hidden)');
+                    return;
+                }
                 var t = _mtCurrentPlayhead();
                 var el = document.getElementById('mtComposerTime');
                 if (el) el.textContent = _mtFmtTime(t);
@@ -6796,7 +6810,19 @@ function _mtRenderSegmentsPanel() {
 function _mtUpdateActiveSegmentHighlight() {
     var p = _mtState.player;
     if (!p || !Array.isArray(p.segments)) return;
-    var rows = document.querySelectorAll('#mtSegmentsList [data-seg-idx]');
+
+    // CarPlay / iOS PWA stabilization (2026-05-29): when the document is
+    // hidden (CarPlay foreground, screen locked, tab in background), skip
+    // every DOM operation. Audio decoding becomes the sole owner of the
+    // main thread. State convergence happens automatically on the next
+    // call after the page becomes visible because we early-return WITHOUT
+    // touching p._lastActiveSegIdx — the post-resume call will detect the
+    // diff and update normally.
+    if (typeof document !== 'undefined' && document.hidden) {
+        if (window._mtDebugPlayback) console.log('[mt-debug] segHighlight skipped (hidden)');
+        return;
+    }
+
     // Drew (UAT 2026-05-24): "the box around each song needs to stay
     // until the time ticks over to the next section and then the box
     // immediately moves to the next one. Sometimes, the box disappears."
@@ -6839,29 +6865,66 @@ function _mtUpdateActiveSegmentHighlight() {
             if (activeOrigIdx === -1 && p.segments.length > 0) activeOrigIdx = 0;
         }
     }
-    rows.forEach(function(row) {
-        var idx = parseInt(row.getAttribute('data-seg-idx'), 10);
-        if (idx === activeOrigIdx) {
-            row.style.outline = '2px solid rgba(165,180,252,0.75)';
-            row.style.outlineOffset = '-1px';
-        } else {
-            row.style.outline = '';
-            row.style.outlineOffset = '';
+
+    // Diff-based DOM mutation (2026-05-29): early-return when nothing
+    // changed. Pre-refactor wrote row.style.outline on EVERY row every
+    // call (often 100-380 rows), even when the value didn't change —
+    // triggering a style-recalc storm that contended with iOS Safari
+    // audio decoding. Now we touch only the previous + new active row.
+    if (activeOrigIdx === p._lastActiveSegIdx) {
+        if (window._mtDebugPlayback) console.log('[mt-debug] segHighlight noop (same idx ' + activeOrigIdx + ')');
+        return;
+    }
+
+    var listRoot = document.getElementById('mtSegmentsList');
+    if (listRoot) {
+        // Clear the previous active row's outline (if any).
+        if (p._lastActiveSegIdx != null && p._lastActiveSegIdx >= 0) {
+            var prevRow = listRoot.querySelector('[data-seg-idx="' + p._lastActiveSegIdx + '"]');
+            if (prevRow) {
+                prevRow.style.outline = '';
+                prevRow.style.outlineOffset = '';
+            }
         }
-    });
-    if (activeOrigIdx >= 0 && activeOrigIdx !== p._lastActiveSegIdx) {
-        var activeRow = document.querySelector('#mtSegmentsList [data-seg-idx="' + activeOrigIdx + '"]');
-        if (activeRow) {
-            try { activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+        // Apply the new active row's outline (and scroll if visible + offscreen).
+        if (activeOrigIdx >= 0) {
+            var newRow = listRoot.querySelector('[data-seg-idx="' + activeOrigIdx + '"]');
+            if (newRow) {
+                newRow.style.outline = '2px solid rgba(165,180,252,0.75)';
+                newRow.style.outlineOffset = '-1px';
+                // Auto-scroll only when visible AND the row is offscreen.
+                // (document.hidden was already short-circuited above; this
+                // is a viewport-intersection guard for the visible path.)
+                if (_mtRowIsOffViewport(newRow)) {
+                    try { newRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+                }
+            }
         }
     }
+
     // Phase 4B sticky review context — write "Reviewing: {title} •
-    // {range} • {conf%}" into the transport row. Only on segment
-    // transitions (not every timeupdate tick) so the DOM write is cheap.
-    if (activeOrigIdx !== p._lastActiveSegIdx) {
-        _mtUpdateNowReviewingLabel(p, activeOrigIdx);
-    }
+    // {range} • {conf%}" into the transport row. Cheap; fires only on
+    // segment transitions (we're past the diff guard).
+    _mtUpdateNowReviewingLabel(p, activeOrigIdx);
+
     p._lastActiveSegIdx = activeOrigIdx;
+    if (window._mtDebugPlayback) console.log('[mt-debug] segHighlight ->', activeOrigIdx);
+}
+
+// CarPlay / iOS PWA stabilization helper (2026-05-29): cheap bounding-rect
+// check that skips scrollIntoView when the target row is already in view.
+// Pre-refactor scrollIntoView fired unconditionally on transitions, even
+// when the row was already visible — and iOS Safari serializes smooth
+// scroll animation onto the main thread, contending with audio.
+function _mtRowIsOffViewport(row) {
+    if (!row || typeof row.getBoundingClientRect !== 'function') return false;
+    try {
+        var r = row.getBoundingClientRect();
+        var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        // Treat as off-viewport when more than half the row is outside.
+        var halfH = r.height / 2;
+        return (r.top < -halfH) || (r.top > vh - halfH);
+    } catch (e) { return false; }
 }
 
 // Phase 4B — sticky "Reviewing: X • range • conf%" header label.
@@ -8455,6 +8518,10 @@ function _mtMaybeUpdateMasterPosition() {
     // continuous looping audio (browsers fire timeupdate at 4-25 Hz, well
     // under the perceptual gap threshold). Tolerance keeps the wrap clean
     // even if timeupdate fires slightly past endSec.
+    //
+    // Loop-wrap MUST run even when document.hidden — it controls audio
+    // playback, not UI. Skipping it would let the loop play past endSec
+    // when CarPlay is foregrounded.
     if (p.masterPlaying && p.loopIdx != null) {
         var loopSeg = (p.segments || [])[p.loopIdx];
         if (loopSeg && typeof loopSeg.endSec === 'number' && typeof loopSeg.startSec === 'number') {
@@ -8466,14 +8533,22 @@ function _mtMaybeUpdateMasterPosition() {
             }
         }
     }
+
+    // CarPlay / iOS PWA stabilization (2026-05-29): when hidden, skip the
+    // seek-slider + time-label writes (the UI is invisible) and skip the
+    // segment-highlight call (which has its own hidden guard but the
+    // function-call still has overhead). Loop-wrap above already ran.
+    if (typeof document !== 'undefined' && document.hidden) {
+        if (window._mtDebugPlayback) console.log('[mt-debug] masterPosition skipped (hidden)');
+        return;
+    }
+
     var pct = (t / a0.duration) * 100;
     var seek = document.getElementById('mtMasterSeek');
     if (seek && document.activeElement !== seek) seek.value = pct;
     var label = document.getElementById('mtTimeLabel');
     if (label) label.textContent = _mtFmtTime(t) + ' / ' + _mtFmtTime(a0.duration);
     // Tier 1F — keep the active-segment highlight in sync with playback.
-    // Cheap (linear scan over ~50 segments); browsers fire timeupdate at
-    // 4-25 Hz so this runs plenty often without us touching every frame.
     if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
         _mtUpdateActiveSegmentHighlight();
     }
@@ -9116,17 +9191,30 @@ function _mtRenderCommentList() {
 }
 
 // Highlight the comment whose timestamp the playhead is currently passing.
-// Called once per second from the player's _timeTicker. Cheap — DOM query
-// once + class-toggle on at most 2 elements.
+// Called from the player's _timeTicker (500 ms; ~1 Hz when iOS-throttled
+// in CarPlay background). Stabilized 2026-05-29:
+//   - Hidden-aware: skips all DOM work when document.hidden.
+//   - Diff-based: only mutates DOM on transitions (not every tick).
+//   - Targeted: touches the previous + new active row only, not all rows.
+//   - Smooth scroll guarded by viewport intersection check.
 function _mtHighlightActiveComment() {
     var p = _mtState.player;
     if (!p) return;
+
+    // CarPlay / iOS PWA stabilization (2026-05-29).
+    if (typeof document !== 'undefined' && document.hidden) {
+        if (window._mtDebugPlayback) console.log('[mt-debug] commentHighlight skipped (hidden)');
+        return;
+    }
+
     var t = _mtCurrentPlayhead();
     var rows = document.querySelectorAll('.mt-comment-row');
     if (!rows.length) return;
+
     // Find the latest comment whose timestamp <= playhead within a ~3s window
-    // (so highlight feels "now" rather than "ago"). Earlier comments lose
-    // highlight; later ones don't get it yet.
+    // (so highlight feels "now" rather than "ago"). The scan over rows is
+    // cheap (no DOM mutation; just dataset reads); the DOM mutation below
+    // is what was expensive pre-refactor.
     var activeRow = null;
     var bestDelta = Infinity;
     rows.forEach(function(row) {
@@ -9137,26 +9225,49 @@ function _mtHighlightActiveComment() {
             activeRow = row;
         }
     });
-    rows.forEach(function(row) {
-        if (row === activeRow) {
-            if (!row.classList.contains('mt-comment-active')) {
-                row.classList.add('mt-comment-active');
-                row.style.background = 'rgba(99,102,241,0.10)';
-                row.style.borderLeft = '2px solid #a5b4fc';
-                row.style.paddingLeft = '8px';
-                // Scroll into view if not visible; only when player is playing
-                // (avoid scrolling away from where the user is reading).
-                if (p.masterPlaying) {
-                    try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
-                }
-            }
-        } else if (row.classList.contains('mt-comment-active')) {
-            row.classList.remove('mt-comment-active');
-            row.style.background = '';
-            row.style.borderLeft = '';
-            row.style.paddingLeft = '';
+
+    // Identity for diff: use the row's commentId if present, else the
+    // commentTime, else null. This survives full panel re-render — the
+    // cached row reference might dangle, but the id matches a fresh row.
+    var newId = activeRow
+        ? (activeRow.dataset.commentId || activeRow.dataset.commentTime || null)
+        : null;
+
+    if (newId === p._lastActiveCommentId) {
+        if (window._mtDebugPlayback) console.log('[mt-debug] commentHighlight noop');
+        return;
+    }
+
+    // Clear the previous active row (if any and still in DOM).
+    if (p._lastActiveCommentId != null) {
+        var prevSelector = '.mt-comment-row[data-comment-id="' + p._lastActiveCommentId + '"]'
+            + ', .mt-comment-row[data-comment-time="' + p._lastActiveCommentId + '"]';
+        var prevRow = null;
+        try { prevRow = document.querySelector(prevSelector); } catch (e) {}
+        if (prevRow) {
+            prevRow.classList.remove('mt-comment-active');
+            prevRow.style.background = '';
+            prevRow.style.borderLeft = '';
+            prevRow.style.paddingLeft = '';
         }
-    });
+    }
+
+    // Apply the new active row's styles.
+    if (activeRow) {
+        activeRow.classList.add('mt-comment-active');
+        activeRow.style.background = 'rgba(99,102,241,0.10)';
+        activeRow.style.borderLeft = '2px solid #a5b4fc';
+        activeRow.style.paddingLeft = '8px';
+        // Scroll into view only when playing AND row is off-viewport.
+        // document.hidden was short-circuited above; this guards the
+        // visible-but-already-in-view case.
+        if (p.masterPlaying && _mtRowIsOffViewport(activeRow)) {
+            try { activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+        }
+    }
+
+    p._lastActiveCommentId = newId;
+    if (window._mtDebugPlayback) console.log('[mt-debug] commentHighlight ->', newId);
 }
 
 function _mtCurrentPlayhead() {
