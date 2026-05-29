@@ -267,6 +267,179 @@ def clip_song(
             pass
 
 
+# ── Phase B (2026-05-29) — per-song stereo MP3 clip ────────────────
+#
+# Drew greenlit hybrid song-clip architecture 2026-05-29 with 192 kbps
+# locked after the Phase A spike. This function produces the single
+# mixed MP3 clip per confirmed song segment, alongside the existing
+# stem-zip output above.
+#
+# Source: the session's master MP3 (mix_default) — same source Drew
+# validated quality against in the Phase A spike. Sliced + re-encoded
+# at 192 kbps stereo. No remix from FLACs; the master IS the canonical
+# stereo mix and re-encoding the existing 320 kbps master down to
+# 192 kbps cascade is minimal (validated in spike).
+#
+# Output: multitrack/{slug}/{sid}/song-clips/{songSafe}-{hash}/clip-192k.mp3
+# Cache key: hash of (segmentId | startSec | endSec) so boundary edits
+# regenerate; same range = idempotent cache hit.
+@app.function(
+    image=image,
+    timeout=600,
+    cpu=2.0,
+    memory=2048,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def clip_song_to_mp3(
+    bandSlug: str,
+    sessionId: str,
+    startSec: float,
+    endSec: float,
+    songLabel: str,
+    sessionDate: str = "",
+    segmentId: str = "",
+    bitrate: int = 192,
+):
+    """Clip the master MP3 to [startSec, endSec) and re-encode at 192k stereo.
+
+    Source the master MP3 dynamically from R2 (handles filename variation
+    across rehearsals). ffmpeg slice + libmp3lame encode. Upload result
+    to R2. Return publicUrl.
+    """
+    import boto3
+
+    endpoint = os.environ["R2_ENDPOINT"]
+    access_key = os.environ["R2_ACCESS_KEY_ID"]
+    secret_key = os.environ["R2_SECRET_ACCESS_KEY"]
+    bucket = os.environ.get("R2_BUCKET", "groovelinx-stems")
+    public_base = os.environ.get("R2_PUBLIC_BASE", "").rstrip("/")
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name="auto",
+    )
+
+    duration = float(endSec) - float(startSec)
+    if duration <= 0 or duration > 60 * 60 * 2:
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"bad clip range: start={startSec} end={endSec} duration={duration}",
+        }
+
+    # Find the master MP3 dynamically — filename varies because of the
+    # ingest-date-drift behavior. List renders/mix_default/, pick the
+    # first .mp3 file.
+    prefix = f"multitrack/{bandSlug}/{sessionId}/renders/mix_default/"
+    paginator = s3.get_paginator("list_objects_v2")
+    master_key = None
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.lower().endswith(".mp3"):
+                master_key = key
+                break
+        if master_key:
+            break
+
+    if not master_key:
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"no master MP3 found under {prefix}",
+        }
+
+    # Stable output key includes range hash.
+    cache_input = f"{segmentId}|{startSec:.3f}-{endSec:.3f}|{bitrate}".encode("utf-8")
+    range_hash = hashlib.sha256(cache_input).hexdigest()[:8]
+    song_safe = _safe_slug(songLabel) or "song"
+    date_safe = _safe_slug(sessionDate) if sessionDate else ""
+    if date_safe:
+        clip_filename = f"{bandSlug}_{date_safe}_{song_safe}-{bitrate}k.mp3"
+    else:
+        clip_filename = f"{bandSlug}_{song_safe}-{bitrate}k.mp3"
+    output_key = (
+        f"multitrack/{bandSlug}/{sessionId}/song-clips/{song_safe}-{range_hash}/clip-{bitrate}k.mp3"
+    )
+
+    work_dir = tempfile.mkdtemp(prefix="gl_clip_mp3_")
+    local_master = os.path.join(work_dir, "master.mp3")
+    local_clip = os.path.join(work_dir, clip_filename)
+
+    try:
+        print(f"[song-clip-mp3] downloading master {master_key}")
+        s3.download_file(bucket, master_key, local_master)
+        master_size = os.path.getsize(local_master)
+        print(f"[song-clip-mp3] master downloaded ({master_size / 1024 / 1024:.1f} MB)")
+
+        # ffmpeg: -ss before -i for fast input seek, -t for duration,
+        # -c:a libmp3lame -b:a 192k for the bitrate Drew validated.
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", f"{float(startSec):.3f}",
+            "-i", local_master,
+            "-t", f"{duration:.3f}",
+            "-c:a", "libmp3lame",
+            "-b:a", f"{int(bitrate)}k",
+            "-ar", "44100",
+            "-ac", "2",
+            local_clip,
+        ]
+        print(f"[song-clip-mp3] ffmpeg-encode {bitrate}k: [{startSec:.1f}, {endSec:.1f})")
+        proc = subprocess.run(cmd, capture_output=True)
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", errors="replace")[:500]
+            return {
+                "success": False,
+                "status": "error",
+                "error": f"ffmpeg failed: {err}",
+            }
+        clip_size = os.path.getsize(local_clip)
+        print(f"[song-clip-mp3] clip built ({clip_size / 1024 / 1024:.1f} MB)")
+
+        s3.upload_file(
+            local_clip,
+            bucket,
+            output_key,
+            ExtraArgs={
+                "ContentType": "audio/mpeg",
+                "ContentDisposition": f'inline; filename="{clip_filename}"',
+            },
+        )
+        public_url = (
+            f"{public_base}/{output_key}" if public_base else None
+        )
+        print(f"[song-clip-mp3] uploaded. publicUrl={public_url}")
+
+        return {
+            "success": True,
+            "status": "done",
+            "bitrate": bitrate,
+            "songLabel": songLabel,
+            "songSafe": song_safe,
+            "clipFilename": clip_filename,
+            "startSec": startSec,
+            "endSec": endSec,
+            "durationSec": duration,
+            "masterSourceKey": master_key,
+            "masterSizeBytes": master_size,
+            "clipSizeBytes": clip_size,
+            "clipKey": output_key,
+            "publicUrl": public_url,
+            "bandSlug": bandSlug,
+            "sessionId": sessionId,
+            "segmentId": segmentId,
+        }
+    finally:
+        try:
+            shutil.rmtree(work_dir)
+        except Exception:
+            pass
+
+
 @app.function(
     image=image,
     timeout=120,
@@ -351,7 +524,71 @@ def clip_endpoint(item: dict):
             return {"success": False, "error": f"call_failed: {e}"}
         return result
 
+    # Phase B (2026-05-29) — song-mp3 actions (single-mp3 clip from master)
+    if action == "start_mp3":
+        band_slug = str(item.get("bandSlug", "")).strip()
+        session_id = str(item.get("sessionId", "")).strip()
+        song_label = str(item.get("songLabel", "")).strip()
+        session_date = str(item.get("sessionDate", "")).strip()
+        segment_id = str(item.get("segmentId", "")).strip()
+        try:
+            start_sec = float(item.get("startSec", 0))
+            end_sec = float(item.get("endSec", 0))
+            bitrate = int(item.get("bitrate", 192))
+        except Exception:
+            return {"success": False, "error": "startSec/endSec must be numbers; bitrate must be int"}
+        if not band_slug or not session_id:
+            return {"success": False, "error": "missing bandSlug or sessionId"}
+        if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", band_slug):
+            return {"success": False, "error": "bad_band_slug"}
+        if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", session_id):
+            return {"success": False, "error": "bad_session_id"}
+        if end_sec - start_sec <= 0.5 or end_sec - start_sec > 60 * 60 * 2:
+            return {"success": False, "error": "bad_clip_range"}
+        if bitrate not in (96, 128, 160, 192, 256, 320):
+            return {"success": False, "error": "bad_bitrate"}
+        try:
+            call = clip_song_to_mp3.spawn(
+                band_slug, session_id, start_sec, end_sec,
+                song_label or "song",
+                session_date,
+                segment_id,
+                bitrate,
+            )
+            return {
+                "success": True,
+                "call_id": call.object_id,
+                "bandSlug": band_slug,
+                "sessionId": session_id,
+                "songLabel": song_label,
+                "bitrate": bitrate,
+            }
+        except Exception as e:
+            return {"success": False, "error": f"spawn_failed: {e}"}
+
+    if action == "check_mp3":
+        # Same as check — Modal call_ids are universal across functions
+        # in this app, so the same check works. Kept separate action name
+        # for symmetry with start_mp3 and to allow future per-action
+        # response shaping.
+        call_id = item.get("call_id", "")
+        if not call_id:
+            return {"success": False, "error": "missing call_id"}
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+        except Exception as e:
+            return {"success": False, "error": f"bad_call_id: {e}"}
+        try:
+            result = call.get(timeout=0)
+        except modal.exception.OutputExpiredError:
+            return {"success": False, "error": "output_expired"}
+        except TimeoutError:
+            return {"success": True, "status": "processing"}
+        except Exception as e:
+            return {"success": False, "error": f"call_failed: {e}"}
+        return result
+
     return {
         "success": False,
-        "error": f"bad_action: {action!r} (expected 'start' or 'check')",
+        "error": f"bad_action: {action!r} (expected 'start', 'check', 'start_mp3', or 'check_mp3')",
     }
