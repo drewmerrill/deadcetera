@@ -393,6 +393,79 @@ orphan helpers, broken fallbacks.
     `02_GrooveLinx/notes/chatter_pass_2026_05_27.md`
   - **Status:** open
 
+- **Finding:** Segment `songId` can drift out of sync with `songTitle` /
+  `label` / `userKind`, producing wrong cross-session aggregation in any
+  feature keyed on songId. Surfaced in the 2026-05-29 Phase C v1 smoke
+  test: two 5/27 segments (`seg_064` + `seg_064_split_1779970356670`)
+  had `songId: jgb_after_midnight` while displaying "Franklin's Tower"
+  in the Review Mode row title and containing Franklin's Tower audio.
+  Likely cause: an early user override set songId, then a later title
+  edit changed the displayed name without updating songId. Phase C
+  Our Takes silently filed the Franklin's Tower audio under After
+  Midnight until Drew listened to a clip and flagged the mismatch. Any
+  feature aggregating by songId (Phase C, fingerprint corpus, song-DNA
+  history) inherits this fragility.
+  - **Why deferred:** Smoke-test cleanup repointed the two specific
+    segments via direct overlay write; root cause requires a sweep
+    audit + Tier 1E rule that title edits MUST refresh songId via
+    `GLStore.getSongIdByTitle` OR explicit clear-and-rebind. The Review
+    Mode rename flow is the right place to fix; touches
+    `_mtSegmentTitleSave` or similar. Out of scope for the Phase C
+    surface ship.
+  - **Trigger:** Next time we see Our Takes (or any songId-keyed
+    aggregation) show a take that audibly doesn't match the song
+    header. Also flag any explicit title-rename + reconfirm flow with
+    no songId rebind discovered in audit.
+  - **Discovered:** 2026-05-29 · empirical evidence in Phase C v1
+    smoke test (Drew + Claude); seg_064 + seg_064_split_1779970356670
+    in `rsess_mt_2026_05_27_pass1`. Cleanup applied in same session.
+  - **Status:** open
+
+- **Finding:** `_sdFmtDate(iso)` parses bare-date ISO strings
+  ("2026-05-27") as midnight UTC, then `toLocaleDateString` shifts to
+  local-timezone display, producing the previous calendar day for any
+  user west of UTC. Surfaced in 2026-05-29 Phase C v1 smoke test — 5/27
+  takes rendered as "May 26, 2026" in Our Takes rows. Cosmetic but
+  trust-eroding: a Take labeled with the wrong date is hard to trust.
+  - **Why deferred:** Two-line fix (`new Date(iso + 'T12:00:00')` or
+    string-slice the date portion) but the Phase C ship was scoped to
+    surface delivery, not date polish. Defer to next song-clips polish
+    pass.
+  - **Trigger:** Next time we touch `js/features/song-detail.js` Our
+    Takes rendering, OR the first time a user mentions the date
+    looking off.
+  - **Discovered:** 2026-05-29 · Phase C v1 smoke test.
+  - **Status:** open
+
+- **Finding:** Our Takes card title badge reads "N rehearsals" via raw
+  `takes.length` count, but should reflect the number of distinct
+  `sessionId`s. Two takes from the same rehearsal render as "2
+  rehearsals" when it's actually one rehearsal with two takes. Right
+  copy is probably "1 rehearsal · 2 takes" or just "2 takes".
+  - **Why deferred:** ~5 LOC fix (dedupe by sessionId for the count, or
+    surface "N takes across M rehearsals" wording). Deferred along with
+    the date drift finding above — both are Phase C v1 cosmetic polish.
+  - **Trigger:** Next Phase C polish pass, or first user comment.
+  - **Discovered:** 2026-05-29 · Phase C v1 smoke test.
+  - **Status:** open
+
+- **Finding:** Render picker modal (`Tools → All renders for this
+  session`) shows TWO rows marked "▶ NOW PLAYING" simultaneously when
+  multiple renders share a URL prefix or filename pattern. Also
+  includes Phase A spike test clips (`spike-phase-a/sugaree-192k.mp3`
+  + `sugaree-256k.mp3`) as if they were renders. Cosmetic but
+  confusing for first-time users picking a render.
+  - **Why deferred:** The render picker's "NOW PLAYING" badge logic
+    needs tightening (exact-URL match, not loose prefix match), and
+    the picker's list query needs to filter out non-render paths
+    (anything under `song-clips/` or `spike-*` prefixes). Out of scope
+    for Phase C.
+  - **Trigger:** Next time we touch the render picker UI, or the next
+    user complaint about render disambiguation.
+  - **Discovered:** 2026-05-29 · Phase C v1 smoke test (Drew flagged
+    visually).
+  - **Status:** open
+
 ## 2. UX Coherence Debt
 
 Inconsistent terminology, duplicate interaction models, source
