@@ -1,9 +1,34 @@
 # Phase C — "Our Takes" Surface Spec
 
-**Status:** DRAFT — awaiting Drew greenlight
+**Status:** APPROVED with required correction (Drew 2026-05-29) — ready for implementation
 **Author:** Claude · 2026-05-29
 **Upstream:** [`song_clip_architecture_evaluation_2026-05-29.md`](song_clip_architecture_evaluation_2026-05-29.md) (greenlit Hybrid Model C, Phase A 192 kbps locked, Phase B endpoint live)
 **Constraint:** Pierce-synthesis frame — *"the app has many chandeliers but still needs a better front door."* Phase C MUST widen Drew's existing rehearsal-review flow, not add a fifth chandelier.
+
+---
+
+## Product principle — A take is a segment
+
+**A take is a segment. A song can have many takes. A rehearsal can contain more than one take of the same song. Do not flatten that reality for implementation convenience.**
+
+This principle drives the v1 data model — storage is **segmentId-keyed**, not songId-keyed. Multiple confirmed takes of Sugaree in the same rehearsal produce multiple clip records that all surface in the song's Our Takes view. Aggregation by songId is a **query**, not a storage shape. Partials, second attempts, and false starts that become meaningful are first-class — they're not noise to be deduped, they're rehearsal truth.
+
+---
+
+## Drew greenlight + decisions (2026-05-29)
+
+The dual-home recommendation is **APPROVED**. The data model is **REQUIRED CORRECTED**: segmentId-keyed, not songId-keyed.
+
+| Decision point | Resolution |
+|---|---|
+| Where it lives | Dual-home: inline 🎚 Audition in Review Mode + "Our Takes" in Song DNA drawer |
+| Section header | "Our Takes" (band-native, not technical) |
+| Player model | Inline player. No route-to-fullscreen for v1. |
+| Unconfirmed preview | NO. Human confirmation IS the materialization gate. One playback path only. |
+| Storage key | `song_clips/{segmentId}` — preserves multiple-takes-per-rehearsal |
+| Materialization | On-confirm only (kind=music + reviewState=confirmed + isBetween=false). No lazy. No eager. |
+| Sort in Our Takes | Favorites first → date descending → within same rehearsal: startSec ascending |
+| Take labeling | Date · Take N (if multi-take in same rehearsal) · Full/Partial · duration · confidence · Audition |
 
 ---
 
@@ -44,19 +69,27 @@ Forcing both into one surface either adds a session/song toggle (cognitive load)
 Each "take" row contains:
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│ ⭐  📅 2026-05-27   ⏱ 6m 12s   ✓ 0.94 conf   [🎵 Audition]  ⋮ │
-└────────────────────────────────────────────────────────────────┘
+Single-take-per-rehearsal song (no take number):
+┌─────────────────────────────────────────────────────────────────────┐
+│ ⭐  📅 May 27   ⏱ 6m 12s   ◐ Full   ✓ 0.94   [🎵 Audition]   ⋮ │
+└─────────────────────────────────────────────────────────────────────┘
+
+Multi-take-per-rehearsal song (take number surfaced):
+┌─────────────────────────────────────────────────────────────────────┐
+│ ⭐  📅 May 27 · Take 1   ⏱ 6m 12s   ◐ Full   ✓ 0.94   [🎵 Audition]   ⋮ │
+│      📅 May 27 · Take 2   ⏱ 2m 04s   ◑ Partial   ✓ 0.78   [🎵 Audition]   ⋮ │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-- **⭐ Favorite** — toggle, sticks favorites at top of the list
-- **📅 Date** — rehearsal date, tappable → deep-link into that session's Review Mode focused on this song
-- **⏱ Duration** — musician-language ("6m 12s"), not "372 s"
-- **✓ Confidence** — analyzer confidence + setlist match badge (color: green ≥0.9, amber 0.7–0.9, grey <0.7)
-- **🎵 Audition** — primary action; tap → inline player starts streaming the 192 kbps MP3 in place
+- **⭐ Favorite** — toggle, per-clip (segmentId-keyed); favoriting Take 1 of Sugaree does not favorite Take 2. Favorites bubble to top of the list.
+- **📅 Date + Take N** — rehearsal date; if more than one clip exists for `(sessionId, songId)`, append `· Take N` (N = chronological index within session by startSec). Tappable → deep-link into that session's Review Mode focused on this segment.
+- **⏱ Duration** — musician-language ("6m 12s"), not "372 s".
+- **◐ Full / ◑ Partial** — derived from `durationSec >= 180` (subject to refinement per open question below). Visual icon distinguishes at-a-glance.
+- **✓ Confidence** — analyzer confidence badge (color: green ≥0.9, amber 0.7–0.9, grey <0.7). No setlist-match decoration in v1.
+- **🎵 Audition** — primary action; tap → inline player starts streaming the 192 kbps MP3 in place. Only one player active at a time (tapping a new row closes the previous).
 - **⋮ Menu** — Download · Share link (Phase D placeholder, disabled in C) · Open in Review Mode
 
-**Ordering:** Favorites first, then chronological reverse (newest rehearsal first).
+**Ordering:** Favorites first → date descending → within same rehearsal: startSec ascending. Take 1 always renders above Take 2 of the same rehearsal/song; rehearsal-X-Take-1 (newer) renders above rehearsal-Y-Take-1 (older).
 
 **Empty state:** *"No takes yet — confirm song segments in Review Mode to materialize them here."* Clear teach-the-system messaging.
 
@@ -70,13 +103,13 @@ multitrack/{slug}/{sid}/song-clips/{songSafe}-{boundaryHash}.mp3
 ```
 Per upstream spec. `songSafe` = slug-safe songId. `boundaryHash` = sha256(startSec + endSec + segmentId) truncated to 8 chars. Boundary hash means re-confirming after edit produces a different filename, so cache invalidation is automatic.
 
-**Firebase (per-clip metadata, session-anchored):**
+**Firebase (per-clip metadata, segmentId-keyed, session-anchored):**
 ```
-bands/{slug}/rehearsal_sessions/{sid}/song_clips/{songId}
+bands/{slug}/rehearsal_sessions/{sid}/song_clips/{segmentId}
   {
+    segmentId: "seg_068_split_",
     songId: "sugaree",
     songTitle: "Sugaree",
-    segmentId: "seg_068_split_",
     startSec: 2612.4,
     endSec: 3515.7,
     durationSec: 903.3,
@@ -84,41 +117,65 @@ bands/{slug}/rehearsal_sessions/{sid}/song_clips/{songId}
     r2Key: "multitrack/deadcetera/rsess_mt_2026_05_27_pass1/song-clips/sugaree-a1b2c3d4.mp3",
     bitrate: 192,
     confidence: 0.94,
+    reviewState: "confirmed",
+    humanEdited: false,
     generatedAt: "2026-05-29T13:42:00Z",
     generatedBy: "drew"
   }
 ```
-Lives under the session because each clip belongs to a single rehearsal. One songId per session — if a song is played twice (rare) it gets distinguished via boundaryHash collision handling (later).
 
-**Firebase (per-song favorite/UI state, song-anchored):**
+**Why segmentId, not songId** (Drew correction 2026-05-29): a take is a segment. If Sugaree is played twice in the same rehearsal — full take + partial second attempt later, or two complete passes — both confirmed segments produce clip records. songId-keyed storage would silently drop the second one. That violates Pierce's "preserve messy truth" principle. Multiple takes per rehearsal is common enough at Deadcetera that silent skip is unacceptable.
+
+**Aggregation by songId is a query, not a storage shape.** See cross-session query below.
+
+**Firebase (per-clip favorite/UI state, segmentId-keyed):**
 ```
-bands/{slug}/song_clip_state_v1/{songId}/{sid}
+bands/{slug}/song_clip_state_v1/{segmentId}
   { favorite: true, lastPlayedAt: "...", playCount: 3 }
 ```
-Separate from the metadata so favoriting doesn't race against clip generation.
+Separate from the metadata so favoriting doesn't race against clip generation. Keyed on segmentId so each take has independent favorite state (favoriting Take 1 doesn't favorite Take 2).
 
-**Cross-session "Our Takes" query:**
+**Cross-session "Our Takes" query (aggregates by songId across all segmentId-keyed clips):**
 
 ```js
-// Pseudo — implementation in worker or client.
+// Pseudo — implementation in GLStore.
 async function ourTakesFor(songId) {
   const sessions = await db.ref(bandPath('rehearsal_sessions'))
     .orderByChild('type').equalTo('multitrack').once('value');
-  const clips = [];
+  const takes = [];
   sessions.forEach(s => {
-    const c = s.val().song_clips?.[songId];
-    if (c) clips.push({...c, sessionId: s.key, sessionDate: s.val().date});
+    const sessionClips = s.val().song_clips || {};
+    // segmentId-keyed — iterate all clips in this session, filter to this songId
+    Object.entries(sessionClips).forEach(([segmentId, clip]) => {
+      if (clip.songId === songId) {
+        takes.push({
+          ...clip,
+          sessionId: s.key,
+          sessionDate: s.val().date,
+        });
+      }
+    });
   });
-  const state = await db.ref(bandPath('song_clip_state_v1/' + songId)).once('value');
-  return clips.map(c => ({
-    ...c,
-    favorite: state.val()?.[c.sessionId]?.favorite || false,
-    lastPlayedAt: state.val()?.[c.sessionId]?.lastPlayedAt,
-  })).sort(byFavoriteThenDateDesc);
+  // Per-clip favorite state, segmentId-keyed
+  const stateSnap = await db.ref(bandPath('song_clip_state_v1')).once('value');
+  const state = stateSnap.val() || {};
+  return takes
+    .map(t => ({
+      ...t,
+      favorite: state[t.segmentId]?.favorite || false,
+      lastPlayedAt: state[t.segmentId]?.lastPlayedAt,
+    }))
+    .sort(byFavoriteThenDateDescThenStartAsc);
 }
 ```
 
 Multitrack sessions only (per `type === 'multitrack'` filter). Non-multitrack rehearsals (audio-only or future formats) are out of v1 scope.
+
+**Sort rule:** favorites first → sessionDate descending → within same rehearsal: startSec ascending. This puts Take 1 above Take 2 of the same song in the same rehearsal (chronological within-session), but rehearsal-X-Take-1 above rehearsal-Y-Take-1 when X is newer than Y.
+
+**Take number derivation:** within the result set, for each clip count how many other clips share the same `(sessionId, songId)` and have a `startSec < clip.startSec`. That's the take's 0-indexed position; +1 for display ("Take 1", "Take 2"). If only one clip exists for `(sessionId, songId)`, omit the take label entirely.
+
+**Full / Partial derivation:** heuristic for v1 — `durationSec >= 180` → "Full", else "Partial". This is a derived field, not stored. The 180s (3-minute) threshold is a starting point; if real-world Deadcetera data shows the median song is far from this we can recalibrate per-band later. Optional refinement: if `confidence < 0.7`, label "Partial" regardless of duration (low-confidence segments usually represent rough takes or false starts that gained meaning). **Open question for Drew below.**
 
 ---
 
@@ -130,11 +187,11 @@ What shipped today (commits `3db3fd86` → `fe9f3eb8`) was the **Modal endpoint 
 
 1. In `js/features/multitrack-rehearsal.js` `_mtConfirmSegment` (or wherever ✓ Confirm fires): after writing `reviewState: 'confirmed'` to `multitrackSegments/{segId}`, ALSO fire a clip job if `kind === 'music'` and `isBetween === false` (per upstream Q3 — only music-confirmed segments get clips, not chatter).
 2. The clip job: POST to `/multitrack/song-mp3/start` with `{bandSlug, sessionId, segmentId, songId, songTitle, startSec, endSec}`. Capture call_id. Poll `/check` every 5s until done.
-3. On done: write the `song_clips/{songId}` metadata to Firebase.
+3. On done: write the `song_clips/{segmentId}` metadata to Firebase (segmentId-keyed per the corrected data model).
 
 **Trigger discipline:** Only `kind: 'music'` + `reviewState: 'confirmed'` + `isBetween: false` per upstream Q3 — don't clip chatter or between-song segments. Setting confidence threshold is left to the analyzer; the user's ✓ Confirm is the human gate.
 
-**Idempotency:** If a clip metadata row already exists with matching boundaryHash, skip the job. If a clip exists with different boundaryHash (means user edited boundaries since last confirm), generate a new clip and leave the old one (Phase E cleanup sweeps later).
+**Idempotency:** Idempotency is on **(segmentId, boundaryHash)** — if a clip exists for this segmentId with matching boundaryHash, skip the job. If a clip exists for this segmentId with a different boundaryHash (means user edited boundaries since last confirm), generate a new clip and replace the old metadata row + leave the old R2 object (Phase E cleanup sweeps later). DIFFERENT segments confirmed for the same songId in the same session each get their own clip — that's the multi-take-per-rehearsal case the data model correction enables.
 
 ---
 
@@ -144,7 +201,7 @@ What shipped today (commits `3db3fd86` → `fe9f3eb8`) was the **Modal endpoint 
 
 **Location:** `js/features/multitrack-rehearsal.js` `_mtRenderSegmentsPanel` segment-row template.
 
-**Behavior:** For any segment with `kind: 'music'` AND a `song_clips/{songId}` entry exists in Firebase for the session, render a small audition button next to the existing ✓ Confirm. Tap → inline mini-player opens within the row, streams the R2 MP3.
+**Behavior:** For any segment with `kind: 'music'` AND a `song_clips/{segmentId}` entry exists in Firebase for the session (matched directly on this segment's ID, not by songId — every confirmed take has its own clip record), render a small audition button next to the existing ✓ Confirm. Tap → inline mini-player opens within the row, streams the R2 MP3.
 
 **Empty state for unconfirmed segments:** Show greyed-out "🎚 Confirm to audition" hint that links to the Confirm action.
 
@@ -195,35 +252,43 @@ What shipped today (commits `3db3fd86` → `fe9f3eb8`) was the **Modal endpoint 
 - ❌ Phase F per-song Isolate Mode (separate ship)
 - ❌ Chatter transcript sidecar on takes (deferred until analyzer speech-classifier finding lands)
 - ❌ `songAssignmentGuess` / `speakerCandidate` autotags surfaced in UI (noisy; per `feedback_ground_truth_over_theater` don't decorate noise as confidence)
-- ❌ Multi-take-per-rehearsal (if a song is played twice in one rehearsal, only the first confirmed take materializes; collision-handling deferred)
 - ❌ Library-card-row badge (rejected per Pierce-synthesis front-door discipline)
 
----
-
-## Open questions for Drew
-
-1. **Dual-home recommendation vs single-home (Song DNA drawer only)?** The dual-home pattern adds ~30 LOC in Review Mode for inline audition. Single-home is leaner but forces context-switch out of Review Mode to hear the song just confirmed. **Default: dual-home.**
-
-2. **Section header wording in Song DNA drawer?** "Our Takes" (band-camera) vs "Recordings" (literal) vs "Takes" (terse) vs "Auditions" (technical). **Default: "Our Takes"** — matches the upstream spec and Pierce-frame language.
-
-3. **Inline player vs route-to-fullscreen?** Inline (per spec above) is faster + lower-friction. Fullscreen (deep-link into a dedicated player view) is more shareable + more screen real estate. **Default: inline.** Phase D share links handle the shareable case better.
-
-4. **Should the audition button appear on unconfirmed music segments as a "preview" gated by the master-MP3 seek (current behavior)?** This would give pre-confirm preview without materializing a clip. ~20 LOC additional, but adds two playback paths (clip vs master-seek) that need disambiguation in the UI. **Default: no — audition is post-confirm only.** Keep current master-seek behavior unchanged for unconfirmed segments.
-
-5. **One-take-per-song-per-rehearsal limit acceptable for v1?** If Deadcetera plays Sugaree twice in one rehearsal (rare but possible), only the first ✓ Confirmed take gets a clip; the second silently skips. Real-world friction = uncertain. **Default: accept v1 limit, file as deferred.**
+**Multi-take-per-rehearsal IS supported in v1** (Drew correction 2026-05-29). Storage is segmentId-keyed; aggregation by songId is a query. Multiple confirmed takes of the same song in the same rehearsal each get their own clip and surface as separate rows.
 
 ---
 
-## Implementation order (if greenlit, single session)
+## Decisions resolved by Drew (2026-05-29)
 
-1. Phase B completion — on-confirm wiring (~50 LOC, `multitrack-rehearsal.js`)
-2. Storage helpers in `groovelinx_store.js` (~30 LOC)
-3. Deliverable 1 — inline audition affordance (~30 LOC)
-4. Deliverable 2 — Song DNA drawer "Our Takes" section (~200 LOC)
-5. Deliverable 3 — deep-link routing for date-tappable (~20 LOC)
-6. Manual smoke test on 5/27 session: confirm Sugaree → verify clip job → audition inline in Review Mode → open Song DNA drawer for Sugaree → verify it appears in Our Takes → tap date → verify deep-link to Review Mode
+| # | Question | Drew's call |
+|---|---|---|
+| 1 | Dual-home vs single-home | **Dual-home APPROVED.** Inline in Review Mode (session) + Our Takes in Song DNA (cross-session). |
+| 2 | Section header wording | **"Our Takes"** — band-native, not technical. |
+| 3 | Inline player vs fullscreen | **Inline.** No route-to-fullscreen for v1. |
+| 4 | Unconfirmed preview | **NO** — human confirmation IS the materialization gate. One playback path only. |
+| 5 | Multi-take-per-rehearsal | **SUPPORTED via segmentId-keyed storage** (Drew correction). The original songId-keyed proposal would have silently dropped second takes; that's unacceptable. |
 
-**Total estimate:** ~330 LOC. Single focused session. One PR. Cache-bust the deploy per `/glx-deploy` ritual.
+## Remaining open questions
+
+1. **Full / Partial derivation rule.** v1 default: `durationSec >= 180` → "Full", else "Partial". 180s = 3-min threshold. Optional refinement: `confidence < 0.7` → "Partial" regardless of duration. **Open: stick with duration-only, or layer in the confidence override?** Conservative default → start duration-only, observe real-world labeling, refine in a later session if signal-to-noise is poor.
+
+2. **Take-number stability after segment edit.** If Drew edits segment boundaries on Take 2 (split, merge, shift) after Take 2 was already confirmed, Take 2's numbering can shift (if the edit reorders startSec, e.g.). The take number is derived at query time so it auto-updates — but the row's "Take N" label may change in front of the user. **Open: acceptable, or do we freeze take number at first-confirm time?** Conservative default → derive at query time, accept the auto-update. Real-world friction = uncertain.
+
+3. **Cross-band visibility.** v1 = single-band per the existing R2 + Firebase isolation model. **Open: do we ever want bands to publish clips to other bands?** Out of scope for now, but worth noting if a multi-band beta surfaces this need.
+
+---
+
+## Implementation order (Drew-approved sequence, 2026-05-29)
+
+1. **Spec correction** — switch storage model from songId-keyed to segmentId-keyed throughout (this commit).
+2. **Phase B completion** — on-confirm wiring in `multitrack-rehearsal.js` (~50 LOC). Triggers clip job + writes `song_clips/{segmentId}` metadata.
+3. **GLStore helpers** — `getSongClipsForSession(sid)`, `getSongClipsForSong(songId)` (cross-session aggregation), `toggleClipFavorite(segmentId)`, take-number derivation, Full/Partial derivation. ~80 LOC.
+4. **Review Mode inline 🎚 Audition** — segment-row affordance + inline player using existing GLPlayerEngine. ~30 LOC.
+5. **Song DNA → Our Takes section** — collapsible section, take row template, sort + grouping rules. ~200 LOC.
+6. **Multi-take smoke test** — find a song in existing 5/27 or earlier sessions that was played 2+ times. Confirm both segments. Verify both clips appear separately in Our Takes with correct Take 1 / Take 2 labeling (chronological within session by startSec). If no real-world multi-take exists yet, manually split an existing long Sugaree confirm into two segments and re-confirm to simulate.
+7. **Deep-link routing for date-tappable** — `?session=<sid>&segment=<segmentId>` so Our Takes can jump to Review Mode focused on the right take. ~20 LOC.
+
+**Total estimate:** ~380 LOC. Single focused session. One PR. Cache-bust the deploy per `/glx-deploy` ritual.
 
 ---
 
