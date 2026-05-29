@@ -71,6 +71,70 @@ The trust-layer rule applies to FUTURE bugs as they're filed. Re-classifying old
 
 ## Open
 
+### Bug #28 — Feedback page has NO close affordance + header obscured by iOS status bar (TRUST-LAYER HIGH — user stuck, no exit)
+
+**Build first observed:** `20260529-222143` (current).
+**Reporter:** Drew real-device iPhone session 2026-05-29.
+**Surface:** Feedback page (Pierce's filed bugs/features list).
+
+**Symptom:** User opens Feedback page → page title "Feedback &" is cut off at the top by the iOS status bar (battery / signal indicators overlap the heading). No visible ✕ / Back / Done affordance anywhere on the page. **User cannot escape the page** except via the bottom tab bar (if even visible) or a hard browser-back gesture. Loop confirmed: header truncation hides the title; absence of close affordance hides the exit.
+
+**Why trust-layer:** Per the standing triage rule, bugs that OBSCURE data OR BLOCK the user from leaving a state are trust-layer HIGH regardless of LOC. A modal-feeling page with no exit is the canonical example. The user does not know how to return to the rest of the app.
+
+**Root cause hypothesis:** Two distinct issues stacked at the same surface:
+- (a) Page wrapper missing `padding-top: env(safe-area-inset-top)` or equivalent, so status bar overlaps content.
+- (b) Page-level chrome (close button / back button) was either never present on the Feedback page OR is being hidden by another rule (e.g. mobile chrome suppression for some other mode bleeding over).
+
+**Evidence:** Drew screenshot 2026-05-29 — Feedback page on iPhone showing status bar overlapping "Feedback &" header, list of pierce-tagged bugs below, no visible close button.
+
+**Fix direction (when greenlit):**
+- Add safe-area-top padding to the Feedback page chrome.
+- Restore close affordance (✕ in header OR back arrow OR rely on bottom tab nav being visible).
+- Verify bottom tab bar IS visible on Feedback page (per the F-018 RETRACTED finding, bottom tabs should be present on iPhone — if hidden specifically on Feedback, that's a second bug).
+
+---
+
+### Bug #29 — Review Mode "Tools ▾" dropdown menu items clipped at right viewport edge on iPhone (MEDIUM — feature-obscuring)
+
+**Build first observed:** `20260529-222143` (current).
+**Reporter:** Drew real-device iPhone session 2026-05-29.
+**Surface:** Review Mode multitrack header, "Tools ▾" dropdown.
+
+**Symptom:** User taps "Tools ▾" in Review Mode → dropdown opens to the right of the button. On iPhone viewport, the right edges of every menu item are cut off — visible labels read "Mix in dark levels", "Export Mix — down", "WAV / FLAC", "Text band — share o", "SMS", "Isolate stems — per-", "Download stems —", "Edit date + venue". User cannot tell what some options actually do because the full label is clipped.
+
+**Why medium and not high:** does not lose data, does not block escape — degrades feature legibility. Per the triage rule, feature-obscuring bugs that don't compromise trust at the data layer are MEDIUM regardless of LOC.
+
+**Root cause hypothesis:** Dropdown positioned with `left: <button.x>` or default left-aligned to its trigger. On a 320–390px-wide iPhone viewport, the dropdown's intrinsic width pushes its right edge past `100vw`. Need either `right: 0` anchoring (right-align to trigger) OR viewport-aware repositioning when dropdown would overflow the right edge.
+
+**Evidence:** Drew screenshot 2026-05-29 — Review Mode with Tools dropdown open, every menu item's text clipped roughly 50–80px from the right.
+
+**Fix direction (when greenlit):**
+- Tools dropdown CSS: switch from left-anchored to right-anchored on narrow viewports (`@media (max-width: 480px)` or smaller), OR set `right: 12px; left: auto` on the dropdown container.
+- Alternative: convert dropdown to a bottom-sheet pattern on mobile (consistent with how other mobile menus surface).
+
+---
+
+### Bug #30 — Rehearsal page top content obscured by iOS status bar on iPhone (MEDIUM — content-obscuring)
+
+**Build first observed:** `20260529-222143` (current).
+**Reporter:** Drew real-device iPhone session 2026-05-29.
+**Surface:** Rehearsal page top area.
+
+**Symptom:** User navigates to Rehearsal page on iPhone → top of the visible viewing area is overlapped by the iOS status bar (4:48 time, signal, battery, 96% indicators). The row immediately below the status bar — appears to be a section header / "Tonight's Rehearsal" framing OR the page-title row — is partially under the status bar. Content below ("Run Southern Roots Tavern", "PLAN CHANGE HISTORY (5)", etc.) renders normally.
+
+**Why medium and not high:** does not lose data, does not block escape — degrades top-of-page legibility. Symmetric in cause to Bug #28 (Feedback page) but the consequence is milder because the page still has clear exits via bottom tabs and other inline affordances.
+
+**Root cause hypothesis:** Rehearsal page top wrapper missing safe-area-top padding (same shape as Bug #28). Likely a global page-chrome concern: any page that renders content directly under the body root without inheriting safe-area padding will exhibit this on notched iPhones / Dynamic Island devices. Worth a sweep — there may be additional pages with the same shape that haven't been reported yet.
+
+**Evidence:** Drew screenshot 2026-05-29 — Rehearsal page with iOS status bar overlapping the section header above "Run Southern Roots Tavern".
+
+**Fix direction (when greenlit):**
+- Page-level chrome wrapper should include `padding-top: env(safe-area-inset-top)` at minimum, or the equivalent ChromeHeader component.
+- Sweep all pages, not just Rehearsal — the same root cause likely affects multiple surfaces.
+- Verify the fix on iPhone with Dynamic Island specifically (status bar is taller).
+
+---
+
 ### Bug #20 — Mobile contextual composer Save button below the fold on default open (HIGH — ✅ RESOLVED 2026-05-26 build `20260526-102503` commit `fd347556`)
 
 **RESOLUTION:** `_mtMobileToggleNote` now tracks `opening` boolean and scrolls the composer container's bottom into view via `scrollIntoView({behavior:'smooth', block:'end'})` after the 80ms render delay. Fallback to textarea reference + non-smooth `scrollIntoView(false)`. Post-fix verification: Save button rendered at `top=680 / bottom=710` in 844px iPhone viewport = fully visible on first open. Screenshot: `uat/screenshots/2026-05-26/mobile-pass2.5/20260526-102503/02-composer-scrolled-into-view.png`.
