@@ -60,6 +60,12 @@ image = (
         "boto3==1.34.0",
         "fastapi[standard]",
         "faster-whisper==1.0.3",
+        # requests is required at runtime by faster-whisper's model
+        # download path (CTranslate2 hits HuggingFace via legacy paths
+        # that import `requests` rather than the modern `httpx`).
+        # Without this, transcribe fails at runtime with
+        # `ModuleNotFoundError: No module named 'requests'`.
+        "requests>=2.31.0",
     ])
 )
 
