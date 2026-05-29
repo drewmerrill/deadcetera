@@ -335,6 +335,64 @@ orphan helpers, broken fallbacks.
   - **Discovered:** 2026-05-25 · 87ec930b (Phase 4B+4C UAT)
   - **Status:** open
 
+- **Finding:** Segmentation analyzer has no `speech`/`chatter` category —
+  produces only `music` and `silence`. Empirically validated on 5/27
+  rehearsal: 20 of 31 segments labeled `silence` (>10s) contained real
+  conversational chatter (count-offs, signal coordination, setlist
+  debates, gig-prep, sound-engineering talk, band identity). Only 11
+  were genuine silence. This means the chatter-transcription Whisper pass
+  burns ~35% of GPU cycles on truly silent audio, and meaningful
+  rehearsal speech is hidden behind the `silence` label everywhere else
+  in the app (Review Mode, Segments panel, song-DNA neighborhoods).
+  - **Why deferred:** Chatter-transcription v1 ships with a duration-filtered
+    silence workaround (>10s threshold + Whisper hallucination filter
+    on "Thank you." boilerplate). Adding a third label requires Modal-side
+    energy/spectral-features re-classification and downstream UI work
+    in `_mtKindMeta`, `_mtRenderSegmentsPanel`, Review Mode kind-pickers.
+  - **Trigger:** When we touch `services/rehearsal-segment/segment.py`
+    next, OR when a chatter consumer (Notes panel, Song-DNA timeline)
+    starts needing chatter-localized to specific songs and the duration
+    workaround stops being good enough.
+  - **Discovered:** 2026-05-29 · empirical evidence in
+    `02_GrooveLinx/notes/chatter_pass_2026_05_27.md`
+  - **Status:** open
+
+- **Finding:** Chatter transcription `songAssignmentGuess` produces
+  noisy false positives via single-word matching. Validated on 5/27:
+  correctly tags rare song-name words ("Possum" → Possum), but matches
+  common words to song titles ("nothing" → Nothing, "down" → Down,
+  "she" → She, "fee" from "feel" → Fee). Of 20 substantive turns,
+  ~6 song-guesses look correct, ~10 look like false positives.
+  - **Why deferred:** Heuristic is good enough for v1 surfacing — the
+    verbatim transcript is what musicians actually consume, and the
+    auto-tag is a soft hint, not a hard assignment. Hardening it
+    requires a stop-word list + TF-IDF rarity weighting against the
+    band's catalog, plus a confidence threshold the UI can gate on.
+  - **Trigger:** When the chatter pass starts driving a feature where
+    a wrong song attribution materially confuses a musician (e.g.,
+    "comments attached to song X" pulls in random unrelated chatter).
+  - **Discovered:** 2026-05-29 · empirical evidence in
+    `02_GrooveLinx/notes/chatter_pass_2026_05_27.md`
+  - **Status:** open
+
+- **Finding:** Chatter transcription `speakerCandidate` works on direct
+  self-identification (seg_073 transcript "I'm Pierce Hale, founder and
+  owner" → speaker=pierce) but is a low-confidence guess everywhere
+  else. Several segments tagged speaker=brian/drew/pierce without any
+  in-transcript evidence pointing to them.
+  - **Why deferred:** Real speaker attribution needs proper diarization
+    (pyannote.audio or X-Live channel-correlation against vocal mic
+    activity), neither of which is in v1 scope. The current heuristic
+    is opportunistic — when it's right it's helpful; when it's wrong
+    it's plausibly ignorable.
+  - **Trigger:** When chatter UI needs to filter "show me Brian's
+    coordination signals" — at that point the false-positive rate
+    becomes user-visible and the heuristic must either gate on
+    confidence or be replaced by real diarization.
+  - **Discovered:** 2026-05-29 · empirical evidence in
+    `02_GrooveLinx/notes/chatter_pass_2026_05_27.md`
+  - **Status:** open
+
 ## 2. UX Coherence Debt
 
 Inconsistent terminology, duplicate interaction models, source
