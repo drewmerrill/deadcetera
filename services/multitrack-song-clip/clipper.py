@@ -54,17 +54,24 @@ app = modal.App("groovelinx-multitrack-song-clip")
 # chatter transcription). CPU functions share the image without using
 # GPU; the transcribe_segment function requests GPU per-call.
 image = (
-    modal.Image.debian_slim(python_version="3.11")
+    # Switched to nvidia/cuda base 2026-05-29 — debian_slim doesn't ship
+    # CUDA runtime libraries. CTranslate2 (faster-whisper's backend) calls
+    # libcublas.so.12 directly on GPU; without the runtime image we get
+    # "Library libcublas.so.12 is not found or cannot be loaded" at the
+    # WhisperModel(device='cuda') step.
+    #
+    # cudnn-runtime variant includes libcudart + libcublas + libcudnn,
+    # which is exactly what CTranslate2 4.x needs for whisper-large-v3.
+    # `add_python="3.11"` installs Python via Modal's helper.
+    modal.Image.from_registry(
+        "nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04",
+        add_python="3.11",
+    )
     .apt_install("ffmpeg")
     .pip_install([
         "boto3==1.34.0",
         "fastapi[standard]",
         "faster-whisper==1.0.3",
-        # requests is required at runtime by faster-whisper's model
-        # download path (CTranslate2 hits HuggingFace via legacy paths
-        # that import `requests` rather than the modern `httpx`).
-        # Without this, transcribe fails at runtime with
-        # `ModuleNotFoundError: No module named 'requests'`.
         "requests>=2.31.0",
     ])
 )
