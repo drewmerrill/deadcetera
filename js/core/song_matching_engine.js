@@ -342,13 +342,21 @@ window.SongMatchingEngine = (function() {
 
   /**
    * Resolve songId for a title (helper for callers that only have title).
+   * Per Canonical Song Identity spec, delegates to GLStore.resolveSongIdByTitle
+   * (the single canonical resolver). Synthetic 'title_<slug>' fallback is
+   * preserved ONLY for internal embedding-store keys — never for
+   * segment.songId writes (those would create orphan ids the scanner flags).
    */
   function _resolveSongId(title) {
     if (!title) return null;
-    var allSongs = (typeof window.allSongs !== 'undefined') ? window.allSongs : [];
-    var lower = title.toLowerCase();
-    var song = allSongs.find(function(s) { return s.title.toLowerCase() === lower; });
-    return song ? song.songId : ('title_' + lower.replace(/\s+/g, '_'));
+    if (typeof GLStore !== 'undefined' && GLStore.resolveSongIdByTitle) {
+      var sid = GLStore.resolveSongIdByTitle(title);
+      if (sid) return sid;
+    }
+    // No catalog match — return a synthetic key for internal embedding
+    // bookkeeping. Callers writing seg.songId MUST guard against this
+    // synthetic form (orphan-id scanner will flag it otherwise).
+    return 'title_' + String(title).toLowerCase().replace(/\s+/g, '_');
   }
 
   /**
@@ -437,21 +445,30 @@ window.SongMatchingEngine = (function() {
       }
       seg.songMatch = result;
 
-      // Assignment: HIGH/MEDIUM get labels, LOW gets "Unresolved"
+      // Assignment: HIGH/MEDIUM get labels, LOW gets "Unresolved".
+      // Per Canonical Song Identity spec — analyzer output ALWAYS ships
+      // songId alongside songTitle so downstream persistence inherits a
+      // consistent identity pair. This is pre-persist analyzer state (no
+      // sessionId yet), so the rebindSegmentSong helper is not callable
+      // here; the obligation is upstream — guarantee no orphan title
+      // sneaks into seg.songTitle without a paired seg.songId.
       if (result.bestMatch) {
         if (result.confidence === 'high') {
           seg.songTitle = result.bestMatch.title;
+          seg.songId = result.bestMatch.songId || null;
           seg.label = result.bestMatch.title;
           result.needsReview = false;
           _matched++;
         } else if (result.confidence === 'medium') {
           seg.songTitle = result.bestMatch.title;
+          seg.songId = result.bestMatch.songId || null;
           seg.label = result.bestMatch.title + ' ?';
           result.needsReview = true;
           _matched++;
         } else {
           // Low: show as unresolved with suggestions, NOT "Unknown (needs review)"
           seg.songTitle = null;
+          seg.songId = null;
           seg.label = null;
           seg._unresolved = true;
           seg._suggestions = result.candidates ? result.candidates.slice(0, 3) : [];
@@ -481,6 +498,7 @@ window.SongMatchingEngine = (function() {
           seg.songMatch = reranked;
           if (reranked.confidence !== 'low' && reranked.bestMatch.title !== seg.songTitle) {
             seg.songTitle = reranked.bestMatch.title;
+            seg.songId = reranked.bestMatch.songId || null;
             seg.songMatch.rerankedByChords = true;
           }
         }

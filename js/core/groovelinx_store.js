@@ -741,6 +741,349 @@
     };
   }
 
+  // ── Canonical Song Identity Authority (2026-05-29) ───────────────────────
+  // Single authoritative pathway for mutating segment song identity. Per
+  // 02_GrooveLinx/specs/canonical_song_identity_v1.md:
+  //   songId   = AUTHORITY  (used for ALL cross-session aggregation)
+  //   songTitle = PRESENTATION (display-only; never an aggregation key)
+  // Direct writes to seg.songId / seg.songTitle outside this helper are
+  // forbidden. The Franklin's Tower / After Midnight corruption (Phase C
+  // smoke test 2026-05-29) happened because multiple call sites updated
+  // songTitle without updating songId, producing aggregation drift.
+
+  function resolveSongIdByTitle(title) {
+    // CANONICAL title→id resolver. Delegates to getSongIdByTitle (which
+    // walks the indexed catalog). Single source of truth — DO NOT duplicate
+    // this lookup logic anywhere else in the codebase.
+    if (!title) return null;
+    var sid = getSongIdByTitle(title);
+    return sid || null;
+  }
+
+  function _resolveTitleBySongId(songId) {
+    // Reverse lookup — used when a caller passes only songId and we need
+    // to derive the canonical display title from the catalog.
+    if (!songId) return null;
+    var rec = getSongById(songId);
+    return (rec && rec.title) || null;
+  }
+
+  // Defensive-logging hook. Centralized so future audit-pipe / telemetry
+  // can attach (sentry, console-prefixed warnings, etc).
+  function _logIdentityChange(level, payload) {
+    var prefix = '[identity] ';
+    var msg = prefix + payload.event + ' seg=' + payload.segmentId
+      + (payload.source ? ' source=' + payload.source : '')
+      + (payload.user ? ' user=' + payload.user : '');
+    if (level === 'warn') {
+      console.warn(msg, payload);
+    } else if (level === 'error') {
+      console.error(msg, payload);
+    } else {
+      console.log(msg, payload);
+    }
+  }
+
+  /**
+   * The ONLY legal way to mutate segment song identity.
+   *
+   * @param {Object} args
+   * @param {string} args.sessionId    Required. The rehearsal session id.
+   * @param {string} args.segmentId    Required. The segment id within that session.
+   * @param {string|null} [args.songId]     Canonical authority. If undefined, derived from songTitle.
+   * @param {string|null} [args.songTitle]  Display title. If undefined, derived from songId.
+   * @param {string} args.source       Required. e.g. 'user_rename' | 'modal_save' | 'split_inherit'
+   *                                  | 'analyzer_match' | 'override_replay' | 'cleanup_smoke_test'.
+   * @param {string} [args.user]       Optional. Who triggered (email, or 'system:analyzer').
+   * @param {Object} [args.options]    Optional. { expectedPreviousSongId, force, skipFirebase }
+   * @returns {Promise<{ok, songId, songTitle, changed}>}
+   *
+   * Rules enforced:
+   *   - If songId provided but songTitle is undefined: title derived from catalog. If catalog miss,
+   *     title falls back to caller-provided value or null.
+   *   - If songTitle provided but songId is undefined: id resolved via catalog. If catalog miss,
+   *     id set to null AND a warn is logged (title accepted but not aggregable).
+   *   - If both null: identity cleared (for splits' second half pre-rename, etc).
+   *   - Always writes BOTH fields to in-memory segment AND multitrackSegments overlay together.
+   *   - Idempotent — if nothing changed, no Firebase write, no event.
+   *   - Emits 'segmentSongRebound' event on actual change for cache invalidation.
+   */
+  async function rebindSegmentSong(args) {
+    args = args || {};
+    var sessionId = args.sessionId;
+    var segmentId = args.segmentId;
+    var source = args.source || 'unknown';
+    var user = args.user || null;
+    var options = args.options || {};
+    if (!sessionId || !segmentId) {
+      _logIdentityChange('error', { event: 'rebind_missing_keys', sessionId: sessionId, segmentId: segmentId, source: source });
+      return { ok: false, error: 'missing_session_or_segment' };
+    }
+
+    // Locate the in-memory segment if the multitrack player is open on this
+    // session. Updates land on whatever object's currently in p.segments so
+    // the UI sees them immediately.
+    var inMemSeg = null;
+    try {
+      var mt = window._mtState;
+      if (mt && mt.player && mt.player.sessionId === sessionId && Array.isArray(mt.player.segments)) {
+        inMemSeg = mt.player.segments.find(function(s) { return s && s.id === segmentId; }) || null;
+      }
+    } catch (e) {}
+
+    // Resolve canonical pair. Authority order:
+    //   1) explicit songId (with derived songTitle if not provided)
+    //   2) explicit songTitle (resolve songId; null if catalog miss)
+    //   3) both null → clear identity
+    var nextSongId = null;
+    var nextSongTitle = null;
+    var hasSongIdArg = Object.prototype.hasOwnProperty.call(args, 'songId');
+    var hasSongTitleArg = Object.prototype.hasOwnProperty.call(args, 'songTitle');
+
+    if (hasSongIdArg && args.songId) {
+      nextSongId = args.songId;
+      if (hasSongTitleArg) {
+        nextSongTitle = args.songTitle || null;
+      } else {
+        nextSongTitle = _resolveTitleBySongId(args.songId) || null;
+      }
+    } else if (hasSongTitleArg && args.songTitle) {
+      nextSongTitle = String(args.songTitle).trim() || null;
+      nextSongId = resolveSongIdByTitle(nextSongTitle);
+      if (!nextSongId) {
+        // Free-text title with no catalog match. Allowed (legacy behavior)
+        // but flagged — aggregation by songId won't include this segment.
+        _logIdentityChange('warn', {
+          event: 'rebind_title_without_catalog_match',
+          sessionId: sessionId, segmentId: segmentId, songTitle: nextSongTitle,
+          source: source, user: user,
+        });
+      }
+    } else {
+      // Both undefined OR explicit nulls → clear identity.
+      nextSongId = null;
+      nextSongTitle = null;
+    }
+
+    // Previous values for drift detection + idempotency.
+    var prevSongId = inMemSeg ? (inMemSeg.songId || null) : null;
+    var prevSongTitle = inMemSeg ? (inMemSeg.songTitle || null) : null;
+
+    // expectedPreviousSongId safety check (optional).
+    if (options.expectedPreviousSongId !== undefined && prevSongId !== options.expectedPreviousSongId) {
+      _logIdentityChange('warn', {
+        event: 'rebind_expected_prev_mismatch',
+        sessionId: sessionId, segmentId: segmentId,
+        expectedPrev: options.expectedPreviousSongId, actualPrev: prevSongId,
+        source: source, user: user,
+      });
+    }
+
+    // Idempotency: if nothing changes, no-op.
+    if (prevSongId === nextSongId && prevSongTitle === nextSongTitle) {
+      return { ok: true, songId: nextSongId, songTitle: nextSongTitle, changed: false };
+    }
+
+    // Drift-detection logging. Fires when one field changes but not the
+    // other — usually a bug pattern from a pre-helper call site.
+    if (!options.force) {
+      var idChanged = (prevSongId !== nextSongId);
+      var titleChanged = (prevSongTitle !== nextSongTitle);
+      if (titleChanged && !idChanged && prevSongId) {
+        _logIdentityChange('warn', {
+          event: 'title_changed_without_id_change',
+          sessionId: sessionId, segmentId: segmentId,
+          prevTitle: prevSongTitle, nextTitle: nextSongTitle, songId: prevSongId,
+          source: source, user: user,
+        });
+      } else if (idChanged && !titleChanged && prevSongTitle) {
+        _logIdentityChange('warn', {
+          event: 'id_changed_without_title_change',
+          sessionId: sessionId, segmentId: segmentId,
+          prevId: prevSongId, nextId: nextSongId, songTitle: prevSongTitle,
+          source: source, user: user,
+        });
+      } else if (idChanged) {
+        _logIdentityChange('info', {
+          event: 'rebind',
+          sessionId: sessionId, segmentId: segmentId,
+          prevId: prevSongId, nextId: nextSongId,
+          prevTitle: prevSongTitle, nextTitle: nextSongTitle,
+          source: source, user: user,
+        });
+      }
+    }
+
+    // In-memory update.
+    if (inMemSeg) {
+      inMemSeg.songId = nextSongId;
+      inMemSeg.songTitle = nextSongTitle;
+    }
+
+    // Firebase overlay write. Both fields written together — atomic per-segment.
+    if (!options.skipFirebase) {
+      var db = _db();
+      if (db) {
+        try {
+          await db.ref(_bp('rehearsal_sessions/' + sessionId + '/multitrackSegments/' + segmentId))
+            .update({
+              songId: nextSongId,
+              songTitle: nextSongTitle,
+              identityUpdatedAt: _now(),
+              identitySource: source,
+              identityUpdatedBy: user || null,
+            });
+        } catch (e) {
+          _logIdentityChange('error', {
+            event: 'rebind_firebase_write_failed',
+            sessionId: sessionId, segmentId: segmentId, error: e && e.message,
+            source: source, user: user,
+          });
+          return { ok: false, error: 'firebase_write_failed', detail: e && e.message };
+        }
+      }
+    }
+
+    // Emit event for cache invalidation. Consumers: Song DNA Our Takes,
+    // fingerprint corpus, future Harmony Lab derived-artifact tracking.
+    emit('segmentSongRebound', {
+      sessionId: sessionId, segmentId: segmentId,
+      prevSongId: prevSongId, nextSongId: nextSongId,
+      prevSongTitle: prevSongTitle, nextSongTitle: nextSongTitle,
+      source: source, user: user,
+    });
+
+    return { ok: true, songId: nextSongId, songTitle: nextSongTitle, changed: true };
+  }
+
+  /**
+   * Read-only integrity scanner. Walks all multitrack rehearsal sessions and
+   * reports identity drift WITHOUT auto-correcting anything.
+   *
+   * @param {Object} [opts]
+   * @param {boolean} [opts.includeOk]  If true, include healthy segments in the per-session list.
+   * @returns {Promise<{ summary, sessions, generatedAt }>}
+   *
+   * Detected issues:
+   *   - title_without_id: songTitle set, songId null/missing
+   *   - id_without_title: songId set, songTitle null/missing
+   *   - orphan_id: songId not found in current allSongs catalog
+   *   - title_id_drift: getSongIdByTitle(songTitle) !== songId
+   *   - clip_under_obsolete_id: song_clips/{segId}.songId differs from segment's current songId
+   */
+  async function scanSongIdentityIntegrity(opts) {
+    opts = opts || {};
+    var db = _db();
+    var report = {
+      generatedAt: _now(),
+      summary: {
+        sessionsScanned: 0,
+        segmentsScanned: 0,
+        title_without_id: 0,
+        id_without_title: 0,
+        orphan_id: 0,
+        title_id_drift: 0,
+        clip_under_obsolete_id: 0,
+      },
+      sessions: [],
+    };
+    if (!db) {
+      return Object.assign({}, report, { error: 'no_db' });
+    }
+
+    // Build catalog lookups once.
+    var catalogIds = {};
+    try {
+      var songs = (typeof allSongs !== 'undefined' && Array.isArray(allSongs)) ? allSongs : [];
+      songs.forEach(function(s) {
+        var sid = s && (s.songId || s.id);
+        if (sid) catalogIds[sid] = (s.title || sid);
+      });
+    } catch (e) {}
+
+    var sessSnap;
+    try {
+      sessSnap = await db.ref(_bp('rehearsal_sessions')).orderByChild('type').equalTo('multitrack').once('value');
+    } catch (e) {
+      return Object.assign({}, report, { error: 'sessions_read_failed', detail: e && e.message });
+    }
+
+    sessSnap.forEach(function(s) {
+      var sid = s.key;
+      var sval = s.val() || {};
+      var segs = (sval.analysis && sval.analysis.story && Array.isArray(sval.analysis.story.segments))
+        ? sval.analysis.story.segments
+        : [];
+      var overlay = sval.multitrackSegments || {};
+      var clips = sval.song_clips || {};
+      var sessionFindings = { sessionId: sid, sessionDate: sval.date || null, findings: [] };
+      report.summary.sessionsScanned++;
+
+      segs.forEach(function(seg) {
+        if (!seg || !seg.id) return;
+        report.summary.segmentsScanned++;
+        // Effective values: overlay wins over raw analyzer segment.
+        var ov = overlay[seg.id] || {};
+        var effSongId = (ov.songId !== undefined) ? ov.songId : (seg.songId || null);
+        var effSongTitle = (ov.songTitle !== undefined) ? ov.songTitle : (seg.songTitle || null);
+
+        var issues = [];
+
+        if (effSongTitle && !effSongId) {
+          report.summary.title_without_id++;
+          issues.push('title_without_id');
+        }
+        if (effSongId && !effSongTitle) {
+          report.summary.id_without_title++;
+          issues.push('id_without_title');
+        }
+        if (effSongId && !catalogIds[effSongId]) {
+          report.summary.orphan_id++;
+          issues.push('orphan_id');
+        }
+        if (effSongTitle && effSongId) {
+          var resolved = resolveSongIdByTitle(effSongTitle);
+          if (resolved && resolved !== effSongId) {
+            report.summary.title_id_drift++;
+            issues.push('title_id_drift');
+          }
+        }
+
+        var clip = clips[seg.id];
+        if (clip && clip.songId && effSongId && clip.songId !== effSongId) {
+          report.summary.clip_under_obsolete_id++;
+          issues.push('clip_under_obsolete_id');
+        }
+
+        if (issues.length) {
+          sessionFindings.findings.push({
+            segmentId: seg.id,
+            effSongId: effSongId,
+            effSongTitle: effSongTitle,
+            clipSongId: clip ? (clip.songId || null) : null,
+            startSec: seg.startSec,
+            endSec: seg.endSec,
+            kind: seg.kind || null,
+            issues: issues,
+          });
+        } else if (opts.includeOk) {
+          sessionFindings.findings.push({
+            segmentId: seg.id,
+            effSongId: effSongId,
+            effSongTitle: effSongTitle,
+            issues: [],
+          });
+        }
+      });
+
+      if (sessionFindings.findings.length || opts.includeOk) {
+        report.sessions.push(sessionFindings);
+      }
+    });
+
+    return report;
+  }
+
   // ── Song Clips (segmentId-keyed, Phase B+C 2026-05-29) ───────────────────
   // Per-segment MP3 clips materialized on confirm. Storage:
   //   bands/{slug}/rehearsal_sessions/{sid}/song_clips/{segmentId}  — clip metadata
@@ -1157,6 +1500,13 @@
     // Current Timeline (review state)
     setCurrentTimeline:                setCurrentTimeline,
     getCurrentTimeline:                getCurrentTimeline,
+
+    // Canonical Song Identity Authority (2026-05-29)
+    // Spec: 02_GrooveLinx/specs/canonical_song_identity_v1.md
+    // DO NOT bypass rebindSegmentSong with direct seg.songId/songTitle writes.
+    rebindSegmentSong:                 rebindSegmentSong,
+    resolveSongIdByTitle:              resolveSongIdByTitle,
+    scanSongIdentityIntegrity:         scanSongIdentityIntegrity,
 
     // Song Clips — segmentId-keyed v1 (Phase B+C 2026-05-29)
     // Spec: 02_GrooveLinx/specs/song_clip_phase_c_surface_v1.md

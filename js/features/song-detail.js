@@ -5120,14 +5120,38 @@ async function _sdRenderOurTakesSection(title) {
             '</div>';
     }
     var rows = takes.map(function(t) { return _sdRenderTakeRow(t); }).join('');
-    return '<div class="sd-card"><div class="sd-card-title">🎚 Our Takes <span class="sd-title-badge">'+takes.length+' rehearsal'+(takes.length===1?'':'s')+'</span></div>'+
+    // Badge wording: count distinct sessions; surface take-count separately
+    // when multiple takes exist in the same rehearsal.
+    var distinctSessions = {};
+    takes.forEach(function(t) { if (t.sessionId) distinctSessions[t.sessionId] = true; });
+    var sessionCount = Object.keys(distinctSessions).length;
+    var takeCount = takes.length;
+    var badge;
+    if (sessionCount === takeCount) {
+        badge = takeCount + ' rehearsal' + (takeCount === 1 ? '' : 's');
+    } else {
+        badge = takeCount + ' takes · ' + sessionCount + ' rehearsal' + (sessionCount === 1 ? '' : 's');
+    }
+    return '<div class="sd-card"><div class="sd-card-title">🎚 Our Takes <span class="sd-title-badge">'+badge+'</span></div>'+
         '<div style="display:flex;flex-direction:column;gap:6px">'+rows+'</div>'+
         '</div>';
 }
 
 function _sdFmtDate(iso) {
     if (!iso) return '—';
-    var d = new Date(iso);
+    // Bare date strings ("2026-05-27") get parsed as midnight UTC by
+    // `new Date()` and shift to the previous day in west-of-UTC locales.
+    // Pin local-noon parsing for bare dates so the displayed day matches
+    // the rehearsal date users expect. Full ISO timestamps with time/zone
+    // info are honored verbatim.
+    var s = String(iso);
+    var d;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        var parts = s.split('-');
+        d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
+    } else {
+        d = new Date(s);
+    }
     if (isNaN(d)) return iso;
     return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }

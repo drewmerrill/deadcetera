@@ -1620,6 +1620,26 @@ window.RecordingAnalyzer = (function() {
   // ── User label overrides (persist across re-analyses) ──────────────────────
   var _userOverrides = {}; // segmentIndex → confirmedTitle
 
+  // Single internal apply path. Goes through canonical identity helper
+  // when sessionId + segmentId are present; falls back to direct assignment
+  // only when we genuinely lack the keys (analyzer running pre-persist).
+  function _applyOverrideToSeg(seg, value, source) {
+    if (typeof GLStore !== 'undefined' && GLStore.rebindSegmentSong && _currentSessionId && seg.id) {
+      GLStore.rebindSegmentSong({
+        sessionId: _currentSessionId,
+        segmentId: seg.id,
+        songTitle: value || null,
+        source: source || 'recording_analyzer_override',
+        user: 'system:override_replay',
+      }).catch(function() {});
+    } else {
+      seg.songTitle = value;
+    }
+    seg.displayTitle = value;
+    seg.confidence = 0.95;
+    seg.confirmed = true;
+  }
+
   function _updateSegTitle(idx, value) {
     if (_currentSegments && _currentSegments[idx]) {
       var seg = _currentSegments[idx];
@@ -1627,7 +1647,22 @@ window.RecordingAnalyzer = (function() {
       if (value && seg.songTitle && value !== seg.songTitle && typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.recordConfirmation) {
         SongMatchingEngine.recordConfirmation(seg, value);
       }
-      seg.songTitle = value;
+      // Canonical identity rebind via helper when a multitrack-style
+      // segmentId + sessionId pair is available. The legacy
+      // `label_overrides/{key}` write below stays for back-compat with the
+      // legacy rehearsal-analyzer surface (which uses startSec_endSec keys
+      // rather than canonical segmentIds).
+      if (typeof GLStore !== 'undefined' && GLStore.rebindSegmentSong && _currentSessionId && seg.id) {
+        GLStore.rebindSegmentSong({
+          sessionId: _currentSessionId,
+          segmentId: seg.id,
+          songTitle: value || null,
+          source: 'recording_analyzer_inline_rename',
+          user: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : null,
+        }).catch(function() {});
+      } else {
+        seg.songTitle = value;
+      }
       seg.displayTitle = value;
       seg.confidence = value ? 0.9 : 0.1;
       seg.confirmed = true;
@@ -1751,10 +1786,7 @@ window.RecordingAnalyzer = (function() {
           segments.forEach(function(seg) {
             var key = Math.round(seg.startSec) + '_' + Math.round(seg.endSec);
             if (_userOverrides[key]) {
-              seg.songTitle = _userOverrides[key];
-              seg.displayTitle = _userOverrides[key];
-              seg.confidence = 0.95;
-              seg.confirmed = true;
+              _applyOverrideToSeg(seg, _userOverrides[key], 'override_replay_async');
               _stampHumanCorrection(seg);
               console.log('[RecordingAnalyzer] Applied override: ' + key + ' → ' + _userOverrides[key]);
             }
@@ -1766,10 +1798,7 @@ window.RecordingAnalyzer = (function() {
       segments.forEach(function(seg) {
         var key = Math.round(seg.startSec) + '_' + Math.round(seg.endSec);
         if (_userOverrides[key]) {
-          seg.songTitle = _userOverrides[key];
-          seg.displayTitle = _userOverrides[key];
-          seg.confidence = 0.95;
-          seg.confirmed = true;
+          _applyOverrideToSeg(seg, _userOverrides[key], 'override_replay_memory');
           _stampHumanCorrection(seg);
         }
       });

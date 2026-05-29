@@ -6997,14 +6997,14 @@ window._mtSegmentTitleDirty = function(idx) {
 // when the title matches a record in allSongs. Returns { songId } or
 // null. Case-insensitive exact match — typeahead from <datalist> nudges
 // users toward canonical strings, so exact match is the right rule.
+// DEPRECATED — kept as thin delegator for any straggling caller. New code
+// must use GLStore.resolveSongIdByTitle directly per the Canonical Song
+// Identity spec (canonical_song_identity_v1.md).
 function _mtResolveSongIdForTitle(title) {
-    var clean = String(title || '').trim().toLowerCase();
-    if (!clean) return null;
-    var songs = (typeof allSongs !== 'undefined' && Array.isArray(allSongs)) ? allSongs : [];
-    var match = songs.find(function(s) {
-        return s && s.title && String(s.title).trim().toLowerCase() === clean;
-    });
-    if (match && (match.id || match.songId)) return { songId: match.id || match.songId };
+    if (typeof GLStore !== 'undefined' && GLStore.resolveSongIdByTitle) {
+        var sid = GLStore.resolveSongIdByTitle(title);
+        return sid ? { songId: sid } : null;
+    }
     return null;
 }
 
@@ -7021,23 +7021,16 @@ window._mtSegmentTitleSave = async function(idx) {
         el.style.background = 'transparent';
         return;
     }
-    seg.songTitle = newTitle || null;
-    // Resolve canonical Song DNA songId when the title matches a band-
-    // library record. Stored alongside the user-facing title so future
-    // training / cross-rehearsal lookups can key off it.
-    var resolved = _mtResolveSongIdForTitle(newTitle);
-    seg.songId = resolved ? resolved.songId : null;
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function' && seg.id) {
-        try {
-            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
-                .update({
-                    songTitle: newTitle || null,
-                    songId: seg.songId,
-                });
-        } catch (e) {
-            console.warn('[Multitrack] segment rename failed:', e && e.message);
-        }
+    // Canonical identity rebind. Title change MUST refresh songId via the
+    // catalog. Helper handles in-memory + Firebase overlay atomically.
+    if (typeof GLStore !== 'undefined' && GLStore.rebindSegmentSong && seg.id) {
+        await GLStore.rebindSegmentSong({
+            sessionId: p.sessionId,
+            segmentId: seg.id,
+            songTitle: newTitle || null,
+            source: 'user_rename_inline',
+            user: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : null,
+        });
     }
     el.style.border = '1px solid transparent';
     el.style.background = 'transparent';
@@ -7416,17 +7409,23 @@ window._mtSegmentSplit = async function(idx) {
         endSec: playhead,
         durationSec: Math.round((playhead - startSec) * 100) / 100,
     });
+    // SECOND half: clear identity explicitly. Pre-helper version used
+    // Object.assign which silently inherited songId from the parent while
+    // nulling songTitle — exactly the title/id divergence pattern the
+    // Canonical Song Identity spec forbids. The user must explicitly
+    // rebind via rename; until then this is identity-cleared.
     var second = Object.assign({}, seg, {
         id: baseId + '_split_' + Date.now(),
         startSec: playhead,
         durationSec: Math.round((endSec - playhead) * 100) / 100,
+        songId: null,
         songTitle: null,
         isBetween: false,
         // Inherit kind + classification so songs-only filter still works.
     });
     var newSegs = p.segments.slice(0, idx).concat([first, second]).concat(p.segments.slice(idx + 1));
     p.segments = newSegs;
-    // Persist back to Firebase.
+    // Persist segments array.
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (db && typeof bandPath === 'function') {
         try {
@@ -7438,6 +7437,19 @@ window._mtSegmentSplit = async function(idx) {
             console.warn('[Multitrack] segment split persist failed:', e && e.message);
             if (typeof showToast === 'function') showToast('Split UI applied but Firebase save failed: ' + (e && e.message));
         }
+    }
+    // Identity overlay for the new second segment goes through the helper
+    // (sets songId+songTitle to null + writes identity provenance). First
+    // half retains identity — no change needed.
+    if (typeof GLStore !== 'undefined' && GLStore.rebindSegmentSong) {
+        await GLStore.rebindSegmentSong({
+            sessionId: p.sessionId,
+            segmentId: second.id,
+            songId: null,
+            songTitle: null,
+            source: 'split_second_half',
+            user: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : null,
+        });
     }
     _mtRenderSegmentsPanel();
     _mtRenderSegmentMarkers();
@@ -7961,19 +7973,33 @@ window._mtSegmentSave = async function(idx) {
     var seg = p.segments[idx];
     var songEl = document.getElementById('mtSegSong');
     var betweenEl = document.getElementById('mtSegBetween');
-    seg.songTitle = (songEl && songEl.value) ? songEl.value : '';
+    var newTitle = (songEl && songEl.value) ? songEl.value : '';
     seg.isBetween = !!(betweenEl && betweenEl.checked);
+    // Canonical identity rebind via helper. Pre-helper version of this
+    // function wrote songTitle to overlay WITHOUT songId — the root-cause
+    // bug behind the Franklin's Tower / After Midnight drift (2026-05-29).
+    if (typeof GLStore !== 'undefined' && GLStore.rebindSegmentSong && seg.id) {
+        await GLStore.rebindSegmentSong({
+            sessionId: p.sessionId,
+            segmentId: seg.id,
+            songTitle: newTitle || null,
+            source: 'user_rename_modal',
+            user: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : null,
+        });
+    }
+    // Persist the non-identity fields (isBetween, range, updatedAt) via the
+    // existing overlay write — distinct from identity, kept on its own path
+    // so the helper isn't responsible for unrelated fields.
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function') {
+    if (db && typeof bandPath === 'function' && seg.id) {
         try {
-            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id)).set({
-                songTitle: seg.songTitle,
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id)).update({
                 isBetween: seg.isBetween,
                 startSec: seg.startSec,
                 endSec: seg.endSec,
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             });
-        } catch (e) { console.warn('[Multitrack] segment save failed:', e); }
+        } catch (e) { console.warn('[Multitrack] segment save (non-identity) failed:', e); }
     }
     var modal = document.getElementById('mtSegmentModal');
     if (modal) modal.remove();
