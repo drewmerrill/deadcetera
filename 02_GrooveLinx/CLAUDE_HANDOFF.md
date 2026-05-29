@@ -6,21 +6,49 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-28 16:00 UTC (First overnight multitrack ingest VALIDATED end-to-end · Custom Mix in real use · five ships) · Build live: `20260528-154723` (commit `90313264` — segment duration + smart preview-slice picker) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection open) + (2) Ingestion-First Architecture (no longer speculative — first 67 GB X-Live session ingested overnight 5/27→5/28 at 37.8 MB/s sustained, 40 min total vs 6h projection). **Validated as moat (PROTECT):** Song-detail drawer · Rehearsal page · Stoner Mode · Setlists · Gigs coordination · GrooveMate behavioral tri-state — the music-cognition layer IS the moat empirically. **Frontier:** shell orchestration + ingestion build-out (render picker UI, mix template builder, date-drift fix). **Trust-layer guard SHIPPED today:** re-Analyze on edited multitrack sessions now demands explicit acknowledgment (`04169069`) — band members cannot casually destroy curated rehearsal edits. **First-ingest operational realities surfaced:** (a) ingest script's session-date bug (sets to ingest-run date not recording date) — manually corrected via Firebase write for 5/27 session, code fix MUST land before 2026-06-03 to avoid recurrence; (b) Live Gig analyze branch silently auto-picks `setlists[0]` — workaround via Band Rehearsal branch + plan-prior write; (c) no UI surface lists multiple renders per session (4 exist for tonight's session, only one visible). **All three filed in DEFERRED_FINDINGS_QUEUE.md.** **New memory:** `feedback_run_operator_workflows_via_bash` — when repo CLIs exist for operator workflows, I run them via Bash while Drew watches the user-facing surface. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers via three different selection rules. **DISCIPLINE:** do NOT bug-by-bug fix; CO-Truth Map (`a797cce4`) precedes remediation. Music-cognition surfaces stay off-critical-path. **Twelve canonical memories standing.** **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-29 12:30 UTC (Chatter transcription pipeline LIVE end-to-end · Phase B song-mp3 endpoint shipped · 5/27 chatter pass validated 20 real turns) · App build still: `20260528-225150` (today was 100% backend — Modal + worker.js + specs; no frontend changes, no `/glx-deploy` needed) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS + ONE NEW BACKEND CAPABILITY** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) NEW: Hybrid Song-Clip Architecture (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint LIVE · Phase C UI surface UNSPECCED · Phases D/E/F open). **Today's headline:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx is at build 20260528-154723 (commit 90313264 — segment
-duration display + smart preview-slice picker), branch main, live on
-app.groovelinx.com.
+GrooveLinx app build still 20260528-225150 (yesterday's frontend),
+branch main, live on app.groovelinx.com. Today (2026-05-29) was 100%
+backend: Modal services + Cloudflare worker + specs. No /glx-deploy
+ritual needed — no frontend code touched. Latest commit fe9f3eb8.
 
-MILESTONE: First overnight multitrack ingest VALIDATED end-to-end.
-5/27 rehearsal (67 GB X-Live multitrack) reconstructed locally,
-uploaded to R2 at 37.8 MB/s sustained (~40 min vs 6h projection),
-demuxed into 17 per-channel FLACs with canonical NN_role-member.flac
-naming, surfaced in Review Mode correctly. The ingestion-first
-architectural reframe survived first real-world contact.
+MILESTONE: Chatter transcription pipeline LIVE end-to-end.
+faster-whisper-large-v3 on A10G GPU via Modal app
+groovelinx-multitrack-song-clip (three function families behind one
+action-dispatcher webhook, staying under Starter 8-webhook cap).
+Cloudflare worker deadcetera-proxy redeployed (version
+733d5628-de7a-4fb3-b615-7739bc5d6db5) with four new routes:
+/multitrack/song-mp3/{start,check} (Phase B per-song MP3 endpoint) +
+/multitrack/chatter/{start,check} (Whisper transcription).
+
+5/27 REHEARSAL CHATTER PASS RESULTS (empirically validated):
+  - 31 silence-labeled segments >10s run through Whisper
+  - 64-second wall-clock end-to-end (Modal autoscale fanout)
+  - ~10.7 min audio · ~$0.10–$0.20 GPU cost
+  - 20 of 31 were REAL chatter (count-offs, setlist debates,
+    Brian's 44s monitor-frequency explainer, Pierce's "We are
+    Dead Cetera... I'm Pierce Hale, founder and owner" intro,
+    Drew's "I'm going to count you down through each one of them",
+    the "Brian goes to the B" debate, McDonough gig-prep talk)
+  - 11 of 31 were truly silent (Whisper hallucinated "Thank you.",
+    "you", "." boilerplate — post-filtered)
+  - Full report: 02_GrooveLinx/notes/chatter_pass_2026_05_27.md
+
+HYBRID SONG-CLIP ARCHITECTURE — STATE BY PHASE:
+  - Phase A (spike): DONE. Sugaree clipped 192 + 256 kbps; Drew's
+    listening test locked 192 as canonical (`11d52a37`).
+  - Phase B (per-song MP3 endpoint): SHIPPED today. Endpoint live
+    at /multitrack/song-mp3/{start,check}. Zero frontend surface.
+  - Phase C (Song DNA → Our Takes UI surface): UNSPECCED. Open
+    product decision — where it lives (Song DNA drawer? Review
+    Mode tab? Library card row?) + row UX + storage shape.
+  - Phase D (direct share links app.groovelinx.com/clip/<id>): OPEN.
+  - Phase E (background clip cache cleanup, R2 sweep): OPEN.
+  - Phase F (per-song Isolate Mode): OPEN.
 
 PHASE: COHERENCE STEWARDSHIP — the project is no longer in
 feature-invention mode. Target = coherent lived operational reality,
@@ -153,6 +181,21 @@ OPEN BUGS:
     not triaged into bug_queue. Deferred until after CO-Truth Map
     remediation candidate selection (Track A).
 
+NEW DEFERRED FINDINGS (2026-05-29, all §1 Stabilization Debt):
+  - Analyzer has no speech/chatter category — only music/silence.
+    20/31 silence-labeled segments >10s on 5/27 contained real
+    chatter. Whisper passes burn ~35% GPU cycles on real silence.
+    Trigger: when touching services/rehearsal-segment/segment.py
+    next, OR when a chatter consumer needs song-localization.
+  - songAssignmentGuess heuristic noisy via single-word match
+    against catalog ("nothing"→Nothing, "down"→Down, "she"→She).
+    Trigger: when chatter UI drives a feature where wrong song
+    attribution materially confuses musicians.
+  - speakerCandidate works on direct self-ID (Pierce's "I'm Pierce
+    Hale" → pierce CORRECT) but is a low-confidence guess
+    elsewhere. Trigger: when chatter UI needs speaker-filtered
+    views.
+
 INGESTION OPERATIONAL FINDINGS (filed in DEFERRED_FINDINGS_QUEUE.md
 during 2026-05-28 first-ingest review):
   - HIGH: ingest_full_rehearsal.py sets session.date to ingest-run
@@ -220,9 +263,26 @@ OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
      ownership, route/breadcrumb coherence, dashboard authority,
      cross-surface synchronization), NOT bounded null-guards.
 
-  12. NEW: Sequencing Track A (Shell Integrity remediation) vs
+  12. Sequencing Track A (Shell Integrity remediation) vs
      Track B (Ingestion-First build). Both validated. Both open
-     for Drew greenlight. See NEXT RECOMMENDED ACTION below.
+     for Drew greenlight. Track B partially answered itself via
+     5/27 overnight ingest success.
+
+NEW OPEN PRODUCT DECISIONS (2026-05-29):
+  13. Phase C "Our Takes" surface location — Drew. Where do per-song
+     MP3 clips plug into the UI? Song DNA drawer / Review Mode tab /
+     Library card row. SEE NEXT RECOMMENDED ACTION BELOW.
+  14. Chatter surfacing strategy — Drew + ChatGPT. (a) wait for
+     speech-classifier deferred finding, (b) surface verbatim now
+     as soft hint with caveat, (c) song-boundary spatial filter.
+  15. Auto-tag UI gating — Drew. songAssignmentGuess + speakerCandidate
+     are noisy in v1. Hide entirely vs surface as italic "best guess"
+     hints with easy-correction UX. Per feedback_ground_truth_over_theater
+     don't decorate noise as confidence.
+  16. Modal file architecture watch — Drew (not urgent). Three
+     function families in one clipper.py = god-file risk if Phases
+     D/F add more. Future split: clipper.py + transcribe.py +
+     thin dispatch.py webhook.
 
 MUST NEVER DRIFT (load-bearing):
   - SYSTEM LOCKs (CLAUDE.md §7)
@@ -245,17 +305,29 @@ MUST NEVER DRIFT (load-bearing):
     should look like a MAP, not a redesign proposal.
 
 NEXT RECOMMENDED ACTION (single move, not a menu):
-  Ship the ingestion-script date-drift fix. Small, time-bound,
-  ~30-50 LOC. MUST land before 2026-06-03 next rehearsal to avoid
-  recurrence. Approach: derive session date from first chunk's
-  os.path.getmtime() (already collected during continuity scan),
-  emit as recording_date in ingest_metadata.json, use that field
-  rather than date.today() when writing the session to Firebase.
-  Tomorrow morning Drew also verifies (a) Southern-Roots re-Analyze
-  tightened borderline matches, (b) Brian's Custom Mix exploration
-  produced an audibly better render than the unity-gain default.
-  Everything else this week is observational — let tonight's ingest
-  become known-stable in real use before adding more surfaces.
+  Spec the Phase C "Our Takes" surface BEFORE writing any frontend
+  code. ~1-page spec answering three questions: (a) WHERE the
+  gallery lives — Song DNA drawer? Review Mode tab? Library card
+  row? — Pierce-synthesis frame says widen Drew's existing
+  rehearsal-review flow, do NOT add a fifth chandelier; (b) the
+  row UX (date · per-song confidence · audition button · favorite
+  toggle); (c) storage shape — likely Firebase
+  bands/{slug}/song_clips_v1/{songId}/{rehearsalDate} +
+  R2 multitrack/{slug}/song_clips/{songId}/{rehearsalDate}.mp3.
+  Phase B endpoint exists and costs nothing to leave dormant
+  while the product decision lands. After spec lands, Phase C
+  frontend ships as a single PR.
+
+  If Drew prefers to defer Phase C and instead audibly validate
+  Phase B: a one-button "🎚 Clip this song" affordance on the
+  Song DNA drawer (using existing 5/27 multitrack) is the minimum
+  viable surface — separate ~30 LOC ship that doesn't preempt
+  Phase C architectural decisions.
+
+ARCHIVED — Prior session's "ship ingestion date-drift fix" still
+  open (MUST land before 2026-06-03 next rehearsal). Did not ship
+  this session because today's work was Modal/worker/specs only.
+  Tomorrow's session candidate if Phase C spec lands cleanly.
 
 ARCHIVED — Track A vs Track B sequencing (still open from 5/27):
   Drew sequences the two live tracks. Both are validated; both are
@@ -310,6 +382,79 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 🎚 SESSION CLOSE — 2026-05-29 12:30 UTC — Chatter Transcription Pipeline LIVE · Phase B Song-MP3 Endpoint Shipped · 5/27 Chatter Pass Validated 20 Real Turns
+
+## 1. CURRENT RUNTIME STATE
+
+- **App build:** `20260528-225150` (unchanged from yesterday — today's work was 100% backend; no frontend changes, no `/glx-deploy` ritual needed)
+- **Branch:** `main` · clean working tree post-handoff commit
+- **Latest commit:** `fe9f3eb8` — docs(chatter): 5/27 transcription pass + 3 deferred findings
+- **Modal app live:** `groovelinx-multitrack-song-clip` now hosts THREE function families behind ONE webhook (clip_song stem-zip · clip_song_to_mp3 Phase B · transcribe_segment chatter). Single-webhook dispatcher pattern resolves Starter 8-webhook cap concern.
+- **Cloudflare worker:** `deadcetera-proxy` redeployed (Version `733d5628-de7a-4fb3-b615-7739bc5d6db5`) with four new routes: `/multitrack/song-mp3/{start,check}` (Phase B) + `/multitrack/chatter/{start,check}`.
+- **Canonical state:** see [`00_Governance/CURRENT_STATE.md`](00_Governance/CURRENT_STATE.md) — do not duplicate here.
+
+**Today's chronological ship sequence:**
+1. `caf5be40` + `97c7dbfc` + `11d52a37` — Hybrid song-clip architecture greenlit; Path A chatter-transcription spec filed; 192 kbps locked per Drew's Sugaree listening test.
+2. `3db3fd86` — Phase B song-mp3 Modal endpoint + worker routes + new groovelinx-chatter-transcription Modal app (initial implementation).
+3. `3eeddc90` — Switched openai-whisper → faster-whisper (modern pip's build isolation broke `setup.py`/`pkg_resources` on the openai-whisper sdist).
+4. `8ad40b71` — Consolidated chatter app INTO multitrack-song-clip (8-webhook cap hit on second deploy); action-dispatcher pattern (action ∈ {'start','check','start_mp3','check_mp3','transcribe_start','transcribe_check'}) routes single webhook to three function families with different resource profiles.
+5. `3372ee92` — Added `requests>=2.31.0` to image (CTranslate2's HuggingFace legacy path hits requests at runtime).
+6. `fc89ff40` — Switched base image from `debian_slim` → `nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04` (CTranslate2 needs `libcublas.so.12` for GPU inference; debian_slim doesn't ship CUDA runtime libs).
+7. `fe9f3eb8` — 5/27 chatter pass results report + 3 deferred findings filed.
+
+**5/27 chatter pass empirical validation:**
+- 31 silence-labeled segments >10s run through faster-whisper-large-v3 on A10G
+- 64-second wall-clock end-to-end (concurrent fanout via Modal autoscaling)
+- ~10.7 min of audio transcribed, ~$0.10–$0.20 GPU cost
+- **20 of 31 segments contained REAL chatter** — count-offs, signal coordination, setlist debates, gig-prep ("For McDonough, they probably want it tight... we don't need no 18-minute Dark Star"), sound-engineering talk (Brian's 44-second monitor-frequency explainer), band identity (Pierce's "We are Dead Cetera... I'm Pierce Hale, founder and owner"), the "Brian goes to the B" debate, Drew's "I'm going to count you down through each one of them"
+- **11 of 31 were truly silent** — Whisper hallucinated "Thank you."/"you"/"." boilerplate, post-hoc filtered
+- Report: [`02_GrooveLinx/notes/chatter_pass_2026_05_27.md`](notes/chatter_pass_2026_05_27.md)
+
+**Three deferred findings filed this session** (all in `DEFERRED_FINDINGS_QUEUE.md` §1 Stabilization Debt):
+- Analyzer has no `speech`/`chatter` category — 35% of GPU cycles burn on actual silence; future chatter pipelines need a speech sub-classifier on the silence label.
+- `songAssignmentGuess` heuristic produces noisy false positives via single-word match against catalog ("nothing"→Nothing, "down"→Down, "she"→She, "fee"→Fee). Needs stop-word filter + TF-IDF rarity weighting + confidence gating.
+- `speakerCandidate` works on direct self-identification (Pierce's "I'm Pierce Hale" → pierce) but is a low-confidence guess elsewhere — needs real diarization (pyannote.audio or X-Live vocal-mic channel correlation) or confidence gating.
+
+## 2. CURRENT PRIORITIES
+
+- **NOW:** Phase B song-mp3 endpoint LIVE but has zero frontend surface yet. Phase C (Song DNA → Our Takes UI) is the next product question and is unspecced. Chatter transcripts exist as a static report — no in-app surface.
+- **NEXT:** Spec Phase C "Our Takes" surface (where it lives — Song DNA drawer? Review-Mode tab? Library card row? — and what the row UX is: date · per-song-confidence · audition · favorite). Spec before code per Phase-1B-style do-over avoidance.
+- **LATER:** Phase D (direct share links — `app.groovelinx.com/clip/<id>`), Phase E (background clip cache cleanup — R2 will accumulate per-song MP3s indefinitely), Phase F (per-song Isolate Mode). All open from greenlit spec.
+- **DEFERRED:** Shell Integrity remediation still off-critical-path. Track A vs Track B sequencing decision (from 2026-05-27 strategic elevation) still pending Drew. Three new chatter-pipeline findings filed but explicitly NOT-NOW.
+
+Canonical detail: [`00_Governance/CURRENT_PRIORITIES.md`](00_Governance/CURRENT_PRIORITIES.md).
+
+## 3. OPEN PRODUCT DECISIONS
+
+- **Phase C "Our Takes" surface location** — Drew. Per-song MP3 clips can plug into Song DNA drawer, a new Review-Mode tab, or a Library card row. The product decision precedes the frontend code. Pierce-synthesis frame: "many chandeliers but still needs a better front door" → this should land where Drew's existing rehearsal-review workflow already lives, not as a fifth chandelier.
+- **Chatter surfacing strategy** — Drew. Three options: (a) wait for the analyzer speech-classifier deferred finding before surfacing chatter at all (clean), (b) surface verbatim chatter inside Review Mode now as a soft hint with the silence→chatter false-negative caveat documented (fast), (c) surface chatter only at known song boundaries by post-hoc spatial filtering against music-segment neighborhoods (compromise). Owner: Drew + ChatGPT.
+- **Auto-tag UI gating** — Drew. `songAssignmentGuess` and `speakerCandidate` are noisy in v1. Two paths: (a) hide entirely until heuristic hardens, (b) surface as small italic hints with an explicit "best guess" affordance and easy-correction UX. Per `feedback_ground_truth_over_theater` the system shouldn't decorate noise as confidence.
+- **Modal file architecture watch** — Drew (not urgent). `services/multitrack-song-clip/clipper.py` now hosts 3 function families behind 1 webhook. If Phases D/F add more, the file becomes a god-file. Future split: `clipper.py` + `transcribe.py` + thin `dispatch.py` webhook. Note for the next architectural pass.
+- All prior open decisions from 2026-05-28 still standing: Track A vs Track B sequencing, reverb A/B verification, Custom Mix persistence A vs B, calendar Model B soft-cancel, deprecated mode removal, 5/10 corrupt durationSec.
+
+## 4. OPERATIONAL RISKS
+
+- **MEDIUM — Cloudflare bot challenge blocks default Python UA on `/multitrack/*` routes:** Any operator script hitting the worker with default `urllib`/`Python-urllib/3.11` UA returns HTTP 403 / Cloudflare error 1010. Workaround: pass a browser-like User-Agent header (Safari/Chrome string works). Curl works out of the box because Cloudflare's bot-challenge rules whitelist it. **Operational impact:** future batch scripts (chatter pass v2, song-mp3 cache warming, render-batch jobs) must include the UA header or fail silently at scale.
+- **MEDIUM — Whisper cold-start cost on volume eviction:** faster-whisper-large-v3 (~3 GB) cached in Modal volume `groovelinx-whisper-cache`. First-call cold-start downloads the model (~30s). If Modal evicts the volume (rare but possible under quota pressure), the next first-call pays the cold-start tax. **Operational impact:** rare, but a user-initiated chatter transcribe immediately after volume eviction would see ~60s instead of ~15s response time. No fix needed unless it becomes user-visible.
+- **MEDIUM — No Phase E cache cleanup:** Per-song MP3s land in R2 indefinitely. With ~30 songs × ~20 rehearsals/yr × ~3 MB/clip = ~1.8 GB/yr accumulated. Acceptable for v1 (R2 is cheap) but will need a sweep policy before yr 2.
+- **LOW — Analyzer mis-labels real chatter as silence:** Empirically 65% (20/31) of silence-labeled >10s segments contained real speech. Any feature that consumes the `silence` label as a hard category (skip-silence playback, dead-time-only rendering) will skip real content. No current consumer is affected, but document for any future "skip silence" feature.
+- **LOW — `songAssignmentGuess` / `speakerCandidate` noise:** If these auto-tags are surfaced in UI without confidence gating, false positives ("nothing" → Nothing song, speaker=brian on a Pierce turn) erode trust in the system per `feedback_ground_truth_over_theater`. Mitigation: don't surface until UI gating is decided (open product decision above).
+- **HIGH (unchanged) — Ingest date drift WILL recur:** `services/glx-ingest/ingest_full_rehearsal.py` still sets session date to ingest-run date. MUST land code fix before 2026-06-03 next rehearsal. From prior session.
+- **MITIGATED (unchanged):** Re-Analyze destruction (`04169069`), Pierce-synthesis 6-priority roadmap captured, music-cognition moat surfaces off-critical-path.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Spec the Phase C "Our Takes" surface before writing any frontend code.**
+
+- Phase B (per-song MP3 endpoint) and chatter transcription both shipped today as backend infrastructure with ZERO user-facing surface. They cost nothing to leave dormant for a session while the product decision lands.
+- The Pierce-synthesis frame says: "the app has many chandeliers but still needs a better front door." Adding a new tab/lens/drawer for Phase C without alignment risks adding a fifth chandelier instead of widening Drew's existing rehearsal-review flow.
+- The single-page spec (~1 page) needs to answer three questions: (a) WHERE the Our Takes gallery lives (Song DNA drawer vs Review Mode tab vs Library card row), (b) what the row UX is (date · per-song confidence · audition button · favorite toggle), (c) the storage shape (`bands/{slug}/song_clips_v1/{songId}/{rehearsalDate}` in Firebase + `multitrack/{slug}/song_clips/{songId}/{rehearsalDate}.mp3` in R2).
+- After the spec lands, Phase C frontend ships as a single PR. Do not start frontend work before the spec.
+
+If Drew prefers to defer Phase C and instead validate Phase B audibly: a one-button "🎚 Clip this song" affordance on the Song DNA drawer (using existing 5/27 multitrack session) is the minimum viable surface — that's a separate ~30 LOC ship that doesn't preempt Phase C's architectural decisions.
 
 ---
 
