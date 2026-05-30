@@ -1,14 +1,16 @@
 # GrooveLinx — Current Phase
 
-## 📍 Project State Snapshot (as of 2026-05-30 15:09 UTC)
+## 📍 Project State Snapshot (as of 2026-05-30 15:23 UTC)
 
 **Build:** `20260530-150905` (commit `d60da38e`) · **Branch:** `main` · **Mode:** Coherence Stewardship Phase
+
+**🔒 Memory Hardening Phase 1 — VERIFIED END-TO-END at 2026-05-30 15:23 UTC.** Drew completed Firebase Console rules merge; `GLAnnotations.auditProvenance({refresh: true})` returned baseline clean (Scanned: 0 · Promoted: 0 · Issues: 0 missing / 0 invalid / 0 inconsistent). Trust-layer guarantees G1 + G2 now operational at both API and data layers.
 
 ### Workstream status
 
 | Workstream | Status | Notes |
 |---|---|---|
-| Memory Hardening Phase 1 | ✅ **COMPLETED** | Code shipped 2026-05-30. Firebase rules pending Console merge (operator action per `02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md`). |
+| Memory Hardening Phase 1 | ✅ **COMPLETE END-TO-END** | Code shipped + Firebase rules deployed + auditProvenance() baseline clean. Trust-layer guarantees G1, G2, G7, G8 operational at API + data layers. |
 | Memory Hardening Phase 2 | ⏸ **PENDING — gated by Authority fragmentation resolution** | Server-side authority enforcement on promotion + Resolution-confirmation gate + Re-open workflow. Cannot begin until Authority work resolves. |
 | MVLS (Minimum Viable Learning System) | 🚫 **NOT AUTHORIZED** | Per the MVLS readiness audit (`groovelinx_mvls_implementation_readiness_audit_v1.md`). Verdict: "NO, not yet." Preconditions explicit below. |
 | Songs v2 migration | 🔄 **IN PROGRESS** | Legacy `songs/{title}` reads still active on some paths. MVLS precondition. |
@@ -22,6 +24,8 @@
 3. **Memory Hardening Phase 2** — Phase 1 is shipping today. Phase 2 ships after Authority work lands and re-audits the Phase 1 `auth_version: 'phase1'` cohort under enforced rules.
 
 When all three resolve, MVLS authorization can flip from NOT AUTHORIZED to YES. First MVLS-proper deliverable per the North Star Build Sequence is Performance Convention as built primitive — the lightest path to a Comparison target.
+
+**Next architecture focus (Drew 2026-05-30 15:23 UTC):** Authority fragmentation resolution. Memory Hardening Phase 2 + the remaining trust-layer guarantees (G3, G4, G5, G6) depend on it. Do NOT start MVLS proper.
 
 ### Current critical path
 
