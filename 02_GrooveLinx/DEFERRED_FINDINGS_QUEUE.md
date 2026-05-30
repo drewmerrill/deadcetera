@@ -2601,6 +2601,17 @@ Future contributors should not "fix" these without checking back.
     significant build.
   - **Discovered:** 2026-05-28 PM · GMC Sierra CarPlay car session
   - **Status:** open (Tier 1 observation log mode)
+  - **Recurrence log:**
+    - **2026-05-30** · Drew reports: "playback of 3hr rehearsal in
+      car still just skips every second." 3-hour rehearsal length;
+      "every second" skip cadence (tighter than the 3-second glitch
+      cadence in symptom (1) — possibly a worse-state variant or a
+      4th distinct class). Browser-side playback stabilization
+      fixes shipped earlier this session (visible-path validated
+      only) did NOT resolve this CarPlay-context failure. Trigger
+      threshold for Tier 2 instrumentation advancing: this is
+      recurrence #2 of the original 2026-05-28 pattern; trigger
+      remains "2-3 sessions" — at the boundary.
 
 - **Finding:** Live Gig Mode Flash Chart Editor — Save and Cancel
   buttons use `onclick` instead of `onpointerdown`. The code's own
