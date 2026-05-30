@@ -6,7 +6,7 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-30 (PRODUCTION SECURITY STABILIZATION) — readiness audit revealed: (1) Memory Hardening Phase 1 immutability rules were NEVER deployed despite earlier "VERIFIED END-TO-END" claim — the baseline-clean audit only proved auditProvenance() works on empty data, not that rules enforce; (2) `bands/$bandId` tree is publicly readable AND writable; Firebase Auth is not wired (firebase.auth() never invoked); auth gate is purely client-UI-side. Phase 1 status reverted to SHIPPED IN CODE — RULES ENFORCEMENT PENDING / SECURITY PATCH REQUIRED. Stage 1 rules-only patch ready at `02_GrooveLinx/docs/security-stabilization-rules-patch-v1.md`; closes /users/ + tightens /care_packages_public/ + adds Phase 1 immutability. Stage 2 (close bands/$bandId central exposure) requires Firebase Auth wiring — code work, deferred. · App build: `20260530-150905` (commit `d60da38e`) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE + PRODUCTION SECURITY STABILIZATION — TWO LIVE TRACKS + HYBRID SONG-CLIP ARCHITECTURE FULLY DEPLOYED** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) Hybrid Song-Clip Architecture — **PHASES A, B, C ALL LIVE END-TO-END** (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint + on-confirm wiring LIVE · Phase C dual-home UI (Review Mode inline 🎚 Audition + Song DNA Our Takes card) LIVE; Phases D/E/F open). **Today's afternoon headline:** Phase C v1 SHIPPED. Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm and surface in TWO dual-home contexts — inline in Review Mode (session-scoped) + Our Takes card in Song DNA Listen lens (cross-session aggregated by songId). **Storage is segmentId-keyed** per Drew's required correction (multi-take per rehearsal is first-class — silent skip on second take was unacceptable). Eight new GLStore helpers, ~927 LOC. **Earlier today:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-30 — Stage 1 security patch DEPLOYED + VERIFIED 16/16 (after one mid-deploy correction: original `.write` cascade-overlap caught by verification sweep, corrected to `.validate`). Memory Hardening Phase 1 = **COMPLETE** (code + immutability enforcement at API + data layers). Trust-layer guarantees G1, G2, G7, G8 all operational at both layers. Authority Fragmentation = **ACTIVE P0** — F14 (bands/$bandId publicly readable + writable) remains; downgraded HIGH from CRITICAL because Phase 1 immutability constrains the most trust-sensitive surface. Stage 2 Security Remediation = **PENDING Firebase Auth integration** (code work, separate task). Authority Resolution Phase 1 Design **READY TO BEGIN** when un-paused (v2 readiness audit complete; Slice A identified as smallest viable next step). · App build: `20260530-150905` (commit `d60da38e`) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS + HYBRID SONG-CLIP ARCHITECTURE FULLY DEPLOYED** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) Hybrid Song-Clip Architecture — **PHASES A, B, C ALL LIVE END-TO-END** (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint + on-confirm wiring LIVE · Phase C dual-home UI (Review Mode inline 🎚 Audition + Song DNA Our Takes card) LIVE; Phases D/E/F open). **Today's afternoon headline:** Phase C v1 SHIPPED. Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm and surface in TWO dual-home contexts — inline in Review Mode (session-scoped) + Our Takes card in Song DNA Listen lens (cross-session aggregated by songId). **Storage is segmentId-keyed** per Drew's required correction (multi-take per rehearsal is first-class — silent skip on second take was unacceptable). Eight new GLStore helpers, ~927 LOC. **Earlier today:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
@@ -412,6 +412,83 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# ✅ SESSION CLOSE — 2026-05-30 — Stage 1 DEPLOYED + VERIFIED · Phase 1 COMPLETE · Authority P0 active
+
+## 1. CURRENT RUNTIME STATE
+
+- **App build:** `20260530-150905` (commit `d60da38e` — unchanged; this turn is rules deploy + docs)
+- **Branch:** `main` · clean working tree post-commit
+- **Stage 1 security stabilization patch:** ✅ DEPLOYED and VERIFIED. Drew published the corrected rules (after first attempt was caught by verification — see post-mortem below). 16/16 REST-API scenarios pass, including the critical forgery-rejection tests 5 and 6 (HTTP 401 as expected).
+- **Memory Hardening Phase 1:** ✅ COMPLETE (code + immutability enforcement at API + data layers).
+- **Trust-layer guarantees:** G1, G2, G7, G8 all operational at API + data layers. G3 / G4 / G5 / G6 await Phase 2.
+- **F14 status:** still present but downgraded HIGH (not CRITICAL) — Phase 1 immutability constrains the most-trust-sensitive surface even with parent `bands/$bandId/.write: true` still open.
+
+## 2. POST-MORTEM (preserved for future reference)
+
+The first Stage 1 deploy used `.write` rules for the five Phase 1 immutability fields. Verification caught a structural error: Firebase RTDB `.write` rules CASCADE DOWN — child `.write` rules cannot revoke write permission granted by a parent. With `bands/$bandId/.write: true` already deployed, the child immutability rules were structurally ineffective. Tests 5 and 6 (forgery rejection) FAILED at HTTP 200 instead of 401.
+
+The correct Firebase RTDB immutability idiom is `.validate`, which does NOT cascade — it runs at the exact path regardless of ancestor `.write` permissions, and can reject writes that `.write` would otherwise permit. The patch was corrected (5× `.write` → `.validate`), republished, and re-verified. 16/16 pass.
+
+**Lesson preserved in:** `02_GrooveLinx/specs/authority_fragmentation_readiness_audit_v2.md` §3.1 + `02_GrooveLinx/docs/security-stabilization-rules-patch-v1.md` (deploy runbook).
+
+The error was in my (Claude's) original Phase 1 design + Stage 1 patch design — I used a documented-but-incorrect "standard idiom." The verification sweep caught it before any annotation was promoted in production, so no real-data forgery occurred.
+
+## 3. WORKSTREAM STATUS (post-Stage-1)
+
+| Workstream | Status |
+|---|---|
+| Memory Hardening Phase 1 | ✅ COMPLETE (code + immutability enforcement) |
+| Authority Fragmentation | 🔓 ACTIVE P0 — Slice A identified as smallest viable next step |
+| Stage 2 Security Remediation | ⏸ PENDING Firebase Auth integration (code work, separate task) |
+| Authority Resolution Phase 1 Design | 📋 READY TO BEGIN when un-paused (v2 readiness audit complete) |
+| Memory Hardening Phase 2 | ⏸ PENDING — gated by Slice A + Slice B at minimum |
+| MVLS | 🚫 NOT AUTHORIZED — preconditions unchanged |
+
+## 4. CURRENT PRIORITIES
+
+- **NEXT (Drew decides):** authorize Authority Resolution Phase 1 Design to begin (recommended); OR authorize Slice A immediately (skip design phase); OR continue pause. Detail in `authority_fragmentation_readiness_audit_v2.md` §10.
+- **DEFERRED:** Memory Hardening Phase 2 design (gated by Slice A + B). MVLS proper (preconditions unchanged).
+- **INDEPENDENT (can proceed anytime):** F1/F2/F6/F9/F10/F11 cleanup — data-model fragmentation findings not blocked by Authority work.
+
+## 5. OPEN PRODUCT DECISIONS
+
+- **Authority Resolution start trigger** — Drew. Recommended path: option 1 (authorize design phase) per v2 audit §10.
+- **F3 keying decision (auth.uid vs memberKey)** — Drew, deferred to Slice B design phase.
+- **`shared_setlists/.write` Stage 2 posture** — Drew, deferred to Slice A design.
+- **`rehearsal.js:1937` Phase 2 migration approach** — Drew, deferred to Phase 2 design.
+- All prior open decisions standing.
+
+## 6. OPERATIONAL RISKS
+
+- **HIGH — F14 central exposure remains until Slice A:** `bands/$bandId/.write: true` allows unauthenticated writes to band data tree. Phase 1 immutability protects 5 promotion fields against modification but does not prevent: deletion of annotations, creation of fresh annotations with forged-looking promotion fields (the `!data.exists()` branch permits first-writes), or writes to other band paths.
+- **MEDIUM — `shared_setlists/.write: "true"` remains wide-open:** Stage 2 / Slice A candidate.
+- **MITIGATED (this turn) — Phase 1 immutability gap:** ✅ closed via Stage 1 deploy + corrected `.validate` rules.
+- **MITIGATED (this turn) — Documentation overclaim:** prior "VERIFIED END-TO-END" claim has been honestly corrected (prior entries preserved in dated history with correction notes); current entries reflect actual state.
+
+## 7. RECOMMENDED NEXT ACTION
+
+**Drew chooses one of three (v2 audit §10):**
+1. **Authorize Authority Resolution Phase 1 Design to begin** (recommended) — bounded design phase produces specs for Slice A/B/C; preserves recognition discipline.
+2. **Authorize Slice A immediately** — combines Firebase Auth code wiring + rule tightening in one sprint; faster but skips structured recognition.
+3. **Continue pause** — Stage 1 is sufficient stabilization for now.
+
+## 8. WHAT CHANGED THIS TURN
+
+1. **Stage 1 security stabilization patch DEPLOYED** — Drew published rules to Firebase Console (with one mid-deploy correction: `.write` → `.validate` after the cascade-overlap was caught).
+2. **Stage 1 verification complete** — 16/16 REST-API equivalent tests pass, including forgery-rejection tests 5 and 6.
+3. **Memory Hardening Phase 1 status flipped to ✅ COMPLETE** — for real this time, with enforcement at both API and data layers.
+4. **Post-mortem captured** — `.write` cascade error documented in v2 audit §3.1 + this handoff §2. Lesson preserved.
+5. **Authority Fragmentation Readiness Audit v2** written (`02_GrooveLinx/specs/authority_fragmentation_readiness_audit_v2.md`) — post-Stage-1 enforcement surface inventory; concrete Memory Hardening Phase 2 prerequisites; Slice A/B/C/D taxonomy; updated severity rankings (0 CRITICAL now, down from 2).
+6. **CURRENT_PHASE.md workstream table updated** per Drew's three required flips.
+
+## 9. WHAT IS NEWLY KNOWN
+
+- **Firebase RTDB `.write` rules cascade down; `.validate` does not.** The standard immutability idiom for child fields under a permissive `.write` parent is `.validate`, not `.write`. Future Authority Resolution rules design must respect this.
+- **Stage 1 verification approach works.** REST-API curl against the live DB is a valid Playground substitute (same rules engine, same answers). Re-runnable, scriptable, cleanup-safe.
+- **The verification sweep caught a real bug before production data was at risk.** Pattern worth preserving for future deploys.
 
 ---
 

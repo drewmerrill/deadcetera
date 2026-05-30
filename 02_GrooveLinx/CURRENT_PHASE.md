@@ -1,22 +1,20 @@
 # GrooveLinx — Current Phase
 
-## 📍 Project State Snapshot (as of 2026-05-30 — security stabilization)
+## 📍 Project State Snapshot (as of 2026-05-30 — Stage 1 deployed + verified)
 
-**Build:** `20260530-150905` (commit `d60da38e`) · **Branch:** `main` · **Mode:** Coherence Stewardship Phase + **PRODUCTION SECURITY STABILIZATION**
+**Build:** `20260530-150905` (commit `d60da38e`) · **Branch:** `main` · **Mode:** Coherence Stewardship Phase
 
-**🚨 CORRECTION (post-readiness audit):** The 2026-05-30 15:23 UTC "Memory Hardening Phase 1 VERIFIED END-TO-END" claim was incorrect. Operator-supplied Firebase Console rules (received 2026-05-30) show the Phase 1 field-level immutability rules were never actually deployed. The earlier `auditProvenance({refresh: true})` baseline-clean verification only proved the audit function works on an empty dataset — it did NOT test rules enforcement. Phase 1 reverts to **SHIPPED IN CODE — RULES ENFORCEMENT PENDING / SECURITY PATCH REQUIRED**.
+**✅ Stage 1 security stabilization patch DEPLOYED and VERIFIED 2026-05-30.** Drew published the corrected Stage 1 rules (using `.validate` instead of `.write` after the first-attempt cascade-overlap was caught during 16-scenario verification sweep). All 16 REST-API equivalent scenarios pass — including the critical forgery-rejection tests (tests 5 & 6) which now correctly return HTTP 401. Phase 1 immutability is enforced at the data layer.
 
-**Two additional CRITICAL findings surfaced by the Console-rules read:**
-- **F13:** Memory Hardening Phase 1 immutability rules are absent from deployed rules (per above).
-- **F14:** `bands/$bandId` tree is publicly readable AND publicly writable. The auth gate in `app.js` is purely UI-side; Firebase Auth is not wired (`firebase.auth()` is never invoked). Anyone with the Firebase project config can read or write any band's data via direct Firebase SDK access.
-
-**Stage 1 security patch (rules-only, Console-deployable) ready:** see `02_GrooveLinx/docs/security-stabilization-rules-patch-v1.md`. Closes `/users/` (unused, wide-open), tightens `/care_packages_public/` write to Cloud-Function-only, and adds Phase 1 immutability rules. Does NOT close `bands/$bandId` central exposure — that requires Firebase Auth wiring (Stage 2 code work).
+**Lesson learned (post-mortem):** Firebase RTDB `.write` rules CASCADE DOWN — child `.write` rules cannot revoke write permission granted by a parent. The original Phase 1 design used `.write` for immutability; this was structurally ineffective under `bands/$bandId/.write: true`. The corrected pattern uses `.validate` (which does NOT cascade and runs even when parent `.write` permits). The 16-scenario verification sweep caught the bug before any annotation was promoted in production.
 
 ### Workstream status
 
 | Workstream | Status | Notes |
 |---|---|---|
-| Memory Hardening Phase 1 | ⚠️ **SHIPPED IN CODE — RULES ENFORCEMENT PENDING / SECURITY PATCH REQUIRED** | Code shipped 2026-05-30 (commit `d60da38e`); Firebase Console rules merge confirmed NOT performed via 2026-05-30 readiness audit. G1 + G2 operational at API layer only. Security stabilization patch (`docs/security-stabilization-rules-patch-v1.md`) folds the missing Phase 1 immutability rules into a broader Stage 1 patch. |
+| Memory Hardening Phase 1 | ✅ **COMPLETE** (code + immutability enforcement) | Code shipped 2026-05-30 (commit `d60da38e`); Stage 1 security patch with corrected `.validate` immutability rules deployed and verified 2026-05-30 (16/16 REST-API scenarios pass, including forgery rejection on tests 5 & 6). G1, G2, G7, G8 all operational at API + data layers. |
+| Authority Fragmentation | 🔓 **ACTIVE P0** | Per `02_GrooveLinx/specs/authority_fragmentation_recognition_v1.md` + `authority_fragmentation_readiness_audit_v1.md`. Central exposure F14 (`bands/$bandId` publicly readable + writable) remains. Authority Resolution Phase 1 Design ready to begin when un-paused. |
+| Stage 2 Security Remediation | ⏸ **PENDING Firebase Auth integration** | Code work required. `firebase.auth()` is never invoked in the codebase; rules requiring `auth != null` would reject every write the app makes. Stage 2 wires `firebase.auth().signInWithCredential(googleCredential)` post-Google-OAuth, then tightens `bands/$bandId/.write` + `shared_setlists/.write` to `auth != null` minimum. Separate code+rules workstream. |
 | Memory Hardening Phase 2 | ⏸ **PENDING — gated by Authority fragmentation resolution** | Server-side authority enforcement on promotion + Resolution-confirmation gate + Re-open workflow. Cannot begin until Authority work resolves. |
 | MVLS (Minimum Viable Learning System) | 🚫 **NOT AUTHORIZED** | Per the MVLS readiness audit (`groovelinx_mvls_implementation_readiness_audit_v1.md`). Verdict: "NO, not yet." Preconditions explicit below. |
 | Songs v2 migration | 🔄 **IN PROGRESS** | Legacy `songs/{title}` reads still active on some paths. MVLS precondition. |
@@ -31,9 +29,7 @@
 
 When all three resolve, MVLS authorization can flip from NOT AUTHORIZED to YES. First MVLS-proper deliverable per the North Star Build Sequence is Performance Convention as built primitive — the lightest path to a Comparison target.
 
-**Next operator action (post-correction 2026-05-30):** review and deploy the Stage 1 security stabilization rules patch per `02_GrooveLinx/docs/security-stabilization-rules-patch-v1.md` §7. Restores Memory Hardening Phase 1 to genuine END-TO-END for field-level immutability + closes two minor wide-open paths. Does NOT close the central `bands/$bandId` exposure (Stage 2 requires Firebase Auth wiring — code work, separate task).
-
-**Next architecture focus (Drew 2026-05-30 15:23 UTC, unchanged):** Authority fragmentation resolution (now informed by readiness audit + Stage 2 Firebase Auth requirement). Memory Hardening Phase 2 + remaining trust-layer guarantees (G3, G4, G5, G6) depend on it. Do NOT start MVLS proper.
+**Next architecture focus (Drew 2026-05-30, post-Stage-1):** Authority Fragmentation Readiness Audit v2 (incorporates Stage 1 ship + post-mortem) → then Authority Resolution Phase 1 Design when un-paused. Memory Hardening Phase 2 + remaining trust-layer guarantees (G3, G4, G5, G6) still depend on Authority resolution. Do NOT start MVLS proper.
 
 ### Current critical path
 
