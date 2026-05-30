@@ -1,7 +1,7 @@
 #!/bin/bash
 # Bash 3 compatible (no associative arrays)
 # Usage: gl-item TITLE BODY_FILE STAGE STATUS OWNER IMPACT EFFORT LINKED_SPEC CLOSE
-# Args: stage ∈ {Shipped,Ready,Specced,Idea,Building,Exploring}
+# Args: stage ∈ {Idea,Verified,RequirementsDesign,Ready,Building,UAT,Shipped}
 #       status ∈ {Todo,InProgress,Done}
 #       owner ∈ {Drew,Claude,Pierce}
 #       impact ∈ {S,M,L,XL}
@@ -17,8 +17,10 @@ SPEC_F="PVTF_lAHOD4FZTs4BXCGMzhSR0F4"
 # Option lookup via case
 opt_for() {
   case "$1" in
-    Stage_Shipped) echo "142ee4a4";; Stage_Ready) echo "db8d6738";; Stage_Specced) echo "0d25c6d5";;
-    Stage_Idea) echo "24044220";; Stage_Building) echo "76507750";; Stage_Exploring) echo "d71d4ad3";;
+    Stage_Idea) echo "24044220";; Stage_Verified) echo "d71d4ad3";; Stage_RequirementsDesign) echo "0d25c6d5";;
+    Stage_Ready) echo "db8d6738";; Stage_Building) echo "76507750";; Stage_UAT) echo "23bcd020";; Stage_Shipped) echo "142ee4a4";;
+    # Back-compat aliases (Pierce-renamed 2026-05-30): map old names to new option IDs
+    Stage_Exploring) echo "d71d4ad3";; Stage_Specced) echo "0d25c6d5";;
     Status_Todo) echo "f75ad846";; Status_InProgress) echo "47fc9ee4";; Status_Done) echo "98236657";;
     Owner_Drew) echo "10315c30";; Owner_Claude) echo "9d810a2b";; Owner_Pierce) echo "8cc01516";;
     Impact_S) echo "54b2fac7";; Impact_M) echo "dafa5ae2";; Impact_L) echo "067360ad";; Impact_XL) echo "95ff6dc6";;
