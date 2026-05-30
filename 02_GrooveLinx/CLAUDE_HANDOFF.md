@@ -6,15 +6,22 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-29 13:24 UTC (Phase C "Our Takes" v1 SHIPPED + Phase B on-confirm wiring complete — hybrid song-clip architecture is now end-to-end musician-facing) · App build: `20260529-132423` (commit `07a7c60d`) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS + HYBRID SONG-CLIP ARCHITECTURE FULLY DEPLOYED** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) Hybrid Song-Clip Architecture — **PHASES A, B, C ALL LIVE END-TO-END** (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint + on-confirm wiring LIVE · Phase C dual-home UI (Review Mode inline 🎚 Audition + Song DNA Our Takes card) LIVE; Phases D/E/F open). **Today's afternoon headline:** Phase C v1 SHIPPED. Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm and surface in TWO dual-home contexts — inline in Review Mode (session-scoped) + Our Takes card in Song DNA Listen lens (cross-session aggregated by songId). **Storage is segmentId-keyed** per Drew's required correction (multi-take per rehearsal is first-class — silent skip on second take was unacceptable). Eight new GLStore helpers, ~927 LOC. **Earlier today:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
+_Last refreshed: 2026-05-30 15:09 UTC (Memory Hardening Phase 1 SHIPPED — promotion provenance extension + canonical promoteToMemory() + auditProvenance() on GLAnnotations · Firebase rules pending Console merge per runbook) · App build: `20260530-150905` (commit `d60da38e`) · Branch: `main` · Mode: **COHERENCE STEWARDSHIP PHASE — TWO LIVE TRACKS + HYBRID SONG-CLIP ARCHITECTURE FULLY DEPLOYED** (1) Shell Integrity / CO-Truth Audit (cartography landed `a797cce4`, remediation candidate selection still open) + (2) Ingestion-First Architecture (validated 5/27→5/28 overnight) + (3) Hybrid Song-Clip Architecture — **PHASES A, B, C ALL LIVE END-TO-END** (Phase A spike validated 192 kbps · Phase B song-mp3 endpoint + on-confirm wiring LIVE · Phase C dual-home UI (Review Mode inline 🎚 Audition + Song DNA Our Takes card) LIVE; Phases D/E/F open). **Today's afternoon headline:** Phase C v1 SHIPPED. Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm and surface in TWO dual-home contexts — inline in Review Mode (session-scoped) + Our Takes card in Song DNA Listen lens (cross-session aggregated by songId). **Storage is segmentId-keyed** per Drew's required correction (multi-take per rehearsal is first-class — silent skip on second take was unacceptable). Eight new GLStore helpers, ~927 LOC. **Earlier today:** chatter transcription works end-to-end — 31 silence-labeled segments >10s on 5/27 rehearsal transcribed via faster-whisper-large-v3 on A10G in 64s wall-clock at ~$0.10–$0.20 cost; 20 contained REAL chatter (count-offs, setlist debates, gig-prep, sound-eng talk, band identity), 11 were truly silent (Whisper hallucinated "Thank you." boilerplate, post-filtered). **Modal consolidation pattern:** Hit Starter 8-webhook cap on second deploy; consolidated chatter into `groovelinx-multitrack-song-clip` as third function family behind one action-dispatcher webhook. Pattern works; god-file watch is the architectural debt. **Three new deferred findings** (`DEFERRED_FINDINGS_QUEUE.md` §1): analyzer has no speech/chatter category, songAssignmentGuess noisy via word-match, speakerCandidate works only on self-ID. **Architectural P0 (still open from 5/27):** authority fragmentation — Home/Songs/Practice give three different "what to work on next" answers. **DISCIPLINE:** observe-before-expand applies harder than ever now — Phase B + chatter are dormant backend with zero UI; Phase C surface is a product decision, not engineering. **Pierce-synthesis remains load-bearing:** "many chandeliers but still needs a better front door" — Phase C must widen Drew's existing flow, not add a fifth chandelier. **3-surface operational model:** Product · Operational Visibility (GitHub Project + 📍 Phase Marker) · System Memory._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
-GrooveLinx app build 20260529-132423 (commit 07a7c60d), branch main,
-live on app.groovelinx.com. Today (2026-05-29) shipped: morning was
-backend (chatter pipeline + Phase B endpoint); afternoon was Phase C
-v1 frontend (Review Mode inline Audition + Song DNA Our Takes card).
+GrooveLinx app build 20260530-150905 (commit d60da38e), branch main,
+live on app.groovelinx.com. Today (2026-05-30) shipped: Memory
+Hardening Phase 1 — promotion provenance extension + canonical
+promoteToMemory() + auditProvenance() on the existing GLAnnotations
+primitive (NOT a new Memory primitive). Firebase rules pending
+Console merge per 02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md.
+
+PREVIOUS MILESTONES (still valid): Phase C "Our Takes" v1 (2026-05-29)
+shipped hybrid song-clip architecture end-to-end (segmentId-keyed
+storage; Review Mode inline Audition + Song DNA Our Takes card).
+Chatter transcription pipeline live (faster-whisper-large-v3 on A10G).
 
 MILESTONE: Hybrid song-clip architecture is END-TO-END musician-facing.
 Per-segment 192 kbps MP3 clips materialize on human ✓ Confirm. Two
@@ -405,6 +412,120 @@ OUTSTANDING DEPLOY (operator action — Drew, not Claude):
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 🎚 SESSION CLOSE — 2026-05-30 15:09 UTC — Memory Hardening Phase 1 SHIPPED (provenance extension on GLAnnotations)
+
+## 1. CURRENT RUNTIME STATE
+
+- **App build:** `20260530-150905` (commit `d60da38e`)
+- **Branch:** `main` · clean working tree post-ship (this commit covers handoff/phase-tracker only)
+- **Latest commit:** `d60da38e` — `feat(memory): Memory Hardening Phase 1 — promotion provenance + audit on GLAnnotations`
+- **Atomic 4-source build bump verified:** NEW=154/154 + OLD=0/0 in both `index.html` + `index-dev.html`; meta tags, `version.json`, `service-worker.js` `CACHE_NAME` all at `20260530-150905`.
+- **Code change:** `js/core/gl-annotations.js` +226 LOC. Two new public functions (`promoteToMemory`, `auditProvenance`) + defensive warn in `updateAnnotation()` + header doc block describing Phase 1 semantics. Module grew from 293 → 519 lines.
+- **Firebase rules:** NOT yet deployed. Five field-level immutability rules pending Console merge per `02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md`. Rules-first deploy order (verification audit C3) means **Drew must run Console merge before the Phase 1 trust-layer guarantees become operational at the data layer**. Code is already live; whitelist enforcement at the API layer is already operational.
+- **GitHub Project:** Pierce's stage rename + UAT addition shipped earlier today (commit `e1fc7daa`). Project pipeline now Idea → Verified → Requirements/Design → Ready → Building → UAT → Shipped.
+- **Canonical state:** see [`00_Governance/CURRENT_STATE.md`](00_Governance/CURRENT_STATE.md) — do not duplicate here.
+
+**What shipped this session (commit `d60da38e`):**
+1. `GLAnnotations.promoteToMemory(id, {evidence, authority?})` — single canonical promotion pathway. Writes all five provenance fields plus `updated_at` in one Firebase `update()`. Rejects re-promotion attempts (idempotency by-design — silent re-promote masks logic errors). Records `auth_version: 'phase1'` honestly marking that Phase 2's server-side authority enforcement is NOT yet active.
+2. `GLAnnotations.auditProvenance({songId?, includeArchived?, refresh?})` — read-only trust-layer audit. Returns `{scannedCount, promotedCount, unpromotedCount, issues: {missing[], invalid[], inconsistent[]}, generatedAt}`. NEVER auto-remediates (auto-remediation = AI authoring Memory = trust-layer violation).
+3. Defensive warn in `updateAnnotation()` when callers pass promotion fields. The existing whitelist drops them by construction; the warn surfaces the caller mistake.
+4. Header documentation block describing Phase 1 promotion semantics + `auth_version: 'phase1'` marker rationale.
+5. Console-ready Firebase rules deploy runbook at `02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md` — uses `$slug` naming (verification audit C2), nests under existing `$other` membership gate (C4), reverse-order deploy (C3), 8 Rules Playground test scenarios (C6), merge-not-replace discipline (C5).
+
+**Trust-layer guarantees status:**
+- G1 (no Memory without provenance) — operational at API layer; data-layer awaits rules deploy.
+- G2 (provenance immutable from creation) — operational at API layer via whitelist; data-layer awaits rules deploy.
+- G7 (evidence references survive deletion) — operational via tombstone-tolerant contract (annotations use soft-delete; references remain queryable).
+- G8 (provenance is queryable) — operational via `auditProvenance()`.
+- G3 / G4 / G5 / G6 — await Phase 2 (Authority fragmentation resolution).
+
+## 2. CURRENT PRIORITIES
+
+- **NOW (Drew):** Run Firebase Console rules merge per `02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md` §1–§3. Then run `GLAnnotations.auditProvenance({refresh: true})` in devtools console — expected 0 promoted, 0 issues. Then walk through §5 manual verification checklist (6 steps) to confirm promotion path works end-to-end.
+- **NEXT:** Authority fragmentation resolution (the P0 architectural finding from Shell Integrity Phase). This unblocks Memory Hardening Phase 2 (server-side authority enforcement on promotion + Resolution-confirmation gate + Re-open workflow). Per the MVLS readiness audit, also needed: Songs v2 migration completion + Pierce-front-door coherence convergence. All three are MVLS preconditions.
+- **LATER:** Once preconditions resolve, the MVLS audit verdict can flip from "NO, not yet" to "YES, foundation ready." First MVLS-proper deliverable per the North Star Build Sequence is **Performance Convention as built primitive** (lightest path to a Comparison target). Then Reference Recording primitive. Then Comparison primitive + Take vs Convention pairing engine. Then Practice Recommendation surface.
+- **DEFERRED:** Phase D/E/F of song-clip architecture (direct share links, R2 cache cleanup, per-song Isolate Mode). Chatter transcript sidecar on takes. Three chatter-pipeline deferred findings from 2026-05-29 still in queue.
+
+Canonical detail: [`00_Governance/CURRENT_PRIORITIES.md`](00_Governance/CURRENT_PRIORITIES.md).
+
+## 3. OPEN PRODUCT DECISIONS
+
+- **Phase 2 trigger sequencing — Drew.** Phase 2 ships when Authority fragmentation is resolved or contained enough that `promote_song_knowledge` / `confirm_resolution` / `reopen_memory` permissions can be defined and queried consistently. Open: does Phase 2 wait on FULL Authority resolution, or can it ship against a partial-but-stable authority surface with explicit scope?
+- **Migration of `rehearsal.js:1937` auto-resolve helper — Drew.** Phase 2's planned Resolution-confirmation enforcement will BREAK this caller unless migrated to a future typed `resolveAnnotation()` helper OR explicitly grandfathered as a service-actor path. Decision needed before Phase 2 begins.
+- **Phase 1 promotion authoring surface — Drew.** Phase 1 ships data-layer + API only. No UI exists for promoting annotations to Memory yet. Open: does promotion get a surface in MVLS proper (alongside Convention authoring), or earlier as a Drew-only devtools-console workflow for trust-layer dogfooding?
+- All prior open decisions from 2026-05-29 13:24 still standing (Full/Partial heuristic, take-number stability, songAssignmentGuess UI surfacing).
+
+## 4. OPERATIONAL RISKS
+
+- **MEDIUM — Firebase rules deploy window:** Code shipped; rules pending Drew Console merge. During this window, the API-layer whitelist enforces immutability for normal callers, but a console-direct write to promotion fields (`firebaseDB.ref('bands/X/annotations/Y/promoted_by').set('newValue')`) would succeed. Mitigation: window is operator-bounded (Drew completes Console merge per runbook). The number of users with console-direct access is small. No Comparison engine yet to generate volume.
+- **MEDIUM — `auth_version: 'phase1'` cohort discoverability:** Every Phase 1 promotion records `auth_version: 'phase1'` on its `promotion_authority` snapshot. Phase 2 will need to re-audit this cohort (`promotion_authority.auth_version === 'phase1'`) and decide whether to grandfather or re-review. Currently zero Phase 1 promotions exist; if Drew begins promoting annotations before Phase 2 ships, the cohort grows.
+- **LOW — `rehearsal.js:1937` auto-resolve coupling:** Phase 1 does NOT gate `status='fixed'` writes; this caller continues to function. Phase 2 will require migration or grandfathering before Resolution-confirmation enforcement ships.
+- **MITIGATED (unchanged) — Authority fragmentation P0:** Still the named structural priority. Memory Hardening Phase 2 depends on resolution or containment.
+- **MITIGATED (unchanged) — Songs v2 migration incomplete:** Phase 1 added no new song-id-dependent writes (annotations already use `anchor.song_id`).
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Drew executes Firebase Console rules merge per `02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md`.**
+
+The runbook is operator-ready: Console URL, exact JSON snippet (5 field-level rules), where to merge it (preserve existing rules — do NOT replace), 8 Rules Playground test scenarios with expected pass/fail outcomes, and post-publish smoke test. Estimated time: ~15 minutes.
+
+After rules land, run `GLAnnotations.auditProvenance({refresh: true})` in the devtools console as the bare-minimum verification (expected: empty report). Then walk through runbook §5 (6-step manual verification on a test annotation) to confirm `promoteToMemory()` works end-to-end and the immutability rules reject post-promotion modification.
+
+If verification passes, Memory Hardening Phase 1 is end-to-end operational. The MVLS readiness audit's first precondition (Memory infrastructure trust-layer hardening) is met — Phase 1's portion. Two preconditions remain: Songs v2 migration completion + Authority fragmentation resolution.
+
+If anything fails verification, the rollback is documented in runbook §6 (independent code and rules rollbacks; both clean; no data loss).
+
+## 6. WORKSTREAM STATUS (post-Phase-1)
+
+| Workstream | Status |
+|---|---|
+| Memory Hardening Phase 1 | ✅ COMPLETED (code shipped; rules pending Console merge) |
+| Memory Hardening Phase 2 | ⏸ PENDING — gated by Authority fragmentation resolution |
+| MVLS | 🚫 NOT AUTHORIZED — preconditions explicit below |
+| Songs v2 migration | 🔄 IN PROGRESS — MVLS precondition |
+| Authority fragmentation (P0) | 🔓 OPEN — MVLS + Memory Hardening Phase 2 precondition |
+| Pierce "front door" coherence | 🔄 IN PROGRESS — MVLS-soft precondition |
+
+**Remaining MVLS blockers (the three that must clear before MVLS authorization flips to YES):**
+1. Songs v2 migration completion
+2. Authority fragmentation resolution
+3. Memory Hardening Phase 2
+
+When all three resolve, MVLS authorization can flip from NOT AUTHORIZED to YES. First MVLS-proper deliverable per the North Star Build Sequence is **Performance Convention as built primitive** — the lightest path to a Comparison target.
+
+## 7. CURRENT CRITICAL PATH
+
+```
+Authority fragmentation resolution (P0)
+   ├──→ Memory Hardening Phase 2 unblocks → rehearsal.js:1937 migration → Resolution gate ships
+   └──→ (with Songs v2 + front-door) MVLS preconditions clear
+              └──→ Convention → Reference Recording → Comparison engine → Practice Recommendation
+                            (MVLS = operational)
+```
+
+Memory Hardening Phase 1 is the only checked box above. Everything else awaits Authority or sequenced MVLS work.
+
+## 8. WHAT CHANGED THIS SESSION
+
+1. **Memory Hardening Phase 1 shipped** — `GLAnnotations.promoteToMemory()` + `auditProvenance()` + defensive warn in `updateAnnotation()`. Code live; Firebase rules pending Console merge per runbook. (commit `d60da38e`)
+2. **Console-ready Firebase rules deploy runbook** published at `02_GrooveLinx/docs/memory-hardening-phase-1-deploy.md`. Reverse-order deploy (rules first, code second) per verification audit C3.
+3. **GitHub Project layout updated** per Pierce — Exploring → Verified, Specced → Requirements/Design, UAT added after Building. 18 items auto-migrated via ID preservation; 4 verification-shaped items moved Ready → UAT. Helper script `scripts/gh-project-item.sh` updated. (commit `e1fc7daa`)
+4. **Architectural recognition series completed** — 13 design-only specs landed (all in `02_GrooveLinx/specs/`): `song_component_canonical_model_v1`, `global_music_architecture_audit_v1`, `part_lab_architecture_recognition_v1`, `work_primitive_recognition_v1`, `knowledge_acquisition_loop_architecture_v1`, `comparison_primitive_architecture_v1`, `groovelinx_north_star_build_sequence_v1`, `groovelinx_mvls_implementation_readiness_audit_v1`, `memory_hardening_implementation_readiness_v1`, `memory_hardening_phase_1_implementation_design_v1`, `memory_hardening_phase_1_verification_audit_v1`, plus prior `performance_conventions_architecture_v1` and `elevation_primitive_architecture_v1`. All design-only; recognition discipline held throughout.
+
+## 9. WHAT IS NO LONGER AN OPEN ARCHITECTURAL QUESTION
+
+- **"Is Memory a distinct primitive or absorbed by Annotation?"** — RESOLVED. `GLAnnotations` is operationally Memory. No new primitive. (`memory_hardening_implementation_readiness_v1`)
+- **"Can MVLS begin implementation now?"** — RESOLVED. NO. Preconditions explicit. (MVLS readiness audit)
+- **"Is Comparison architecturally real?"** — RESOLVED. YES — first-class primitive, deferred. (`comparison_primitive_architecture_v1`)
+- **"Does Work deserve primitive promotion?"** — RESOLVED. NO — stays as extension slot on Song. (`work_primitive_recognition_v1`)
+- **"Does Part generalize Harmony architecturally?"** — RESOLVED. YES — internal architectural recognition; surface stays "Harmony Lab." (`part_lab_architecture_recognition_v1`)
+- **"Is the Song-Centric model globally durable?"** — RESOLVED. YES — with three generalizations (Pitch Framework, Rhythmic Framework, Tradition Configuration) + six extension slots. (`global_music_architecture_audit_v1`)
+- **"How does GrooveLinx learn?"** — RESOLVED. Nine-stage, two-gate, evidence-bearing Knowledge Acquisition Loop. AI prepares rooms; humans choose to enter. (`knowledge_acquisition_loop_architecture_v1`)
+- **"What is the minimum sequence to the North Star?"** — RESOLVED. Five most-important future capabilities ordered: Convention → Reference Recording → Comparison primitive → Arrangement → Part. (`groovelinx_north_star_build_sequence_v1`)
+- **"Can Phase 1 implementation execute as designed?"** — RESOLVED. YES, with corrections C1–C9 (all operational, none architectural). (`memory_hardening_phase_1_verification_audit_v1`)
 
 ---
 
